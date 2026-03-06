@@ -23,4 +23,3 @@ Please help improve led by reporting bugs:
 
 ## Disclaimer
 This is a development version of led. Use at your own risk. Known issues are being addressed in updates. Thank you for your patience and feedback!</content>
-<parameter name="filePath">/home/larry/Documents/grok/led/WARNINGS.md
