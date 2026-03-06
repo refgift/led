@@ -18,6 +18,11 @@ void editor_init(Editor* ed, int argc, char* argv[]) {
     ed->show_line_numbers = 0;
     ed->cursor_line = 0;
     ed->cursor_col = buffer_get_line_length(&ed->model, 0);
+    ed->selection_start_line = 0;
+    ed->selection_start_col = 0;
+    ed->selection_end_line = 0;
+    ed->selection_end_col = 0;
+    ed->selection_active = 0;
     ed->search_buffer[0] = 0;
     ed->search_mode = 0;
     ed->clipboard = NULL;
@@ -25,11 +30,11 @@ void editor_init(Editor* ed, int argc, char* argv[]) {
 
 void editor_draw(WINDOW* win, Editor* ed) {
     size_t dummy_y, dummy_x;
-    draw_update(win, &ed->model, ed->scroll_row, ed->scroll_col, ed->cursor_line, ed->cursor_col, ed->show_line_numbers, ed->search_mode, ed->search_buffer, &dummy_y, &dummy_x);
+    draw_update(win, &ed->model, ed->scroll_row, ed->scroll_col, ed->cursor_line, ed->cursor_col, ed->show_line_numbers, ed->search_mode, ed->search_buffer, ed->selection_start_line, ed->selection_start_col, ed->selection_end_line, ed->selection_end_col, ed->selection_active, &dummy_y, &dummy_x);
 }
 
 void editor_handle_input(Editor* ed, int ch) {
-    handle_input(ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line, &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer, &ed->search_mode, &ed->clipboard, ed->filename);
+    handle_input(ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line, &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer, &ed->search_mode, &ed->clipboard, ed->filename, &ed->selection_start_line, &ed->selection_start_col, &ed->selection_end_line, &ed->selection_end_col, &ed->selection_active);
 }
 
 void editor_cleanup(Editor* ed) {

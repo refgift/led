@@ -16,4 +16,34 @@ make
 ## Run
 ./led filename.c
 
+## Usage
+The editor is controlled via keyboard shortcuts and arrow keys.
+
+### Navigation
+- Arrow keys: Move cursor up, down, left, right
+- Home: Move to start of line
+- End: Move to end of line
+- Page Up: Scroll up one page
+- Page Down: Scroll down one page
+
+### Editing
+- Type printable characters to insert text
+- Enter: Insert new line
+- Backspace/Delete: Delete character
+- Ctrl+Z: Undo last operation
+
+### File Operations
+- Ctrl+S: Save file
+
+### Selection and Clipboard
+- Ctrl+A: Toggle selection mode (drag to select text)
+- Ctrl+C: Copy selected text (or current line if no selection)
+- Ctrl+X: Cut selected text (or current line if no selection)
+- Ctrl+V: Paste clipboard content
+
+### Search
+- Ctrl+/: Enter search mode (type regex pattern, Enter to search, Esc to cancel)
+
+### Display
+- F2: Toggle line number display
 

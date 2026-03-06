@@ -60,7 +60,7 @@ void search_next(Buffer* buf, size_t* cursor_line, size_t* cursor_col, const cha
     regfree(&regex);
 }
 
-void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, size_t* cursor_line, size_t* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename) {
+void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, size_t* cursor_line, size_t* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename, size_t* selection_start_line, size_t* selection_start_col, size_t* selection_end_line, size_t* selection_end_col, int* selection_active) {
     if (*search_mode) {
         if (ch == '\n' || ch == 13) {
             if (strlen(search_buffer) > 0) {
@@ -154,24 +154,111 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
             case 26: // Ctrl+Z to undo
                 undo_operation(buf, cursor_line, cursor_col);
                 break;
-            case 3: // Ctrl+C to copy line
+            case 3: // Ctrl+C to copy
                 if (*clipboard) free(*clipboard);
-                *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
+                if (*selection_active) {
+                    // normalize
+                    size_t sl = *selection_start_line, sc = *selection_start_col, el = *selection_end_line, ec = *selection_end_col;
+                    if (sl > el || (sl == el && sc > ec)) {
+                        size_t t = sl; sl = el; el = t;
+                        t = sc; sc = ec; ec = t;
+                    }
+                    // build string
+                    size_t total = 0;
+                    for (size_t l = sl; l <= el; l++) {
+                        const char* line = buffer_get_line(buf, l);
+                        size_t len = strlen(line);
+                        size_t s = (l == sl) ? sc : 0;
+                        size_t e = (l == el) ? ec : len;
+                        total += e - s + (l < el ? 1 : 0);
+                    }
+                    *clipboard = malloc(total + 1);
+                    char* p = *clipboard;
+                    for (size_t l = sl; l <= el; l++) {
+                        const char* line = buffer_get_line(buf, l);
+                        size_t len = strlen(line);
+                        size_t s = (l == sl) ? sc : 0;
+                        size_t e = (l == el) ? ec : len;
+                        memcpy(p, &line[s], e - s);
+                        p += e - s;
+                        if (l < el) *p++ = '\n';
+                    }
+                    *p = 0;
+                } else {
+                    *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
+                }
                 break;
-            case 24: // Ctrl+X to cut line
+            case 24: // Ctrl+X to cut
                 if (*clipboard) free(*clipboard);
-                *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
-                buffer_delete_line(buf, *cursor_line);
+                if (*selection_active) {
+                    // normalize
+                    size_t sl = *selection_start_line, sc = *selection_start_col, el = *selection_end_line, ec = *selection_end_col;
+                    if (sl > el || (sl == el && sc > ec)) {
+                        size_t t = sl; sl = el; el = t;
+                        t = sc; sc = ec; ec = t;
+                    }
+                    // build string
+                    size_t total = 0;
+                    for (size_t l = sl; l <= el; l++) {
+                        const char* line = buffer_get_line(buf, l);
+                        size_t len = strlen(line);
+                        size_t s = (l == sl) ? sc : 0;
+                        size_t e = (l == el) ? ec : len;
+                        total += e - s + (l < el ? 1 : 0);
+                    }
+                    *clipboard = malloc(total + 1);
+                    char* p = *clipboard;
+                    for (size_t l = sl; l <= el; l++) {
+                        const char* line = buffer_get_line(buf, l);
+                        size_t len = strlen(line);
+                        size_t s = (l == sl) ? sc : 0;
+                        size_t e = (l == el) ? ec : len;
+                        memcpy(p, &line[s], e - s);
+                        p += e - s;
+                        if (l < el) *p++ = '\n';
+                    }
+                    *p = 0;
+                    // delete range
+                    buffer_delete_range(buf, sl, sc, el, ec);
+                    // adjust cursor
+                    *cursor_line = sl;
+                    *cursor_col = sc;
+                    *selection_active = 0;
+                } else {
+                    *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
+                    buffer_delete_line(buf, *cursor_line);
+                }
                 break;
-            case 22: // Ctrl+V to paste line
+            case 22: // Ctrl+V to paste
                 if (*clipboard) {
-                    buffer_insert_line(buf, *cursor_line, *clipboard);
-                    *cursor_col = 0;
+                    buffer_insert_text(buf, *cursor_line, *cursor_col, *clipboard);
+                    // move cursor to end
+                    const char* p = *clipboard;
+                    while (*p) {
+                        if (*p == '\n') {
+                            (*cursor_line)++;
+                            *cursor_col = 0;
+                        } else {
+                            (*cursor_col)++;
+                        }
+                        p++;
+                    }
                 }
                 break;
             case 31: // Ctrl+/
                 *search_mode = 1;
                 search_buffer[0] = 0;
+                break;
+            case 1: // Ctrl+A to toggle selection
+                if (*selection_active) {
+                    *selection_active = 0;
+                } else {
+                    *selection_start_line = *cursor_line;
+                    *selection_start_col = *cursor_col;
+                    *selection_end_line = *cursor_line;
+                    *selection_end_col = *cursor_col;
+                    *selection_active = 1;
+                }
                 break;
             default:
                 if (ch == '\n' || (ch >= 32 && ch <= 126)) { // Printable chars or newline
@@ -188,6 +275,10 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                 }
                 break;
         }
+    }
+    if (*selection_active) {
+        *selection_end_line = *cursor_line;
+        *selection_end_col = *cursor_col;
     }
     // Adjust scroll
     if (*cursor_line < *scroll_row) *scroll_row = *cursor_line;

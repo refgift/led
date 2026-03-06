@@ -59,97 +59,10 @@ int buffer_load_from_file(Buffer* buf, const char* filename) {
             buffer_insert_line(buf, buf->num_lines, line);
             free(line);
             start = i + 1;
-        }
-    }
+  }
+}
     free(temp);
     return 0;
-}
-
-int buffer_save_to_file(const Buffer* buf, const char* filename) {
-    FILE* fp = fopen(filename, "w");
-    if (!fp) return -1;
-    for (size_t i = 0; i < buf->num_lines; i++) {
-        fputs(buf->lines[i], fp);
-        if (i < buf->num_lines - 1) fputc('\n', fp);
-    }
-    fclose(fp);
-    return 0;
-}
-
-const char* buffer_get_line(const Buffer* buf, size_t line) {
-    if (line >= buf->num_lines) return "";
-    return buf->lines[line];
-}
-
-size_t buffer_get_line_length(const Buffer* buf, size_t line) {
-    if (line >= buf->num_lines) return 0;
-    return strlen(buf->lines[line]);
-}
-
-size_t buffer_num_lines(const Buffer* buf) {
-    return buf->num_lines;
-}
-
-char buffer_get_char(const Buffer* buf, size_t line, size_t col) {
-    if (line >= buf->num_lines) return '\0';
-    const char* l = buf->lines[line];
-    size_t len = strlen(l);
-    if (col < len) return l[col];
-    return '\0';
-}
-
-void buffer_insert_line(Buffer* buf, size_t line, const char* content) {
-    if (line > buf->num_lines) line = buf->num_lines;
-    if (buf->num_lines >= buf->capacity) {
-        buf->capacity = buf->capacity ? buf->capacity * 2 : INITIAL_LINES_CAPACITY;
-        buf->lines = realloc(buf->lines, buf->capacity * sizeof(char*));
-        if (!buf->lines) exit(1);
-    }
-    for (size_t i = buf->num_lines; i > line; i--) {
-        buf->lines[i] = buf->lines[i - 1];
-    }
-    buf->lines[line] = my_strdup(content);
-    buf->num_lines++;
-}
-
-void buffer_delete_line(Buffer* buf, size_t line) {
-    if (line >= buf->num_lines) return;
-    free(buf->lines[line]);
-    for (size_t i = line; i < buf->num_lines - 1; i++) {
-        buf->lines[i] = buf->lines[i + 1];
-    }
-    buf->num_lines--;
-}
-
-void buffer_insert_char(Buffer* buf, size_t line, size_t col, char c) {
-    if (line >= buf->num_lines) return;
-    if (c == '\n') {
-        // Split line
-        const char* current = buf->lines[line];
-        size_t len = strlen(current);
-        char* new_line = malloc(col + 1);
-        if (!new_line) return;
-        memcpy(new_line, current, col);
-        new_line[col] = '\0';
-        char* rest = malloc(len - col + 1);
-        if (!rest) { free(new_line); return; }
-        memcpy(rest, &current[col], len - col + 1);
-        free(buf->lines[line]);
-        buf->lines[line] = new_line;
-        buffer_insert_line(buf, line + 1, rest);
-        free(rest);
-    } else {
-        // Insert char
-        const char* current = buf->lines[line];
-        size_t len = strlen(current);
-        char* new_str = malloc(len + 2);
-        if (!new_str) return;
-        memcpy(new_str, current, col);
-        new_str[col] = c;
-        memcpy(&new_str[col + 1], &current[col], len - col + 1);
-        free(buf->lines[line]);
-        buf->lines[line] = new_str;
-    }
 }
 
 void buffer_delete_char(Buffer* buf, size_t line, size_t col) {
@@ -182,4 +95,142 @@ void buffer_delete_char(Buffer* buf, size_t line, size_t col) {
         }
         buf->num_lines--;
     }
+}
+
+void buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t end_line, size_t end_col) {
+    if (start_line > end_line || (start_line == end_line && start_col > end_col)) {
+        size_t t = start_line; start_line = end_line; end_line = t;
+        t = start_col; start_col = end_col; end_col = t;
+    }
+    if (start_line == end_line) {
+        // delete chars in line
+        char* current = buf->lines[start_line];
+        size_t len = strlen(current);
+        if (start_col >= len) return;
+        if (end_col > len) end_col = len;
+        char* new_str = malloc(len - (end_col - start_col) + 1);
+        memcpy(new_str, current, start_col);
+        memcpy(&new_str[start_col], &current[end_col], len - end_col + 1);
+        free(buf->lines[start_line]);
+        buf->lines[start_line] = new_str;
+    } else {
+        // delete from start_col to end of start_line
+        char* start_line_str = buf->lines[start_line];
+        char* new_start = malloc(start_col + 1);
+        memcpy(new_start, start_line_str, start_col);
+        new_start[start_col] = '\0';
+        free(buf->lines[start_line]);
+        buf->lines[start_line] = new_start;
+        // delete from start of end_line to end_col
+        char* end_line_str = buf->lines[end_line];
+        size_t end_len = strlen(end_line_str);
+        char* new_end = malloc(end_len - end_col + 1);
+        memcpy(new_end, &end_line_str[end_col], end_len - end_col + 1);
+        free(buf->lines[end_line]);
+        buf->lines[end_line] = new_end;
+        // delete lines in between
+        for (size_t i = 0; i < end_line - start_line - 1; i++) {
+            buffer_delete_line(buf, start_line + 1);
+        }
+        // merge start and end
+        char* s = buf->lines[start_line];
+        char* e = buf->lines[start_line + 1];
+        size_t sl = strlen(s);
+        size_t el = strlen(e);
+        char* merged = malloc(sl + el + 1);
+        memcpy(merged, s, sl);
+        memcpy(&merged[sl], e, el + 1);
+        free(buf->lines[start_line]);
+        free(buf->lines[start_line + 1]);
+        buf->lines[start_line] = merged;
+        for (size_t i = start_line + 1; i < buf->num_lines - 1; i++) {
+            buf->lines[i] = buf->lines[i + 1];
+        }
+        buf->num_lines--;
+    }
+}
+
+size_t buffer_num_lines(const Buffer* buf) {
+    return buf->num_lines;
+}
+
+const char* buffer_get_line(const Buffer* buf, size_t line) {
+    if (line >= buf->num_lines) return NULL;
+    return buf->lines[line];
+}
+
+size_t buffer_get_line_length(const Buffer* buf, size_t line) {
+    if (line >= buf->num_lines) return 0;
+    return strlen(buf->lines[line]);
+}
+
+char buffer_get_char(const Buffer* buf, size_t line, size_t col) {
+    if (line >= buf->num_lines) return '\0';
+    const char* ln = buf->lines[line];
+    size_t len = strlen(ln);
+    if (col >= len) return '\0';
+    return ln[col];
+}
+
+void buffer_insert_line(Buffer* buf, size_t line, const char* content) {
+    if (line > buf->num_lines) return;
+    if (buf->num_lines >= buf->capacity) {
+        buf->capacity = buf->capacity == 0 ? INITIAL_LINES_CAPACITY : buf->capacity * 2;
+        buf->lines = realloc(buf->lines, buf->capacity * sizeof(char*));
+        if (!buf->lines) return;
+    }
+    for (size_t i = buf->num_lines; i > line; i--) {
+        buf->lines[i] = buf->lines[i - 1];
+    }
+    buf->lines[line] = my_strdup(content);
+    buf->num_lines++;
+}
+
+void buffer_delete_line(Buffer* buf, size_t line) {
+    if (line >= buf->num_lines) return;
+    free(buf->lines[line]);
+    for (size_t i = line; i < buf->num_lines - 1; i++) {
+        buf->lines[i] = buf->lines[i + 1];
+    }
+    buf->num_lines--;
+}
+
+void buffer_insert_char(Buffer* buf, size_t line, size_t col, char c) {
+    if (line >= buf->num_lines) return;
+    char* ln = buf->lines[line];
+    size_t len = strlen(ln);
+    if (col > len) col = len;
+    char* new_ln = malloc(len + 2);
+    if (!new_ln) return;
+    memcpy(new_ln, ln, col);
+    new_ln[col] = c;
+    memcpy(&new_ln[col + 1], &ln[col], len - col + 1);
+    free(buf->lines[line]);
+    buf->lines[line] = new_ln;
+}
+
+void buffer_insert_text(Buffer* buf, size_t line, size_t col, const char* text) {
+    if (line >= buf->num_lines) return;
+    char* ln = buf->lines[line];
+    size_t len = strlen(ln);
+    size_t text_len = strlen(text);
+    if (col > len) col = len;
+    char* new_ln = malloc(len + text_len + 1);
+    if (!new_ln) return;
+    memcpy(new_ln, ln, col);
+    memcpy(&new_ln[col], text, text_len);
+    memcpy(&new_ln[col + text_len], &ln[col], len - col + 1);
+    free(buf->lines[line]);
+    buf->lines[line] = new_ln;
+}
+
+int buffer_save_to_file(const Buffer* buf, const char* filename) {
+    FILE* fp = fopen(filename, "wb");
+    if (!fp) return -1;
+    for (size_t i = 0; i < buf->num_lines; i++) {
+        fputs(buf->lines[i], fp);
+        if (i < buf->num_lines - 1) fputc('\n', fp);
+    }
+    fclose(fp);
+    return 0;
 }

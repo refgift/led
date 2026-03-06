@@ -10,6 +10,11 @@ typedef struct {
     int show_line_numbers;
     size_t cursor_line;
     size_t cursor_col;
+    size_t selection_start_line;
+    size_t selection_start_col;
+    size_t selection_end_line;
+    size_t selection_end_col;
+    int selection_active;
     char search_buffer[256];
     int search_mode;
     char* clipboard;

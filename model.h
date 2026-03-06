@@ -23,5 +23,7 @@ void buffer_insert_line(Buffer* buf, size_t line, const char* content);
 void buffer_delete_line(Buffer* buf, size_t line);
 void buffer_insert_char(Buffer* buf, size_t line, size_t col, char c);
 void buffer_delete_char(Buffer* buf, size_t line, size_t col);
+void buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t end_line, size_t end_col);
+void buffer_insert_text(Buffer* buf, size_t line, size_t col, const char* text);
 
 #endif
