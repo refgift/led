@@ -18,6 +18,9 @@ make
 ## Run
 ./led filename.c
 
+## Test Mode
+./led -t filename.c  # Loads file, runs automated tests on model/view/controller, outputs to stderr, exits
+
 ## Usage
 The editor is controlled via keyboard shortcuts and arrow keys.
 
@@ -68,7 +71,7 @@ Colors are specified using standard ncurses color names: BLACK, RED, GREEN, YELL
 ### Syntax Highlighting
 - `reserved_words_fg` / `reserved_words_bg`: Colors for reserved words/keywords (default: RED/BLACK)
 - `reserved_words`: Comma-separated list of reserved words to highlight (default: common C keywords)
-- `paired_keywords`: Comma-separated list of keyword pairs in open-close format (e.g., if-then,begin-end) to highlight with nesting colors (default: if-then,begin-end,(,))
+- `paired_keywords`: Comma-separated list of keyword/symbol pairs in open-close format (e.g., if-then,begin-end,(,)) to highlight with nesting colors (default: if-then,begin-end,(,))
 - `syntax_extensions`: Comma-separated list of file extensions that enable syntax highlighting (default: .c,.h,.cpp)
 
 ### Example Configuration

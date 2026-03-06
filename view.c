@@ -171,6 +171,40 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                         }
                         free(word);
                     }
+
+                    // Check for symbol pairs
+                    int symbol_colored = 0;
+                    for (int p = 0; p < num_pairs && !symbol_colored; p++) {
+                        size_t len_open = strlen(pairs[p].open);
+                        if (i + len_open <= line_len && strncmp(&full_line[i], pairs[p].open, len_open) == 0) {
+                            if (kw_top < 100) kw_stack[kw_top++] = kw_current_level;
+                            int lvl = kw_current_level;
+                            for (size_t j = i; j < i + len_open && j < line_len; j++) {
+                                if (j >= start && j < start + len) {
+                                    colors[j] = 3 + (lvl > 4 ? 4 : lvl);
+                                }
+                            }
+                            kw_current_level++;
+                            i += len_open - 1; // skip ahead
+                            symbol_colored = 1;
+                        } else {
+                            size_t len_close = strlen(pairs[p].close);
+                            if (i + len_close <= line_len && strncmp(&full_line[i], pairs[p].close, len_close) == 0) {
+                                if (kw_top > 0) {
+                                    int lvl = kw_stack[--kw_top];
+                                    for (size_t j = i; j < i + len_close && j < line_len; j++) {
+                                        if (j >= start && j < start + len) {
+                                            colors[j] = 3 + (lvl > 4 ? 4 : lvl);
+                                        }
+                                    }
+                                }
+                                kw_current_level = kw_current_level > 1 ? kw_current_level - 1 : 1;
+                                i += len_close - 1;
+                                symbol_colored = 1;
+                            }
+                        }
+                    }
+
                     in_word = 0;
                 }
             }
