@@ -2,6 +2,7 @@
 
 #include <ncurses.h>
 #include "model.h"
+#include "config.h"
 
 typedef struct {
     Buffer model;
@@ -22,6 +23,7 @@ typedef struct {
     int replace_step;
     char* clipboard;
     const char* filename;
+    ColorConfig config;
 } Editor;
 
 void editor_init(Editor* ed, int argc, char* argv[]);

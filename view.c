@@ -22,7 +22,7 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
     }
     int* colors = malloc(line_len * sizeof(int));
     if (!colors) return; // Handle error
-    int stack[100]; // Simple stack for nesting levels
+    int stack[256]; // Simple stack for nesting levels
     int top = 0;
     int current_level = 1;
     for (size_t i = 0; i < line_len; i++) {
@@ -34,18 +34,20 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                 // Opening
                 stack[top++] = current_level;
                 int lvl = current_level;
-                if (lvl == 1) colors[i] = 4; // Blue
-                else if (lvl == 2) colors[i] = 5; // Green
-                else if (lvl >= 3) colors[i] = 6; // Yellow
+                if (lvl == 1) colors[i] = 4;
+                else if (lvl == 2) colors[i] = 5;
+                else if (lvl == 3) colors[i] = 6;
+                else if (lvl >= 4) colors[i] = 7;
                 else colors[i] = 4;
                 current_level++;
             } else if (c == '}' || c == ')' || c == ']') {
                 // Closing
                 if (top > 0) {
                     int lvl = stack[--top];
-                    if (lvl == 1) colors[i] = 4; // Blue
-                    else if (lvl == 2) colors[i] = 5; // Green
-                    else if (lvl >= 3) colors[i] = 6; // Yellow
+                    if (lvl == 1) colors[i] = 4;
+                    else if (lvl == 2) colors[i] = 5;
+                    else if (lvl == 3) colors[i] = 6;
+                    else if (lvl >= 4) colors[i] = 7;
                     else colors[i] = 4;
                 } else {
                     colors[i] = 4; // Default
@@ -67,7 +69,7 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
     if (colors) free(colors);
 }
 
-void draw_initial(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col, size_t cursor_line, size_t cursor_col, int show_line_numbers, int syntax_highlight) {
+void draw_initial(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col, size_t cursor_line, size_t cursor_col, int show_line_numbers, int syntax_highlight, ColorConfig* config) {
     clear();
     box(win, 0, 0);
     int num_digits = calculate_digits(buffer_num_lines(buf));
@@ -97,7 +99,7 @@ void draw_initial(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col
     refresh();
 }
 
-void draw_update(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col, size_t cursor_line, size_t cursor_col, int show_line_numbers, int syntax_highlight, int search_mode, char* search_buffer, size_t selection_start_line, size_t selection_start_col, size_t selection_end_line, size_t selection_end_col, int selection_active, size_t* cursor_screen_y, size_t* cursor_screen_x, int replace_step, char* replace_buffer) {
+void draw_update(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col, size_t cursor_line, size_t cursor_col, int show_line_numbers, int syntax_highlight, int search_mode, char* search_buffer, size_t selection_start_line, size_t selection_start_col, size_t selection_end_line, size_t selection_end_col, int selection_active, size_t* cursor_screen_y, size_t* cursor_screen_x, int replace_step, char* replace_buffer, ColorConfig* config) {
     clear();
     box(win, 0, 0);
     int num_digits = calculate_digits(buffer_num_lines(buf));
@@ -147,7 +149,7 @@ void draw_update(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col,
         if (pos < len) {
             size_t print_len = len - pos;
             if (print_len > (size_t)COLS - 2 - num_width - (x - 1 - num_width)) print_len = COLS - 2 - num_width - (x - 1 - num_width);
-            print_highlighted(1 + (int)i, x, line, len, pos, print_len, 4);
+            print_highlighted(1 + (int)i, x, line, len, pos, print_len, syntax_highlight ? 4 : 1);
         }
     }
     // Status bar

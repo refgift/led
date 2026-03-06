@@ -2,11 +2,13 @@
 #include "model.h"
 #include "controller.h"
 #include "view.h"
+#include "config.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
 void editor_init(Editor* ed, int argc, char* argv[]) {
+    load_color_config(&ed->config);
     buffer_init(&ed->model);
     ed->filename = argc > 1 ? argv[1] : NULL;
     if (ed->filename) {
@@ -19,7 +21,23 @@ void editor_init(Editor* ed, int argc, char* argv[]) {
     ed->scroll_col = 0;
     ed->show_line_numbers = 0;
     const char* ext = ed->filename ? strrchr(ed->filename, '.') : NULL;
-    ed->syntax_highlight = ext && strcmp(ext, ".c") == 0;
+    ed->syntax_highlight = 0;
+    if (ext) {
+        size_t len = strlen(ed->config.syntax_extensions);
+        char* list = malloc(len + 1);
+        if (list) {
+            strcpy(list, ed->config.syntax_extensions);
+            char* token = strtok(list, ",");
+            while (token) {
+                if (strcmp(ext, token) == 0) {
+                    ed->syntax_highlight = 1;
+                    break;
+                }
+                token = strtok(NULL, ",");
+            }
+            free(list);
+        }
+    }
     ed->cursor_line = 0;
     ed->cursor_col = buffer_get_line_length(&ed->model, 0);
     ed->selection_start_line = 0;
@@ -36,7 +54,7 @@ void editor_init(Editor* ed, int argc, char* argv[]) {
 
 void editor_draw(WINDOW* win, Editor* ed) {
     size_t dummy_y, dummy_x;
-    draw_update(win, &ed->model, ed->scroll_row, ed->scroll_col, ed->cursor_line, ed->cursor_col, ed->show_line_numbers, ed->syntax_highlight, ed->search_mode, ed->search_buffer, ed->selection_start_line, ed->selection_start_col, ed->selection_end_line, ed->selection_end_col, ed->selection_active, &dummy_y, &dummy_x, ed->replace_step, ed->replace_buffer);
+    draw_update(win, &ed->model, ed->scroll_row, ed->scroll_col, ed->cursor_line, ed->cursor_col, ed->show_line_numbers, ed->syntax_highlight, ed->search_mode, ed->search_buffer, ed->selection_start_line, ed->selection_start_col, ed->selection_end_line, ed->selection_end_col, ed->selection_active, &dummy_y, &dummy_x, ed->replace_step, ed->replace_buffer, &ed->config);
 }
 
 void editor_handle_input(Editor* ed, int ch) {

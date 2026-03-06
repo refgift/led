@@ -52,3 +52,41 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 - F2: Toggle line number display
 - Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based color intensity
 
+## Configuration
+The editor supports customizable colors and syntax highlighting via a configuration file located at `~/.config/led/colorization.conf`. This file uses a simple key-value format with one setting per line. Lines starting with `#` are comments. If the file doesn't exist, default settings are used.
+
+### Color Options
+Colors are specified using standard ncurses color names: BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE.
+
+- `normal_fg` / `normal_bg`: Foreground and background colors for normal text (default: WHITE/BLACK)
+- `selection_fg` / `selection_bg`: Colors for selected text (default: CYAN/BLACK)
+- `semicolon_fg` / `semicolon_bg`: Colors for semicolons (default: RED/BLACK)
+- `meta_level1_fg` / `meta_level1_bg` to `meta_level4_fg` / `meta_level4_bg`: Colors for nested meta-symbols (braces, brackets, parentheses, commas). Level 1 is outermost, increasing for deeper nesting (defaults: BLUE/BLACK for level 1, CYAN/BLACK for level 2, GREEN/BLACK for level 3, YELLOW/BLACK for level 4+)
+
+### Syntax Highlighting
+- `syntax_extensions`: Comma-separated list of file extensions that enable syntax highlighting (default: .c,.h,.cpp)
+
+### Example Configuration
+```
+# Color configuration for led editor
+# Colors: BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE
+
+normal_fg=WHITE
+normal_bg=BLACK
+selection_fg=CYAN
+selection_bg=BLACK
+semicolon_fg=RED
+semicolon_bg=BLACK
+meta_level1_fg=BLUE
+meta_level1_bg=BLACK
+meta_level2_fg=CYAN
+meta_level2_bg=BLACK
+meta_level3_fg=GREEN
+meta_level3_bg=BLACK
+meta_level4_fg=YELLOW
+meta_level4_bg=BLACK
+syntax_extensions=.c,.h,.cpp
+```
+
+Changes take effect the next time you start the editor. The configuration directory `~/.config/led/` is created automatically if it doesn't exist.
+
