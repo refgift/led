@@ -114,6 +114,7 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
         int kw_current_level = 1;
         size_t word_start = 0;
         int in_word = 0;
+        int word_count = 0;
         for (size_t i = 0; i < line_len; i++) {
             char c = full_line[i];
             if (isalnum(c) || c == '_') {
@@ -123,6 +124,10 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                 }
             } else {
                 if (in_word) {
+                    if (word_count++ > 100) {
+                        in_word = 0;
+                        continue;
+                    }
                     size_t wlen = i - word_start;
                     char* word = malloc(wlen + 1);
                     if (word) {
@@ -171,9 +176,12 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
             }
         }
         if (in_word) { // End of line
-            size_t wlen = line_len - word_start;
-            char* word = malloc(wlen + 1);
-            if (word) {
+            if (word_count++ > 100) {
+                // Skip
+            } else {
+                size_t wlen = line_len - word_start;
+                char* word = malloc(wlen + 1);
+                if (word) {
                 memcpy(word, &full_line[word_start], wlen);
                 word[wlen] = '\0';
                 int colored = 0;
@@ -213,6 +221,7 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                     }
                 }
                 free(word);
+            }
             }
         }
     }

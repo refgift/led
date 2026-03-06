@@ -47,7 +47,7 @@ static void set_default_config(ColorConfig* config) {
     config->reserved_words_bg = COLOR_BLACK;
     strcpy(config->syntax_extensions, ".c,.h,.cpp");
     strcpy(config->reserved_words, "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void");
-    strcpy(config->paired_keywords, "if-then,begin-end,(,)");
+    strcpy(config->paired_keywords, "if-then,begin-end");
 }
 
 int load_color_config(ColorConfig* config) {
