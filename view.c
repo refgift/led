@@ -6,6 +6,11 @@
 
 static const char* meta_symbols = ";,{}()[]";
 
+typedef struct {
+    char open[32];
+    char close[32];
+} KeywordPair;
+
 static int is_reserved_word(const char* word, const char* list) {
     char* dup = malloc(strlen(list) + 1);
     if (!dup) return 0;
@@ -77,8 +82,31 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
             colors[i] = 1; // Normal
         }
     }
-    // Highlight reserved words
+    // Highlight reserved words and paired keywords
     if (highlight_pair != 1) { // Only if highlighting enabled
+        // Parse paired keywords
+        KeywordPair pairs[10];
+        int num_pairs = 0;
+        char* dup_pk = malloc(strlen(config->paired_keywords) + 1);
+        if (dup_pk) {
+            strcpy(dup_pk, config->paired_keywords);
+            char* token = strtok(dup_pk, ",");
+            while (token && num_pairs < 10) {
+                char* dash = strchr(token, '-');
+                if (dash) {
+                    *dash = '\0';
+                    strncpy(pairs[num_pairs].open, token, sizeof(pairs[num_pairs].open) - 1);
+                    strncpy(pairs[num_pairs].close, dash + 1, sizeof(pairs[num_pairs].close) - 1);
+                    num_pairs++;
+                }
+                token = strtok(NULL, ",");
+            }
+            free(dup_pk);
+        }
+        // Stacks for keyword pairing
+        int kw_stack[100];
+        int kw_top = 0;
+        int kw_current_level = 1;
         size_t word_start = 0;
         int in_word = 0;
         for (size_t i = 0; i < line_len; i++) {
@@ -95,7 +123,36 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                     if (word) {
                         memcpy(word, &full_line[word_start], wlen);
                         word[wlen] = '\0';
-                        if (is_reserved_word(word, config->reserved_words)) {
+                        int colored = 0;
+                        // Check paired keywords
+                        for (int p = 0; p < num_pairs; p++) {
+                            if (strcmp(word, pairs[p].open) == 0) {
+                                kw_stack[kw_top++] = kw_current_level;
+                                int lvl = kw_current_level;
+                                for (size_t j = word_start; j < i && j < line_len; j++) {
+                                    if (j >= start && j < start + len) {
+                                        colors[j] = 3 + (lvl > 4 ? 4 : lvl);
+                                    }
+                                }
+                                kw_current_level++;
+                                colored = 1;
+                                break;
+                            } else if (strcmp(word, pairs[p].close) == 0) {
+                                if (kw_top > 0) {
+                                    int lvl = kw_stack[--kw_top];
+                                    for (size_t j = word_start; j < i && j < line_len; j++) {
+                                        if (j >= start && j < start + len) {
+                                            colors[j] = 3 + (lvl > 4 ? 4 : lvl);
+                                        }
+                                    }
+                                }
+                                kw_current_level = kw_current_level > 1 ? kw_current_level - 1 : 1;
+                                colored = 1;
+                                break;
+                            }
+                        }
+                        // If not paired and reserved, color 8
+                        if (!colored && is_reserved_word(word, config->reserved_words)) {
                             for (size_t j = word_start; j < i && j < line_len; j++) {
                                 if (j >= start && j < start + len) {
                                     colors[j] = 8;
@@ -114,7 +171,36 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
             if (word) {
                 memcpy(word, &full_line[word_start], wlen);
                 word[wlen] = '\0';
-                if (is_reserved_word(word, config->reserved_words)) {
+                int colored = 0;
+                // Check paired keywords
+                for (int p = 0; p < num_pairs; p++) {
+                    if (strcmp(word, pairs[p].open) == 0) {
+                        kw_stack[kw_top++] = kw_current_level;
+                        int lvl = kw_current_level;
+                        for (size_t j = word_start; j < line_len && j < start + len; j++) {
+                            if (j >= start) {
+                                colors[j] = 3 + (lvl > 4 ? 4 : lvl);
+                            }
+                        }
+                        kw_current_level++;
+                        colored = 1;
+                        break;
+                    } else if (strcmp(word, pairs[p].close) == 0) {
+                        if (kw_top > 0) {
+                            int lvl = kw_stack[--kw_top];
+                            for (size_t j = word_start; j < line_len && j < start + len; j++) {
+                                if (j >= start) {
+                                    colors[j] = 3 + (lvl > 4 ? 4 : lvl);
+                                }
+                            }
+                        }
+                        kw_current_level = kw_current_level > 1 ? kw_current_level - 1 : 1;
+                        colored = 1;
+                        break;
+                    }
+                }
+                // If not paired and reserved, color 8
+                if (!colored && is_reserved_word(word, config->reserved_words)) {
                     for (size_t j = word_start; j < line_len && j < start + len; j++) {
                         if (j >= start) {
                             colors[j] = 8;

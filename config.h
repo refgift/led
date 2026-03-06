@@ -14,6 +14,7 @@ typedef struct {
     int reserved_words_fg, reserved_words_bg;
     char syntax_extensions[256];
     char reserved_words[1024];
+    char paired_keywords[1024];
 } ColorConfig;
 
 int load_color_config(ColorConfig* config);

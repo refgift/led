@@ -66,6 +66,7 @@ Colors are specified using standard ncurses color names: BLACK, RED, GREEN, YELL
 ### Syntax Highlighting
 - `reserved_words_fg` / `reserved_words_bg`: Colors for reserved words/keywords (default: RED/BLACK)
 - `reserved_words`: Comma-separated list of reserved words to highlight (default: common C keywords)
+- `paired_keywords`: Comma-separated list of keyword pairs in open-close format (e.g., if-then,begin-end) to highlight with nesting colors (default: if-then,begin-end,(,))
 - `syntax_extensions`: Comma-separated list of file extensions that enable syntax highlighting (default: .c,.h,.cpp)
 
 ### Example Configuration
@@ -90,6 +91,7 @@ meta_level4_bg=BLACK
 reserved_words_fg=RED
 reserved_words_bg=BLACK
 reserved_words=int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void
+paired_keywords=if-then,begin-end,(,)
 syntax_extensions=.c,.h,.cpp
 ```
 
