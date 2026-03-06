@@ -1,4 +1,6 @@
 # led - Larry's Editor for Linux/Unix Terminal
+
+> **Warning**: See [WARNINGS.md](WARNINGS.md) for known issues, limitations, and safety notes.
 I have been wanting my own editor for a long time and
 with grok-code-fast-1 helping I got though the gate
 and made a model-view-controller architecture
