@@ -42,6 +42,11 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
         mvprintw(y, x, "%.*s", (int)len, &full_line[start]);
         return;
     }
+    // Skip highlighting for excessively long lines to prevent crashes
+    if (line_len > 10000) {
+        mvprintw(y, x, "%.*s", (int)len, &full_line[start]);
+        return;
+    }
     int* colors = malloc(line_len * sizeof(int));
     if (!colors) return; // Handle error
     int stack[256]; // Simple stack for nesting levels
@@ -54,7 +59,7 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                 colors[i] = 3; // Red for semicolons
             } else if (c == '{' || c == '(' || c == '[') {
                 // Opening
-                stack[top++] = current_level;
+                if (top < 256) stack[top++] = current_level;
                 int lvl = current_level;
                 if (lvl == 1) colors[i] = 4;
                 else if (lvl == 2) colors[i] = 5;
@@ -127,7 +132,7 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
                         // Check paired keywords
                         for (int p = 0; p < num_pairs; p++) {
                             if (strcmp(word, pairs[p].open) == 0) {
-                                kw_stack[kw_top++] = kw_current_level;
+                                if (kw_top < 100) kw_stack[kw_top++] = kw_current_level;
                                 int lvl = kw_current_level;
                                 for (size_t j = word_start; j < i && j < line_len; j++) {
                                     if (j >= start && j < start + len) {
