@@ -22,6 +22,7 @@ int main(int argc, char *argv[]) {
     init_pair(5, ed.config.meta_level2_fg, ed.config.meta_level2_bg);
     init_pair(6, ed.config.meta_level3_fg, ed.config.meta_level3_bg);
     init_pair(7, ed.config.meta_level4_fg, ed.config.meta_level4_bg);
+    init_pair(8, ed.config.reserved_words_fg, ed.config.reserved_words_bg);
 
     draw_initial(stdscr, &ed.model, ed.scroll_row, ed.scroll_col, ed.cursor_line, ed.cursor_col, ed.show_line_numbers, ed.syntax_highlight, &ed.config);
 

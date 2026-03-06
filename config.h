@@ -11,7 +11,9 @@ typedef struct {
     int meta_level2_fg, meta_level2_bg;
     int meta_level3_fg, meta_level3_bg;
     int meta_level4_fg, meta_level4_bg;
+    int reserved_words_fg, reserved_words_bg;
     char syntax_extensions[256];
+    char reserved_words[1024];
 } ColorConfig;
 
 int load_color_config(ColorConfig* config);

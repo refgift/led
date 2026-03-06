@@ -64,6 +64,8 @@ Colors are specified using standard ncurses color names: BLACK, RED, GREEN, YELL
 - `meta_level1_fg` / `meta_level1_bg` to `meta_level4_fg` / `meta_level4_bg`: Colors for nested meta-symbols (braces, brackets, parentheses, commas). Level 1 is outermost, increasing for deeper nesting (defaults: BLUE/BLACK for level 1, CYAN/BLACK for level 2, GREEN/BLACK for level 3, YELLOW/BLACK for level 4+)
 
 ### Syntax Highlighting
+- `reserved_words_fg` / `reserved_words_bg`: Colors for reserved words/keywords (default: RED/BLACK)
+- `reserved_words`: Comma-separated list of reserved words to highlight (default: common C keywords)
 - `syntax_extensions`: Comma-separated list of file extensions that enable syntax highlighting (default: .c,.h,.cpp)
 
 ### Example Configuration
@@ -85,6 +87,9 @@ meta_level3_fg=GREEN
 meta_level3_bg=BLACK
 meta_level4_fg=YELLOW
 meta_level4_bg=BLACK
+reserved_words_fg=RED
+reserved_words_bg=BLACK
+reserved_words=int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void
 syntax_extensions=.c,.h,.cpp
 ```
 

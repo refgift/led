@@ -43,7 +43,10 @@ static void set_default_config(ColorConfig* config) {
     config->meta_level3_bg = COLOR_BLACK;
     config->meta_level4_fg = COLOR_YELLOW;
     config->meta_level4_bg = COLOR_BLACK;
+    config->reserved_words_fg = COLOR_RED;
+    config->reserved_words_bg = COLOR_BLACK;
     strcpy(config->syntax_extensions, ".c,.h,.cpp");
+    strcpy(config->reserved_words, "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void");
 }
 
 int load_color_config(ColorConfig* config) {
@@ -87,6 +90,9 @@ int load_color_config(ColorConfig* config) {
         else if (strcmp(key, "meta_level4_fg") == 0) config->meta_level4_fg = string_to_color(value);
         else if (strcmp(key, "meta_level4_bg") == 0) config->meta_level4_bg = string_to_color(value);
         else if (strcmp(key, "syntax_extensions") == 0) strncpy(config->syntax_extensions, value, sizeof(config->syntax_extensions) - 1);
+        else if (strcmp(key, "reserved_words_fg") == 0) config->reserved_words_fg = string_to_color(value);
+        else if (strcmp(key, "reserved_words_bg") == 0) config->reserved_words_bg = string_to_color(value);
+        else if (strcmp(key, "reserved_words") == 0) strncpy(config->reserved_words, value, sizeof(config->reserved_words) - 1);
     }
 
     fclose(file);

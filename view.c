@@ -1,9 +1,26 @@
 #include "view.h"
+#include "config.h"
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
 
 static const char* meta_symbols = ";,{}()[]";
+
+static int is_reserved_word(const char* word, const char* list) {
+    char* dup = malloc(strlen(list) + 1);
+    if (!dup) return 0;
+    strcpy(dup, list);
+    char* token = strtok(dup, ",");
+    while (token) {
+        if (strcmp(word, token) == 0) {
+            free(dup);
+            return 1;
+        }
+        token = strtok(NULL, ",");
+    }
+    free(dup);
+    return 0;
+}
 
 static int calculate_digits(size_t n) {
     if (n == 0) return 1;
@@ -15,7 +32,7 @@ static int calculate_digits(size_t n) {
     return d;
 }
 
-static void print_highlighted(int y, int x, const char* full_line, size_t line_len, size_t start, size_t len, int highlight_pair) {
+static void print_highlighted(int y, int x, const char* full_line, size_t line_len, size_t start, size_t len, int highlight_pair, ColorConfig* config) {
     if (highlight_pair == 1) {
         mvprintw(y, x, "%.*s", (int)len, &full_line[start]);
         return;
@@ -60,6 +77,54 @@ static void print_highlighted(int y, int x, const char* full_line, size_t line_l
             colors[i] = 1; // Normal
         }
     }
+    // Highlight reserved words
+    if (highlight_pair != 1) { // Only if highlighting enabled
+        size_t word_start = 0;
+        int in_word = 0;
+        for (size_t i = 0; i < line_len; i++) {
+            char c = full_line[i];
+            if (isalnum(c) || c == '_') {
+                if (!in_word) {
+                    word_start = i;
+                    in_word = 1;
+                }
+            } else {
+                if (in_word) {
+                    size_t wlen = i - word_start;
+                    char* word = malloc(wlen + 1);
+                    if (word) {
+                        memcpy(word, &full_line[word_start], wlen);
+                        word[wlen] = '\0';
+                        if (is_reserved_word(word, config->reserved_words)) {
+                            for (size_t j = word_start; j < i && j < line_len; j++) {
+                                if (j >= start && j < start + len) {
+                                    colors[j] = 8;
+                                }
+                            }
+                        }
+                        free(word);
+                    }
+                    in_word = 0;
+                }
+            }
+        }
+        if (in_word) { // End of line
+            size_t wlen = line_len - word_start;
+            char* word = malloc(wlen + 1);
+            if (word) {
+                memcpy(word, &full_line[word_start], wlen);
+                word[wlen] = '\0';
+                if (is_reserved_word(word, config->reserved_words)) {
+                    for (size_t j = word_start; j < line_len && j < start + len; j++) {
+                        if (j >= start) {
+                            colors[j] = 8;
+                        }
+                    }
+                }
+                free(word);
+            }
+        }
+    }
     for (size_t i = 0; i < len; i++) {
         size_t pos = start + i;
         attron(COLOR_PAIR(colors[pos]));
@@ -86,7 +151,7 @@ void draw_initial(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col
         if (start_col < line_len) {
             size_t print_len = line_len - start_col;
             if (print_len > (size_t)COLS - 2 - num_width) print_len = COLS - 2 - num_width;
-            print_highlighted(1 + (int)i, 1 + num_width, line, line_len, start_col, print_len, syntax_highlight ? 4 : 1);
+            print_highlighted(1 + (int)i, 1 + num_width, line, line_len, start_col, print_len, syntax_highlight ? 4 : 1, config);
         }
     }
     // Status bar
@@ -127,7 +192,7 @@ void draw_update(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col,
             size_t print_len = end - pos;
             if (print_len > 0) {
                 if (print_len > (size_t)COLS - 2 - num_width - (x - 1 - num_width)) print_len = COLS - 2 - num_width - (x - 1 - num_width);
-                print_highlighted(1 + (int)i, x, line, len, pos, print_len, syntax_highlight ? 4 : 1);
+            print_highlighted(1 + (int)i, x, line, len, pos, print_len, syntax_highlight ? 4 : 1, config);
                 x += print_len;
                 pos += print_len;
             }
@@ -149,7 +214,7 @@ void draw_update(WINDOW* win, Buffer* buf, size_t scroll_row, size_t scroll_col,
         if (pos < len) {
             size_t print_len = len - pos;
             if (print_len > (size_t)COLS - 2 - num_width - (x - 1 - num_width)) print_len = COLS - 2 - num_width - (x - 1 - num_width);
-            print_highlighted(1 + (int)i, x, line, len, pos, print_len, syntax_highlight ? 4 : 1);
+            print_highlighted(1 + (int)i, x, line, len, pos, print_len, syntax_highlight ? 4 : 1, config);
         }
     }
     // Status bar
