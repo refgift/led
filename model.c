@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <regex.h>
 
 static char* my_strdup(const char* s) {
     size_t len = strlen(s);
@@ -233,4 +234,33 @@ int buffer_save_to_file(const Buffer* buf, const char* filename) {
     }
     fclose(fp);
     return 0;
+}
+
+void buffer_replace_all(Buffer* buf, const char* search_regex, const char* replace_str) {
+    regex_t reg;
+    if (regcomp(&reg, search_regex, REG_EXTENDED) != 0) {
+        return;
+    }
+    for (size_t i = 0; i < buf->num_lines; i++) {
+        char* line = buf->lines[i];
+        size_t len = strlen(line);
+        char* new_line = malloc(len * 2 + strlen(replace_str) * 10 + 1); // rough estimate
+        if (!new_line) continue;
+        new_line[0] = 0;
+        size_t pos = 0;
+        regmatch_t match;
+        while (regexec(&reg, line + pos, 1, &match, 0) == 0) {
+            // append before match
+            strncat(new_line, line + pos, match.rm_so);
+            // append replace
+            strcat(new_line, replace_str);
+            pos += match.rm_eo;
+        }
+        // append rest
+        strcat(new_line, line + pos);
+        // replace
+        free(buf->lines[i]);
+        buf->lines[i] = new_line;
+    }
+    regfree(&reg);
 }

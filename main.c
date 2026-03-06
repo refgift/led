@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     Editor ed;
     editor_init(&ed, argc, argv);
 
-    draw_initial(stdscr, &ed.model, ed.scroll_row, ed.scroll_col, ed.cursor_line, ed.cursor_col, ed.show_line_numbers);
+    draw_initial(stdscr, &ed.model, ed.scroll_row, ed.scroll_col, ed.cursor_line, ed.cursor_col, ed.show_line_numbers, ed.syntax_highlight);
 
     while (1) {
         int ch = getch();

@@ -8,6 +8,7 @@ typedef struct {
     size_t scroll_row;
     size_t scroll_col;
     int show_line_numbers;
+    int syntax_highlight;
     size_t cursor_line;
     size_t cursor_col;
     size_t selection_start_line;
@@ -17,6 +18,8 @@ typedef struct {
     int selection_active;
     char search_buffer[256];
     int search_mode;
+    char replace_buffer[256];
+    int replace_step;
     char* clipboard;
     const char* filename;
 } Editor;

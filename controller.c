@@ -116,10 +116,20 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                 }
                 break;
             case KEY_HOME:
-                *cursor_col = 0;
+                if (*cursor_col == 0) {
+                    *cursor_line = 0;
+                    *cursor_col = 0;
+                } else {
+                    *cursor_col = 0;
+                }
                 break;
             case KEY_END:
-                *cursor_col = buffer_get_line_length(buf, *cursor_line);
+                if (*cursor_col == buffer_get_line_length(buf, *cursor_line)) {
+                    *cursor_line = buffer_num_lines(buf) - 1;
+                    *cursor_col = buffer_get_line_length(buf, *cursor_line);
+                } else {
+                    *cursor_col = buffer_get_line_length(buf, *cursor_line);
+                }
                 break;
             case KEY_PPAGE:
                 if (*scroll_row >= (size_t)LINES - 2) *scroll_row -= LINES - 2;

@@ -21,8 +21,8 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 
 ### Navigation
 - Arrow keys: Move cursor up, down, left, right
-- Home: Move to start of line
-- End: Move to end of line
+- Home: Move to start of line (press twice for top of file)
+- End: Move to end of line (press twice for bottom of file)
 - Page Up: Scroll up one page
 - Page Down: Scroll down one page
 
@@ -34,6 +34,7 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 
 ### File Operations
 - Ctrl+S: Save file
+- Ctrl+Q: Quit editor
 
 ### Selection and Clipboard
 - Ctrl+A: Toggle selection mode (drag to select text)
@@ -44,6 +45,10 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 ### Search
 - Ctrl+/: Enter search mode (type regex pattern, Enter to search, Esc to cancel)
 
+### Replace
+- Ctrl+R: Enter replace mode (type search regex, Enter, type replace string, Enter to replace all matches, Esc to cancel)
+
 ### Display
 - F2: Toggle line number display
+- Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based color intensity
 
