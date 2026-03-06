@@ -6,7 +6,7 @@ designed text editor with just basic functionality
 with this first checkin.
 
 ## Dependencies
-The code is in C langauge and needs a C compiler and build chain.
+The code is in C language and needs a C compiler and build chain.
 It comes with a Makefile which needs the make utility to use.
 It uses the libncurses development files to perform TUI work.
 
