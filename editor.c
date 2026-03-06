@@ -12,7 +12,18 @@ void editor_init(Editor* ed, int argc, char* argv[]) {
     buffer_init(&ed->model);
     ed->filename = argc > 1 ? argv[1] : NULL;
     if (ed->filename) {
-        buffer_load_from_file(&ed->model, ed->filename);
+        // Check file size to prevent loading huge files
+        FILE* fp = fopen(ed->filename, "rb");
+        if (fp) {
+            fseek(fp, 0, SEEK_END);
+            long size = ftell(fp);
+            fclose(fp);
+            if (size > 10 * 1024 * 1024) { // 10MB limit
+                // Skip loading large files
+            } else {
+                buffer_load_from_file(&ed->model, ed->filename);
+            }
+        }
     }
     if (buffer_num_lines(&ed->model) == 0) {
         buffer_insert_line(&ed->model, 0, "");
