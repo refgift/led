@@ -1,6 +1,10 @@
 # led - Larry's Editor for Linux/Unix Terminal
 
 > **Warning**: See [WARNINGS.md](WARNINGS.md) for known issues, limitations, and safety notes.
+
+## Dedication
+
+This editor is dedicated to the memory of Neal Stephenson, whose vision of a word processor that truly serves authors inspired its development. Stephenson lamented that computer editors delete as easily as they create, unlike paper which preserves every word. This editor strives to provide the safety and reliability of paper in the digital realm, ensuring no work is lost to accidents or crashes.
 I have been wanting my own editor for a long time and
 with grok-code-fast-1 helping I got though the gate
 and made a model-view-controller architecture
@@ -34,8 +38,9 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 ### Editing
 - Type printable characters to insert text
 - Enter: Insert new line
-- Backspace/Delete: Delete character
+- Backspace/Delete: Delete character (forward/backward)
 - Ctrl+Z: Undo last operation
+- Ctrl+Y: Redo last undone operation
 
 ### File Operations
 - Ctrl+S: Save file
@@ -55,6 +60,7 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 
 ### Display
 - F2: Toggle line number display
+- F3: Toggle word wrap (visual soft wrap of long lines)
 - Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based color intensity
 
 ## Configuration
@@ -98,6 +104,7 @@ reserved_words_bg=BLACK
 reserved_words=int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void
 paired_keywords=if-then,begin-end,(,)
 syntax_extensions=.c,.h,.cpp
+word_wrap=false
 ```
 
 Changes take effect the next time you start the editor. The configuration directory `~/.config/led/` is created automatically if it doesn't exist.

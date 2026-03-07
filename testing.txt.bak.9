@@ -1,0 +1,12 @@
+### Testing Results
+- Fixed: insert of new lines now work. buffer_insert_char now splits lines on '\n'.
+- Fixed: cntl-A now selects all. buffer_insert_text now handles '\n' in pasted text by splitting lines.
+- Fixed: selection highlighting disabled for non-syntax files to eliminate stray colorization.
+- Fixed: delete key now deletes forward and merges lines.
+- Fixed: search crash when cursor beyond line end, now clamped.
+- Fixed: crashes from cursor positioning beyond screen bounds, now clamped.
+- Implemented: fully configurable auto-save (keystrokes and timeout) with crash recovery.
+- Implemented: unlimited undo with dynamic stack and redo (Ctrl+Y).
+- Added: filename display in status bar with modification indicator (*).
+- Note: it changes but still does not use the character set, it uses ~S and ~T for begin and end Implemented: extended ASCII support (codes 128-255) with locale setting for proper rendering of characters like left/right apostrophes.
+- If a  line is longer than the screen is wide, it wraps and corrupts the border.

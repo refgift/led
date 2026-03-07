@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#define INITIAL_LINES_CAPACITY 10
+#define INITIAL_LINES_CAPACITY 10UL
 
 typedef struct {
     char** lines;

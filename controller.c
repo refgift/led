@@ -5,8 +5,8 @@
 #include <regex.h>
 #include <ctype.h>
 
-Change undo_stack[MAX_UNDO];
-int undo_top = -1;
+UndoStack undo_stack = {NULL, 0, 0};
+UndoStack redo_stack = {NULL, 0, 0};
 
 static char* my_strdup(const char* s) {
     size_t len = strlen(s);
@@ -15,19 +15,43 @@ static char* my_strdup(const char* s) {
     return d;
 }
 
+void init_undo(void) {
+    // Already initialized statically
+}
+
 void push_undo(bool is_insert, size_t line, size_t col, char ch) {
-    if (undo_top < MAX_UNDO - 1) {
-        undo_top++;
-        undo_stack[undo_top].is_insert = is_insert;
-        undo_stack[undo_top].line = line;
-        undo_stack[undo_top].col = col;
-        undo_stack[undo_top].ch = ch;
+    if (undo_stack.count >= undo_stack.capacity) {
+        undo_stack.capacity = undo_stack.capacity == 0 ? 16 : undo_stack.capacity * 2;
+        undo_stack.changes = realloc(undo_stack.changes, undo_stack.capacity * sizeof(Change));
+        if (!undo_stack.changes) return; // Handle error
     }
+    undo_stack.changes[undo_stack.count].is_insert = is_insert;
+    undo_stack.changes[undo_stack.count].line = line;
+    undo_stack.changes[undo_stack.count].col = col;
+    undo_stack.changes[undo_stack.count].ch = ch;
+    undo_stack.count++;
+}
+
+void push_redo(bool is_insert, size_t line, size_t col, char ch) {
+    if (redo_stack.count >= redo_stack.capacity) {
+        redo_stack.capacity = redo_stack.capacity == 0 ? 16 : redo_stack.capacity * 2;
+        redo_stack.changes = realloc(redo_stack.changes, redo_stack.capacity * sizeof(Change));
+        if (!redo_stack.changes) return; // Handle error
+    }
+    redo_stack.changes[redo_stack.count].is_insert = is_insert;
+    redo_stack.changes[redo_stack.count].line = line;
+    redo_stack.changes[redo_stack.count].col = col;
+    redo_stack.changes[redo_stack.count].ch = ch;
+    redo_stack.count++;
 }
 
 void undo_operation(Buffer* buf, size_t* cursor_line, size_t* cursor_col) {
-    if (undo_top >= 0) {
-        Change c = undo_stack[undo_top--];
+    if (undo_stack.count > 0) {
+        undo_stack.count--;
+        Change c = undo_stack.changes[undo_stack.count];
+        // Push to redo for redo functionality
+        push_redo(c.is_insert, c.line, c.col, c.ch);
+        // Apply reverse
         if (c.is_insert) {
             buffer_delete_char(buf, c.line, c.col);
             if (*cursor_line == c.line && *cursor_col > c.col) (*cursor_col)--;
@@ -36,6 +60,36 @@ void undo_operation(Buffer* buf, size_t* cursor_line, size_t* cursor_col) {
             if (*cursor_line == c.line && *cursor_col >= c.col) (*cursor_col)++;
         }
     }
+}
+
+void redo_operation(Buffer* buf, size_t* cursor_line, size_t* cursor_col) {
+    if (redo_stack.count > 0) {
+        redo_stack.count--;
+        Change c = redo_stack.changes[redo_stack.count];
+        // Apply the operation
+        if (c.is_insert) {
+            buffer_insert_char(buf, c.line, c.col, c.ch);
+            if (*cursor_line == c.line && *cursor_col >= c.col) (*cursor_col)++;
+        } else {
+            buffer_delete_char(buf, c.line, c.col);
+            if (*cursor_line == c.line && *cursor_col > c.col) (*cursor_col)--;
+        }
+    }
+}
+
+void clear_redo(void) {
+    redo_stack.count = 0;
+}
+
+void free_undo(void) {
+    free(undo_stack.changes);
+    undo_stack.changes = NULL;
+    undo_stack.count = 0;
+    undo_stack.capacity = 0;
+    free(redo_stack.changes);
+    redo_stack.changes = NULL;
+    redo_stack.count = 0;
+    redo_stack.capacity = 0;
 }
 
 void search_next(Buffer* buf, size_t* cursor_line, size_t* cursor_col, const char* pattern) {
@@ -48,6 +102,8 @@ void search_next(Buffer* buf, size_t* cursor_line, size_t* cursor_col, const cha
         const char* search_line = line;
         int flags = 0;
         if (l == *cursor_line) {
+            size_t len = strlen(line);
+            if (*cursor_col > len) *cursor_col = len;
             search_line = line + *cursor_col;
             flags = REG_NOTBOL;
         }
@@ -141,25 +197,40 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                 if (*scroll_row > buffer_num_lines(buf) - ((size_t)LINES - 2)) *scroll_row = buffer_num_lines(buf) > (size_t)LINES - 2 ? buffer_num_lines(buf) - (LINES - 2) : 0;
                 if (*cursor_line < *scroll_row) *cursor_line = *scroll_row;
                 break;
-            case KEY_F(2):
-                *show_line_numbers = !*show_line_numbers;
-                break;
+
             case KEY_BACKSPACE:
             case 127: // Delete key
                 if (*cursor_col > 0) {
                     char deleted = buffer_get_char(buf, *cursor_line, *cursor_col - 1);
                     push_undo(false, *cursor_line, *cursor_col - 1, deleted);
+                    clear_redo();
                     buffer_delete_char(buf, *cursor_line, --*cursor_col);
                 } else if (*cursor_line > 0) {
                     size_t prev_len = buffer_get_line_length(buf, *cursor_line - 1);
                     push_undo(false, *cursor_line - 1, prev_len, '\n');
+                    clear_redo();
                     (*cursor_line)--;
                     *cursor_col = prev_len;
                     buffer_delete_char(buf, *cursor_line, prev_len);
                 }
                 break;
+            case KEY_DC: // Delete forward
+                if (*cursor_col < buffer_get_line_length(buf, *cursor_line)) {
+                    char deleted = buffer_get_char(buf, *cursor_line, *cursor_col);
+                    push_undo(false, *cursor_line, *cursor_col, deleted);
+                    clear_redo();
+                    buffer_delete_char(buf, *cursor_line, *cursor_col);
+                } else if (*cursor_line < buffer_num_lines(buf) - 1) {
+                    push_undo(false, *cursor_line, buffer_get_line_length(buf, *cursor_line), '\n');
+                    clear_redo();
+                    buffer_delete_char(buf, *cursor_line, *cursor_col);
+                }
+                break;
             case 19: // Ctrl+S to save
                 if (filename) buffer_save_to_file(buf, filename);
+                break;
+            case 25: // Ctrl+Y to redo
+                redo_operation(buf, cursor_line, cursor_col);
                 break;
             case 26: // Ctrl+Z to undo
                 undo_operation(buf, cursor_line, cursor_col);
@@ -234,6 +305,7 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                     *cursor_line = sl;
                     *cursor_col = sc;
                     *selection_active = 0;
+                    clear_redo();
                 } else {
                     *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
                     buffer_delete_line(buf, *cursor_line);
@@ -242,6 +314,7 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
             case 22: // Ctrl+V to paste
                 if (*clipboard) {
                     buffer_insert_text(buf, *cursor_line, *cursor_col, *clipboard);
+                    clear_redo();
                     // move cursor to end
                     const char* p = *clipboard;
                     while (*p) {
@@ -259,27 +332,25 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                 *search_mode = 1;
                 search_buffer[0] = 0;
                 break;
-            case 1: // Ctrl+A to toggle selection
-                if (*selection_active) {
-                    *selection_active = 0;
-                } else {
-                    *selection_start_line = *cursor_line;
-                    *selection_start_col = *cursor_col;
-                    *selection_end_line = *cursor_line;
-                    *selection_end_col = *cursor_col;
-                    *selection_active = 1;
-                }
+            case 1: // Ctrl+A to select all
+                *selection_start_line = 0;
+                *selection_start_col = 0;
+                *selection_end_line = buffer_num_lines(buf) - 1;
+                *selection_end_col = buffer_get_line_length(buf, *selection_end_line);
+                *selection_active = 1;
                 break;
             default:
                 if (ch == '\n' || (ch >= 32 && ch <= 126)) { // Printable chars or newline
                     if (ch == '\n') {
                         buffer_insert_char(buf, *cursor_line, *cursor_col, '\n');
                         push_undo(true, *cursor_line, *cursor_col, '\n');
+                        clear_redo();
                         (*cursor_line)++;
                         *cursor_col = 0;
                     } else {
                         buffer_insert_char(buf, *cursor_line, *cursor_col, (char)ch);
                         push_undo(true, *cursor_line, *cursor_col, (char)ch);
+                        clear_redo();
                         (*cursor_col)++;
                     }
                 }

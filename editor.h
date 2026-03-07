@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ncurses.h>
+#include <time.h>
 #include "model.h"
 #include "config.h"
 
@@ -23,7 +24,20 @@ typedef struct {
     int replace_step;
     char* clipboard;
     const char* filename;
-    ColorConfig config;
+    EditorConfig config;
+    // Auto-save fields
+    int unsaved_keystrokes;
+    int auto_save_threshold;  // keystrokes before auto-save
+    int auto_save_timeout;    // seconds before time-based auto-save
+    time_t last_save_time;
+    int backup_count;
+
+    // Status bar
+    char status_message[256];
+    time_t status_message_time;
+
+    // File status
+    int file_modified;
 } Editor;
 
 void editor_init(Editor* ed, int argc, char* argv[]);
