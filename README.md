@@ -15,6 +15,7 @@ with this first checkin.
 The code is in C language and needs a C compiler and build chain.
 It comes with a Makefile which needs the make utility to use.
 It uses the libncurses development files to perform TUI work.
+It also requires the rx library for regex functionality in search and replace operations.
 
 ## Build
 make
