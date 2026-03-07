@@ -5,6 +5,19 @@
 ## Dedication
 
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a word processor that truly serves authors inspired its development. Stephenson lamented that computer editors delete as easily as they create, unlike paper which preserves every word. This editor strives to provide the safety and reliability of paper in the digital realm, ensuring no work is lost to accidents or crashes.
+
+## Philosophy
+
+In the philosophy of software design, code exists as both map and territory. The map is the source code we write; the territory is the executing program that shapes our digital reality. Led embodies this duality by prioritizing constraints that govern the territory of editing: safety, reliability, and user sovereignty.
+
+Key design principles:
+- **No Imbalances**: Balance safety with performance; features with simplicity.
+- **No Incoherence**: Consistent, predictable behavior across all operations.
+- **Measure Twice, Cut Once**: Rigorous error handling and testing prevent fragile implementations.
+- **Adhere to Standards**: POSIX compliance, modular MVC architecture for clarity and maintainability.
+
+Led invites developers who see software as a craft of reliable tools, not disposable artifacts. Contributors are welcome to extend this vision, ensuring that digital editing respects the user's work as paper once did—permanent, safe, and under their control.
+
 This is led, a powerful and reliable terminal-based text editor for Linux/Unix, developed with the assistance of grok-code-fast-1. It features a robust model-view-controller architecture with advanced capabilities including unlimited undo/redo, configurable auto-save with versioned backups, syntax highlighting for C/C++ code, comprehensive error handling for data safety, and a configurable user interface. This release represents a significant advancement in terminal editor technology, balancing performance with user-friendly features inspired by the need for paper-like data preservation in digital editing.
 
 ## Key Features
