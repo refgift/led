@@ -116,7 +116,8 @@ void search_next(Buffer* buf, size_t* cursor_line, size_t* cursor_col, const cha
     regfree(&regex);
 }
 
-void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, size_t* cursor_line, size_t* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename, size_t* selection_start_line, size_t* selection_start_col, size_t* selection_end_line, size_t* selection_end_col, int* selection_active) {
+int handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, size_t* cursor_line, size_t* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename, size_t* selection_start_line, size_t* selection_start_col, size_t* selection_end_line, size_t* selection_end_col, int* selection_active) {
+    int error_occurred = 0;
     if (*search_mode) {
         if (ch == '\n' || ch == 13) {
             if (strlen(search_buffer) > 0) {
@@ -206,6 +207,8 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                         push_undo(false, *cursor_line, *cursor_col - 1, deleted);
                         clear_redo();
                         (*cursor_col)--;
+                    } else {
+                        error_occurred = 1;
                     }
                 } else if (*cursor_line > 0) {
                     size_t prev_len = buffer_get_line_length(buf, *cursor_line - 1);
@@ -214,6 +217,8 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                         clear_redo();
                         (*cursor_line)--;
                         *cursor_col = prev_len;
+                    } else {
+                        error_occurred = 1;
                     }
                 }
                 break;
@@ -223,11 +228,15 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                     if (buffer_delete_char(buf, *cursor_line, *cursor_col) == 0) {
                         push_undo(false, *cursor_line, *cursor_col, deleted);
                         clear_redo();
+                    } else {
+                        error_occurred = 1;
                     }
                 } else if (*cursor_line < buffer_num_lines(buf) - 1) {
                     if (buffer_delete_char(buf, *cursor_line, *cursor_col) == 0) {
                         push_undo(false, *cursor_line, buffer_get_line_length(buf, *cursor_line), '\n');
                         clear_redo();
+                    } else {
+                        error_occurred = 1;
                     }
                 }
                 break;
@@ -311,11 +320,13 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                         *cursor_col = sc;
                         *selection_active = 0;
                         clear_redo();
+                    } else {
+                        error_occurred = 1;
                     }
                 } else {
                     *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
                     if (buffer_delete_line(buf, *cursor_line) != 0) {
-                        // Failed, don't update cursor
+                        error_occurred = 1;
                     }
                 }
                 break;
@@ -334,6 +345,8 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                             }
                             p++;
                         }
+                    } else {
+                        error_occurred = 1;
                     }
                 }
                 break;
@@ -356,13 +369,17 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
                             clear_redo();
                             (*cursor_line)++;
                             *cursor_col = 0;
+                        } else {
+                            error_occurred = 1;
                         }
                     } else {
-                        if (buffer_insert_char(buf, *cursor_line, *cursor_col, (char)ch) == 0) {
-                            push_undo(true, *cursor_line, *cursor_col, (char)ch);
-                            clear_redo();
-                            (*cursor_col)++;
-                        }
+                    if (buffer_insert_char(buf, *cursor_line, *cursor_col, (char)ch) == 0) {
+                        push_undo(true, *cursor_line, *cursor_col, (char)ch);
+                        clear_redo();
+                        (*cursor_col)++;
+                    } else {
+                        error_occurred = 1;
+                    }
                     }
                 }
                 break;
@@ -378,4 +395,5 @@ void handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, s
     if (*cursor_col < *scroll_col) *scroll_col = *cursor_col;
     else if (*cursor_col >= *scroll_col + (size_t)COLS - 2) *scroll_col = *cursor_col - (COLS - 3);
     if (*scroll_row > buffer_num_lines(buf) - ((size_t)LINES - 2)) *scroll_row = buffer_num_lines(buf) > (size_t)LINES - 2 ? buffer_num_lines(buf) - (LINES - 2) : 0;
+    return error_occurred ? -1 : 0;
 }
