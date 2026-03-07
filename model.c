@@ -4,9 +4,17 @@
 #include <stdio.h>
 #include <regex.h>
 
+static void* safe_malloc(size_t size) {
+    void* p = malloc(size);
+    if (!p) {
+        fprintf(stderr, "Error: memory allocation failed for %zu bytes\n", size);
+    }
+    return p;
+}
+
 static char* my_strdup(const char* s) {
     size_t len = strlen(s);
-    char* d = malloc(len + 1);
+    char* d = safe_malloc(len + 1);
     if (d) memcpy(d, s, len + 1);
     return d;
 }
