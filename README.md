@@ -5,11 +5,15 @@
 ## Dedication
 
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a word processor that truly serves authors inspired its development. Stephenson lamented that computer editors delete as easily as they create, unlike paper which preserves every word. This editor strives to provide the safety and reliability of paper in the digital realm, ensuring no work is lost to accidents or crashes.
-I have been wanting my own editor for a long time and
-with grok-code-fast-1 helping I got though the gate
-and made a model-view-controller architecture
-designed text editor with just basic functionality
-with this first checkin.
+This is led, a powerful and reliable terminal-based text editor for Linux/Unix, developed with the assistance of grok-code-fast-1. It features a robust model-view-controller architecture with advanced capabilities including unlimited undo/redo, configurable auto-save with versioned backups, syntax highlighting for C/C++ code, comprehensive error handling for data safety, and a configurable user interface. This release represents a significant advancement in terminal editor technology, balancing performance with user-friendly features inspired by the need for paper-like data preservation in digital editing.
+
+## Key Features
+
+- **Data Safety First**: Unlimited undo/redo, auto-save with configurable triggers and versioned backups, crash recovery, file validation to prevent data loss.
+- **Advanced Editing**: Syntax highlighting with nesting-based color intensity for C/C++, search and replace with regex support, selection and clipboard operations, word wrap toggle.
+- **User Experience**: Configurable status bar with version/time/filename display, extended ASCII support, intuitive keyboard shortcuts, clear error feedback.
+- **Reliability**: Memory error handling with user notifications, graceful degradation under low-memory conditions, robust buffer operations.
+- **Performance**: Efficient rendering for large files (up to 10MB), modular architecture for maintainability.
 
 ## Dependencies
 The code is in C language and needs a C compiler and build chain.
