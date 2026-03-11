@@ -69,7 +69,7 @@ set_default_config (EditorConfig *config)
           "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void");
   strcpy (config->syntax.paired_keywords, "if-then,begin-end,(,)");
   // Auto-save
-  config->autosave.timeout = 8;
+  config->autosave.timeout = 8000000;
   config->autosave.keystrokes = 50;
   // Status bar
   config->statusbar.enabled = 1;
