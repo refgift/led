@@ -171,7 +171,7 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
               char *search_buffer, int *search_mode, char **clipboard,
               const char *filename, size_t *selection_start_line,
               size_t *selection_start_col, size_t *selection_end_line,
-              size_t *selection_end_col, int *selection_active)
+              size_t *selection_end_col, int *selection_active, Editor *ed)
 {
   int error_occurred = 0;
   if (*search_mode)
@@ -291,7 +291,6 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           if (*cursor_line < *scroll_row)
             *cursor_line = *scroll_row;
           break;
-
         case KEY_BACKSPACE:
         case 127:              // Delete key
           if (*cursor_col > 0)
@@ -529,7 +528,7 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           *selection_active = 1;
           break;
         default:
-          if (ch == '\n' || (ch >= 32 && ch <= 126))
+          if (ch == '\n' ||  ch == '\t' || (ch >= 32 && ch <= 126))
             {                   // Printable chars or newline
               if (ch == '\n')
                 {
@@ -540,6 +539,20 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
                       clear_redo ();
                       (*cursor_line)++;
                       *cursor_col = 0;
+                    }
+                  else
+                    {
+                      error_occurred = 1;
+                    }
+                }
+              else if (ch == '\t')      // TAB
+                {
+                  if (buffer_insert_char
+                      (buf, *cursor_line, *cursor_col, '\t') == 0)
+                    {
+                      push_undo (true, *cursor_line, *cursor_col, '\t');
+                      clear_redo ();
+                      (*cursor_col)++;
                     }
                   else
                     {

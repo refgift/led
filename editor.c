@@ -207,14 +207,14 @@ editor_handle_input (Editor *ed, int ch)
            &ed->search_mode, &ed->clipboard, ed->filename,
            &ed->selection_start_line, &ed->selection_start_col,
            &ed->selection_end_line, &ed->selection_end_col,
-           &ed->selection_active) != 0)
+           &ed->selection_active, ed) != 0)
         {
           set_status_message (ed,
                               "Error: Operation failed (insufficient memory?)");
         }
 
       // Increment unsaved keystrokes for editing operations
-      if ((ch >= 32 && ch <= 126) || ch == 10 || ch == 13 || ch == 127
+      if ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
           || ch == KEY_BACKSPACE || ch == KEY_DC)
         {
           ed->unsaved_keystrokes++;
