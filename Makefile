@@ -1,3 +1,4 @@
+# Dependencies: ncurses (for terminal UI), rx (regex library for search functionality)
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11
 LDFLAGS = -lncurses -lrx

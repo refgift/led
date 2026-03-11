@@ -5,16 +5,34 @@
 ## Dedication
 
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a word processor that truly serves authors inspired its development. Stephenson lamented that computer editors delete as easily as they create, unlike paper which preserves every word. This editor strives to provide the safety and reliability of paper in the digital realm, ensuring no work is lost to accidents or crashes.
-I have been wanting my own editor for a long time and
-with grok-code-fast-1 helping I got though the gate
-and made a model-view-controller architecture
-designed text editor with just basic functionality
-with this first checkin.
+
+## Philosophy
+
+In the philosophy of software design, code exists as both map and territory. The map is the source code we write; the territory is the executing program that shapes our digital reality. Led embodies this duality by prioritizing constraints that govern the territory of editing: safety, reliability, and user sovereignty.
+
+Key design principles:
+- **No Imbalances**: Balance safety with performance; features with simplicity.
+- **No Incoherence**: Consistent, predictable behavior across all operations.
+- **Measure Twice, Cut Once**: Rigorous error handling and testing prevent fragile implementations.
+- **Adhere to Standards**: POSIX compliance, modular MVC architecture for clarity and maintainability.
+
+Led invites developers who see software as a craft of reliable tools, not disposable artifacts. Contributors are welcome to extend this vision, ensuring that digital editing respects the user's work as paper once did—permanent, safe, and under their control.
+
+This is led, a powerful and reliable terminal-based text editor for Linux/Unix, developed with the assistance of grok-code-fast-1. It features a robust model-view-controller architecture with advanced capabilities including unlimited undo/redo, configurable auto-save with versioned backups, syntax highlighting for C/C++ code, comprehensive error handling for data safety, and a configurable user interface. This release represents a significant advancement in terminal editor technology, balancing performance with user-friendly features inspired by the need for paper-like data preservation in digital editing.
+
+## Key Features
+
+- **Data Safety First**: Unlimited undo/redo, auto-save with configurable triggers and versioned backups, crash recovery, file validation to prevent data loss.
+- **Advanced Editing**: Syntax highlighting with nesting-based color intensity for C/C++, search and replace with regex support, selection and clipboard operations, word wrap toggle.
+- **User Experience**: Configurable status bar with version/time/filename display, extended ASCII support, intuitive keyboard shortcuts, clear error feedback.
+- **Reliability**: Memory error handling with user notifications, graceful degradation under low-memory conditions, robust buffer operations.
+- **Performance**: Efficient rendering for large files (up to 10MB), modular architecture for maintainability.
 
 ## Dependencies
 The code is in C language and needs a C compiler and build chain.
 It comes with a Makefile which needs the make utility to use.
 It uses the libncurses development files to perform TUI work.
+It also requires the rx library for regex functionality in search and replace operations.
 
 ## Build
 make

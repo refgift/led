@@ -147,7 +147,9 @@ void editor_handle_input(Editor* ed, int ch) {
             strncat(ed->replace_buffer, (char*)&ch, 1);
         }
     } else {
-        handle_input(ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line, &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer, &ed->search_mode, &ed->clipboard, ed->filename, &ed->selection_start_line, &ed->selection_start_col, &ed->selection_end_line, &ed->selection_end_col, &ed->selection_active);
+        if (handle_input(ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line, &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer, &ed->search_mode, &ed->clipboard, ed->filename, &ed->selection_start_line, &ed->selection_start_col, &ed->selection_end_line, &ed->selection_end_col, &ed->selection_active) != 0) {
+            set_status_message(ed, "Error: Operation failed (insufficient memory?)");
+        }
 
         // Increment unsaved keystrokes for editing operations
         if ((ch >= 32 && ch <= 126) || ch == 10 || ch == 13 || ch == 127 || ch == KEY_BACKSPACE || ch == KEY_DC) {
