@@ -4,18 +4,22 @@
 #include <stdio.h>
 #include <regex.h>
 
+#define INITIAL_LINES_CAPACITY 16
+#define MAX_FILE_SIZE (10 * 1024 * 1024)  // 10MB
+
 static void* safe_malloc(size_t size) {
     void* p = malloc(size);
     if (!p) {
         fprintf(stderr, "Error: memory allocation failed for %zu bytes\n", size);
+        exit(EXIT_FAILURE);
     }
     return p;
 }
 
-static char* my_strdup(const char* s) {
+static char* safe_strdup(const char* s) {
     size_t len = strlen(s);
     char* d = safe_malloc(len + 1);
-    if (d) memcpy(d, s, len + 1);
+    memcpy(d, s, len + 1);
     return d;
 }
 
@@ -37,19 +41,29 @@ void buffer_free(Buffer* buf) {
 
 int buffer_load_from_file(Buffer* buf, const char* filename) {
     FILE* fp = fopen(filename, "rb");
-    if (!fp) return -1;
+    if (!fp) {
+        return -1;
+    }
 
     // Read entire file into temp buffer
     size_t temp_cap = 1024;
     char* temp = malloc(temp_cap);
-    if (!temp) return -1;
+    if (!temp) {
+        fclose(fp);
+        return -1;
+    }
     size_t pos = 0;
     int c;
     while ((c = fgetc(fp)) != EOF) {
         if (pos >= temp_cap) {
             temp_cap *= 2;
-            temp = realloc(temp, temp_cap);
-            if (!temp) return -1;
+            char* new_temp = realloc(temp, temp_cap);
+            if (!new_temp) {
+                free(temp);
+                fclose(fp);
+                return -1;
+            }
+            temp = new_temp;
         }
         temp[pos++] = c;
     }
@@ -57,18 +71,15 @@ int buffer_load_from_file(Buffer* buf, const char* filename) {
     temp[pos] = '\0';
 
     // Safety checks
-    size_t max_size = 10 * 1024 * 1024; // 10MB default, could be configurable
-    if (pos > max_size) {
+    if (pos > MAX_FILE_SIZE) {
         free(temp);
-        return -1; // File too large
+        return -1;  // File too large
     }
 
     // Check for null bytes (indicates binary file)
-    for (size_t i = 0; i < pos; i++) {
-        if (temp[i] == '\0') {
-            free(temp);
-            return -1; // Binary file or null bytes
-        }
+    if (memchr(temp, '\0', pos) != NULL) {
+        free(temp);
+        return -1;  // Binary file or null bytes
     }
 
     // Split into lines
@@ -78,10 +89,17 @@ int buffer_load_from_file(Buffer* buf, const char* filename) {
             size_t len = i - start;
             if (len > 0) {
                 char* line = malloc(len + 1);
-                if (!line) { free(temp); return -1; }
+                if (!line) {
+                    free(temp);
+                    return -1;
+                }
                 memcpy(line, &temp[start], len);
                 line[len] = '\0';
-                buffer_insert_line(buf, buf->num_lines, line);
+                if (buffer_insert_line(buf, buf->num_lines, line) != 0) {
+                    free(line);
+                    free(temp);
+                    return -1;
+                }
                 free(line);
             }
             start = i + 1;
@@ -92,7 +110,9 @@ int buffer_load_from_file(Buffer* buf, const char* filename) {
 }
 
 int buffer_delete_char(Buffer* buf, size_t line, size_t col) {
-    if (line >= buf->num_lines) return -1;
+    if (line >= buf->num_lines) {
+        return -1;
+    }
     size_t len = strlen(buf->lines[line]);
     if (col < len) {
         // Delete char in line
@@ -104,6 +124,7 @@ int buffer_delete_char(Buffer* buf, size_t line, size_t col) {
         }
         memcpy(new_str, current, col);
         memcpy(&new_str[col], &current[col + 1], len - col);
+        new_str[len - 1] = '\0';
         free(buf->lines[line]);
         buf->lines[line] = new_str;
     } else if (line < buf->num_lines - 1) {
@@ -122,6 +143,7 @@ int buffer_delete_char(Buffer* buf, size_t line, size_t col) {
         free(buf->lines[line]);
         free(buf->lines[line + 1]);
         buf->lines[line] = merged;
+        // Shift remaining lines
         for (size_t i = line + 1; i < buf->num_lines - 1; i++) {
             buf->lines[i] = buf->lines[i + 1];
         }
@@ -132,16 +154,25 @@ int buffer_delete_char(Buffer* buf, size_t line, size_t col) {
 
 int buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t end_line, size_t end_col) {
     if (start_line > end_line || (start_line == end_line && start_col > end_col)) {
-        size_t t = start_line; start_line = end_line; end_line = t;
-        t = start_col; start_col = end_col; end_col = t;
+        size_t temp = start_line;
+        start_line = end_line;
+        end_line = temp;
+        temp = start_col;
+        start_col = end_col;
+        end_col = temp;
     }
     if (start_line == end_line) {
-        // delete chars in line
+        // Delete chars in line
         char* current = buf->lines[start_line];
         size_t len = strlen(current);
-        if (start_col >= len) return -1;
-        if (end_col > len) end_col = len;
-        char* new_str = malloc(len - (end_col - start_col) + 1);
+        if (start_col >= len) {
+            return -1;
+        }
+        if (end_col > len) {
+            end_col = len;
+        }
+        size_t new_len = len - (end_col - start_col);
+        char* new_str = malloc(new_len + 1);
         if (!new_str) {
             fprintf(stderr, "Error: memory allocation failed in buffer_delete_range\n");
             return -1;
@@ -151,7 +182,7 @@ int buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t
         free(buf->lines[start_line]);
         buf->lines[start_line] = new_str;
     } else {
-        // delete from start_col to end of start_line
+        // Delete from start_col to end of start_line
         char* start_line_str = buf->lines[start_line];
         char* new_start = malloc(start_col + 1);
         if (!new_start) {
@@ -162,7 +193,8 @@ int buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t
         new_start[start_col] = '\0';
         free(buf->lines[start_line]);
         buf->lines[start_line] = new_start;
-        // delete from start of end_line to end_col
+
+        // Delete from start of end_line to end_col
         char* end_line_str = buf->lines[end_line];
         size_t end_len = strlen(end_line_str);
         char* new_end = malloc(end_len - end_col + 1);
@@ -173,14 +205,16 @@ int buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t
         memcpy(new_end, &end_line_str[end_col], end_len - end_col + 1);
         free(buf->lines[end_line]);
         buf->lines[end_line] = new_end;
-        // delete lines in between
+
+        // Delete lines in between
         for (size_t i = 0; i < end_line - start_line - 1; i++) {
             if (buffer_delete_line(buf, start_line + 1) != 0) {
                 fprintf(stderr, "Error: failed to delete line in buffer_delete_range\n");
                 return -1;
             }
         }
-        // merge start and end
+
+        // Merge start and end
         char* s = buf->lines[start_line];
         char* e = buf->lines[start_line + 1];
         size_t sl = strlen(s);
@@ -195,6 +229,8 @@ int buffer_delete_range(Buffer* buf, size_t start_line, size_t start_col, size_t
         free(buf->lines[start_line]);
         free(buf->lines[start_line + 1]);
         buf->lines[start_line] = merged;
+
+        // Shift remaining lines
         for (size_t i = start_line + 1; i < buf->num_lines - 1; i++) {
             buf->lines[i] = buf->lines[i + 1];
         }
@@ -208,49 +244,59 @@ size_t buffer_num_lines(const Buffer* buf) {
 }
 
 const char* buffer_get_line(const Buffer* buf, size_t line) {
-    if (line >= buf->num_lines) return NULL;
+    if (line >= buf->num_lines) {
+        return NULL;
+    }
     return buf->lines[line];
 }
 
 size_t buffer_get_line_length(const Buffer* buf, size_t line) {
-    if (line >= buf->num_lines) return 0;
+    if (line >= buf->num_lines) {
+        return 0;
+    }
     return strlen(buf->lines[line]);
 }
 
 char buffer_get_char(const Buffer* buf, size_t line, size_t col) {
-    if (line >= buf->num_lines) return '\0';
+    if (line >= buf->num_lines) {
+        return '\0';
+    }
     const char* ln = buf->lines[line];
     size_t len = strlen(ln);
-    if (col >= len) return '\0';
+    if (col >= len) {
+        return '\0';
+    }
     return ln[col];
 }
 
 int buffer_insert_line(Buffer* buf, size_t line, const char* content) {
-    if (line > buf->num_lines) return -1;
+    if (line > buf->num_lines) {
+        return -1;
+    }
     if (buf->num_lines >= buf->capacity) {
-        if (buf->capacity == 0) buf->capacity = INITIAL_LINES_CAPACITY;
-        else buf->capacity *= 2;
-        buf->lines = realloc(buf->lines, buf->capacity * sizeof(char*));
-        if (!buf->lines) {
+        buf->capacity = (buf->capacity == 0) ? INITIAL_LINES_CAPACITY : buf->capacity * 2;
+        char** new_lines = realloc(buf->lines, buf->capacity * sizeof(char*));
+        if (!new_lines) {
             fprintf(stderr, "Error: memory allocation failed in buffer_insert_line\n");
             return -1;
         }
+        buf->lines = new_lines;
     }
+    // Shift lines down
     for (size_t i = buf->num_lines; i > line; i--) {
         buf->lines[i] = buf->lines[i - 1];
     }
-    buf->lines[line] = my_strdup(content);
-    if (!buf->lines[line]) {
-        fprintf(stderr, "Error: memory allocation failed in buffer_insert_line\n");
-        return -1;
-    }
+    buf->lines[line] = safe_strdup(content);
     buf->num_lines++;
     return 0;
 }
 
 int buffer_delete_line(Buffer* buf, size_t line) {
-    if (line >= buf->num_lines) return -1;
+    if (line >= buf->num_lines) {
+        return -1;
+    }
     free(buf->lines[line]);
+    // Shift lines up
     for (size_t i = line; i < buf->num_lines - 1; i++) {
         buf->lines[i] = buf->lines[i + 1];
     }
@@ -259,11 +305,13 @@ int buffer_delete_line(Buffer* buf, size_t line) {
 }
 
 int buffer_insert_char(Buffer* buf, size_t line, size_t col, char c) {
-    if (line >= buf->num_lines) return -1;
+    if (line >= buf->num_lines) {
+        return -1;
+    }
     if (c == '\n') {
-        // split line at col
+        // Split line at col
         char* ln = buf->lines[line];
-        // part before col
+        size_t len = strlen(ln);
         char* before = malloc(col + 1);
         if (!before) {
             fprintf(stderr, "Error: memory allocation failed in buffer_insert_char\n");
@@ -271,29 +319,21 @@ int buffer_insert_char(Buffer* buf, size_t line, size_t col, char c) {
         }
         memcpy(before, ln, col);
         before[col] = '\0';
-        // part after col
-        char* after = my_strdup(ln + col);
-        if (!after) {
-            free(before);
-            fprintf(stderr, "Error: memory allocation failed in buffer_insert_char\n");
-            return -1;
-        }
-        // replace current line
+        char* after = safe_strdup(ln + col);
         free(buf->lines[line]);
         buf->lines[line] = before;
-        // insert new line after
         if (buffer_insert_line(buf, line + 1, after) != 0) {
-            free(before);
             free(after);
-            fprintf(stderr, "Error: failed to insert line in buffer_insert_char\n");
             return -1;
         }
         free(after);
     } else {
-        // insert char
+        // Insert char
         char* ln = buf->lines[line];
         size_t len = strlen(ln);
-        if (col > len) col = len;
+        if (col > len) {
+            col = len;
+        }
         char* new_ln = malloc(len + 2);
         if (!new_ln) {
             fprintf(stderr, "Error: memory allocation failed in buffer_insert_char\n");
@@ -309,14 +349,14 @@ int buffer_insert_char(Buffer* buf, size_t line, size_t col, char c) {
 }
 
 int buffer_insert_text(Buffer* buf, size_t line, size_t col, const char* text) {
-    if (line >= buf->num_lines) return -1;
-    // Insert text, handling \n by splitting lines
+    if (line >= buf->num_lines) {
+        return -1;
+    }
     const char* p = text;
     size_t current_line = line;
     size_t current_col = col;
     while (*p) {
         if (*p == '\n') {
-            // insert newline
             if (buffer_insert_char(buf, current_line, current_col, '\n') != 0) {
                 fprintf(stderr, "Error: failed to insert char in buffer_insert_text\n");
                 return -1;
@@ -325,14 +365,16 @@ int buffer_insert_text(Buffer* buf, size_t line, size_t col, const char* text) {
             current_col = 0;
             p++;
         } else {
-            // find next \n or end
             const char* end = p;
-            while (*end && *end != '\n') end++;
+            while (*end && *end != '\n') {
+                end++;
+            }
             size_t len = end - p;
-            // insert substring
             char* ln = buf->lines[current_line];
             size_t ln_len = strlen(ln);
-            if (current_col > ln_len) current_col = ln_len;
+            if (current_col > ln_len) {
+                current_col = ln_len;
+            }
             char* new_ln = malloc(ln_len + len + 1);
             if (!new_ln) {
                 fprintf(stderr, "Error: memory allocation failed in buffer_insert_text\n");
@@ -352,10 +394,14 @@ int buffer_insert_text(Buffer* buf, size_t line, size_t col, const char* text) {
 
 int buffer_save_to_file(const Buffer* buf, const char* filename) {
     FILE* fp = fopen(filename, "wb");
-    if (!fp) return -1;
+    if (!fp) {
+        return -1;
+    }
     for (size_t i = 0; i < buf->num_lines; i++) {
         fputs(buf->lines[i], fp);
-        if (i < buf->num_lines - 1) fputc('\n', fp);
+        if (i < buf->num_lines - 1) {
+            fputc('\n', fp);
+        }
     }
     fclose(fp);
     return 0;
@@ -370,51 +416,70 @@ void buffer_replace_all(Buffer* buf, const char* search_regex, const char* repla
     for (size_t i = 0; i < buf->num_lines; i++) {
         char* line = buf->lines[i];
         size_t len = strlen(line);
-        // Count matches to estimate size
-        size_t match_count = 0;
+
+        // Build new line
+        char* new_line = NULL;
+        size_t new_cap = 0;
+        size_t used = 0;
+
         size_t pos = 0;
         regmatch_t match;
         while (regexec(&reg, line + pos, 1, &match, 0) == 0) {
-            match_count++;
-            pos += match.rm_eo;
-        }
-        size_t new_len = len + match_count * (replace_len - 1) + 1; // rough
-        char* new_line = malloc(new_len);
-        if (!new_line) continue;
-        new_line[0] = 0;
-        pos = 0;
-        size_t used = 0;
-        while (regexec(&reg, line + pos, 1, &match, 0) == 0) {
-            // append before
+            // Append before match
             size_t before_len = (size_t)match.rm_so;
-            if (used + before_len >= new_len) {
-                new_len *= 2;
-                new_line = realloc(new_line, new_len);
-                if (!new_line) break;
+            if (used + before_len >= new_cap) {
+                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
+                while (used + before_len >= new_cap) {
+                    new_cap *= 2;
+                }
+                char* temp = realloc(new_line, new_cap);
+                if (!temp) {
+                    free(new_line);
+                    regfree(&reg);
+                    return;
+                }
+                new_line = temp;
             }
             memcpy(new_line + used, line + pos, before_len);
             used += before_len;
-            // append replace
-            if (used + replace_len >= new_len) {
-                new_len *= 2;
-                new_line = realloc(new_line, new_len);
-                if (!new_line) break;
+
+            // Append replacement
+            if (used + replace_len >= new_cap) {
+                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
+                while (used + replace_len >= new_cap) {
+                    new_cap *= 2;
+                }
+                char* temp = realloc(new_line, new_cap);
+                if (!temp) {
+                    free(new_line);
+                    regfree(&reg);
+                    return;
+                }
+                new_line = temp;
             }
             memcpy(new_line + used, replace_str, replace_len);
             used += replace_len;
+
             pos += match.rm_eo;
         }
-        // append rest
+
+        // Append rest
         size_t rest_len = len - pos;
-        if (used + rest_len >= new_len) {
-            new_len = used + rest_len + 1;
-            new_line = realloc(new_line, new_len);
-            if (!new_line) continue;
+        if (used + rest_len >= new_cap) {
+            new_cap = used + rest_len + 1;
+            char* temp = realloc(new_line, new_cap);
+            if (!temp) {
+                free(new_line);
+                regfree(&reg);
+                return;
+            }
+            new_line = temp;
         }
         memcpy(new_line + used, line + pos, rest_len);
         used += rest_len;
         new_line[used] = '\0';
-        // replace
+
+        // Replace line
         free(buf->lines[i]);
         buf->lines[i] = new_line;
     }
