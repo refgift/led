@@ -9,6 +9,7 @@ UndoStack undo_stack = {NULL, 0, 0};
 UndoStack redo_stack = {NULL, 0, 0};
 
 static char* my_strdup(const char* s) {
+    if (!s) return NULL;
     size_t len = strlen(s);
     char* d = malloc(len + 1);
     if (d) memcpy(d, s, len + 1);
@@ -66,6 +67,8 @@ void redo_operation(Buffer* buf, size_t* cursor_line, size_t* cursor_col) {
     if (redo_stack.count > 0) {
         redo_stack.count--;
         Change c = redo_stack.changes[redo_stack.count];
+        // Push inverse to undo stack for future undos
+        push_undo(!c.is_insert, c.line, c.col, c.ch);
         // Apply the operation
         if (c.is_insert) {
             buffer_insert_char(buf, c.line, c.col, c.ch);
@@ -268,17 +271,19 @@ int handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, si
                         total += e - s + (l < el ? 1 : 0);
                     }
                     *clipboard = malloc(total + 1);
-                    char* p = *clipboard;
-                    for (size_t l = sl; l <= el; l++) {
-                        const char* line = buffer_get_line(buf, l);
-                        size_t len = strlen(line);
-                        size_t s = (l == sl) ? sc : 0;
-                        size_t e = (l == el) ? ec : len;
-                        memcpy(p, &line[s], e - s);
-                        p += e - s;
-                        if (l < el) *p++ = '\n';
+                    if (*clipboard) {
+                        char* p = *clipboard;
+                        for (size_t l = sl; l <= el; l++) {
+                            const char* line = buffer_get_line(buf, l);
+                            size_t len = strlen(line);
+                            size_t s = (l == sl) ? sc : 0;
+                            size_t e = (l == el) ? ec : len;
+                            memcpy(p, &line[s], e - s);
+                            p += e - s;
+                            if (l < el) *p++ = '\n';
+                        }
+                        *p = 0;
                     }
-                    *p = 0;
                 } else {
                     *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
                 }
@@ -302,26 +307,29 @@ int handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, si
                         total += e - s + (l < el ? 1 : 0);
                     }
                     *clipboard = malloc(total + 1);
-                    char* p = *clipboard;
-                    for (size_t l = sl; l <= el; l++) {
-                        const char* line = buffer_get_line(buf, l);
-                        size_t len = strlen(line);
-                        size_t s = (l == sl) ? sc : 0;
-                        size_t e = (l == el) ? ec : len;
-                        memcpy(p, &line[s], e - s);
-                        p += e - s;
-                        if (l < el) *p++ = '\n';
-                    }
-                    *p = 0;
-                    // delete range
-                    if (buffer_delete_range(buf, sl, sc, el, ec) == 0) {
-                        // adjust cursor
-                        *cursor_line = sl;
-                        *cursor_col = sc;
-                        *selection_active = 0;
-                        clear_redo();
-                    } else {
-                        error_occurred = 1;
+                    if (*clipboard) {
+                        char* p = *clipboard;
+                        for (size_t l = sl; l <= el; l++) {
+                            const char* line = buffer_get_line(buf, l);
+                            size_t len = strlen(line);
+                            size_t s = (l == sl) ? sc : 0;
+                            size_t e = (l == el) ? ec : len;
+                            memcpy(p, &line[s], e - s);
+                            p += e - s;
+                            if (l < el) *p++ = '\n';
+                        }
+                        *p = 0;
+                        // delete range
+                        if (buffer_delete_range(buf, sl, sc, el, ec) == 0) {
+                            // adjust cursor
+                            *cursor_line = sl;
+                            *cursor_col = sc;
+                            *selection_active = 0;
+                            clear_redo();
+                            // Note: Undo for multi-char delete not fully implemented in this simple system
+                        } else {
+                            error_occurred = 1;
+                        }
                     }
                 } else {
                     *clipboard = my_strdup(buffer_get_line(buf, *cursor_line));
@@ -345,6 +353,7 @@ int handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, si
                             }
                             p++;
                         }
+                        // Note: Undo for multi-char insert not fully implemented in this simple system
                     } else {
                         error_occurred = 1;
                     }
@@ -373,13 +382,13 @@ int handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, si
                             error_occurred = 1;
                         }
                     } else {
-                    if (buffer_insert_char(buf, *cursor_line, *cursor_col, (char)ch) == 0) {
-                        push_undo(true, *cursor_line, *cursor_col, (char)ch);
-                        clear_redo();
-                        (*cursor_col)++;
-                    } else {
-                        error_occurred = 1;
-                    }
+                        if (buffer_insert_char(buf, *cursor_line, *cursor_col, (char)ch) == 0) {
+                            push_undo(true, *cursor_line, *cursor_col, (char)ch);
+                            clear_redo();
+                            (*cursor_col)++;
+                        } else {
+                            error_occurred = 1;
+                        }
                     }
                 }
                 break;
