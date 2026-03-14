@@ -1,11 +1,11 @@
-# led - Larry's Editor for Linux/Unix Terminal
+# led - Larry's Editor for Linux/Unix Terminal (Version 1.0-beta2)
 > **Warning**: See [WARNINGS.md](WARNINGS.md) for known issues, limitations, and safety notes.
 ## Dedication
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a word processor that truly serves authors inspired its development. Stephenson lamented that computer editors delete as easily as they create, unlike paper which preserves every word. This editor strives to provide the safety and reliability of paper in the digital realm, ensuring no work is lost to accidents or crashes.
 ## Philosophy
 In the philosophy of software design, code exists as both map and territory. The map is the source code we write; the territory is the executing program that shapes our digital reality. Led embodies this duality by prioritizing constraints that govern the territory of editing: safety, reliability, and user sovereignty.
 Led invites developers who see software as a craft of reliable tools, not disposable artifacts. Contributors are welcome to extend this vision, ensuring that digital editing respects the user's work as paper once did—permanent, safe, and under their control.
-This is led, a powerful and reliable terminal-based text editor for Linux/Unix, developed with the assistance of grok-code-fast-1. It features a robust model-view-controller architecture with advanced capabilities including unlimited undo/redo, configurable auto-save with versioned backups, syntax highlighting for C/C++ code, comprehensive error handling for data safety, and a configurable user interface. This release represents a significant advancement in terminal editor technology, balancing performance with user-friendly features inspired by the need for paper-like data preservation in digital editing.
+This is led version 1.0-beta2, a powerful and reliable terminal-based text editor for Linux/Unix, developed with the assistance of grok-code-fast-1. It features a robust model-view-controller architecture with advanced capabilities including unlimited undo/redo, configurable auto-save with versioned backups, syntax highlighting for C/C++ code, comprehensive error handling for data safety, and a configurable user interface. This release represents a significant advancement in terminal editor technology, balancing performance with user-friendly features inspired by the need for paper-like data preservation in digital editing.
 ## Key Features
 - **Data Safety First**: Unlimited undo/redo, auto-save with configurable triggers and versioned backups, crash recovery, file validation to prevent data loss.
 - **Advanced Editing**: Syntax highlighting with nesting-based color intensity for C/C++, search and replace with regex support, selection and clipboard operations, word wrap toggle.
@@ -16,7 +16,7 @@ This is led, a powerful and reliable terminal-based text editor for Linux/Unix, 
 The code is in C language and needs a C compiler and build chain.
 It comes with a Makefile which needs the make utility to use.
 It uses the libncurses development files to perform TUI work.
-It also requires the rx library for regex functionality in search and replace operations.
+Uses glibc regex for search and replace operations.
 ## Build
 make
 ## Run

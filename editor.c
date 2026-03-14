@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
 void
 editor_init (Editor *ed, int argc, char *argv[])
 {
@@ -96,13 +95,11 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->auto_save_timeout = ed->config.autosave.timeout;  // Configurable timeout
   ed->last_save_time = time (NULL);
   ed->backup_count = 0;
-
   // Initialize status
   ed->status_message[0] = '\0';
   ed->status_message_time = 0;
   ed->file_modified = 0;
 }
-
 void
 set_status_message (Editor *ed, const char *message)
 {
@@ -110,7 +107,6 @@ set_status_message (Editor *ed, const char *message)
   ed->status_message[sizeof (ed->status_message) - 1] = '\0';
   ed->status_message_time = time (NULL);
 }
-
 void
 auto_save (Editor *ed)
 {
@@ -122,7 +118,6 @@ auto_save (Editor *ed)
                 ed->backup_count % 10 + 1);
       buffer_save_to_file (&ed->model, backup_path);
       ed->backup_count++;
-
       // Auto-save to main file
       buffer_save_to_file (&ed->model, ed->filename);
       ed->unsaved_keystrokes = 0;
@@ -131,7 +126,6 @@ auto_save (Editor *ed)
       set_status_message (ed, "Auto-saved");
     }
 }
-
 void
 editor_draw (WINDOW *win, Editor *ed)
 {
@@ -144,7 +138,6 @@ editor_draw (WINDOW *win, Editor *ed)
                ed->selection_active, &dummy_y, &dummy_x, ed->replace_step,
                ed->replace_buffer, &ed->config, ed);
 }
-
 void
 editor_handle_input (Editor *ed, int ch)
 {
@@ -159,7 +152,6 @@ editor_handle_input (Editor *ed, int ch)
       ed->config.display.word_wrap = !ed->config.display.word_wrap;
       return;
     }
-
   if (ch == 18)
     {                           // Ctrl+R replace
       if (ed->replace_step == 0)
@@ -212,7 +204,6 @@ editor_handle_input (Editor *ed, int ch)
           set_status_message (ed,
                               "Error: Operation failed (insufficient memory?)");
         }
-
       // Increment unsaved keystrokes for editing operations
       if ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
           || ch == KEY_BACKSPACE || ch == KEY_DC)
@@ -220,7 +211,6 @@ editor_handle_input (Editor *ed, int ch)
           ed->unsaved_keystrokes++;
           ed->file_modified = 1;
         }
-
       // Auto-save if threshold reached (keystrokes or time)
       time_t now = time (NULL);
       if ((ed->unsaved_keystrokes >= ed->auto_save_threshold ||
@@ -230,7 +220,6 @@ editor_handle_input (Editor *ed, int ch)
         {
           auto_save (ed);
         }
-
       // Set status messages for operations
       if (ch == 19)
         {                       // Ctrl+S save
@@ -247,7 +236,6 @@ editor_handle_input (Editor *ed, int ch)
         }
     }
 }
-
 void
 editor_cleanup (Editor *ed)
 {

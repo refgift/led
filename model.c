@@ -500,7 +500,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                     const char *replace_str)
 {
   regex_t reg;
-  if (regcomp (&reg, search_regex, REG_EXTENDED) != 0)
+  if (regcomp (&reg, search_regex, 0) != 0)
     {
       return;
     }
@@ -513,50 +513,50 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
       char *new_line = NULL;
       size_t new_cap = 0;
       size_t used = 0;
-      size_t pos = 0;
-      regmatch_t match;
-      while (regexec (&reg, line + pos, 1, &match, 0) == 0)
-        {
-          // Append before match
-          size_t before_len = (size_t) match.rm_so;
-          if (used + before_len >= new_cap)
-            {
-              new_cap = (new_cap == 0) ? 128 : new_cap * 2;
-              while (used + before_len >= new_cap)
-                {
-                  new_cap *= 2;
-                }
-              char *temp = realloc (new_line, new_cap);
-              if (!temp)
-                {
-                  free (new_line);
-                  regfree (&reg);
-                  return;
-                }
-              new_line = temp;
-            }
-          memcpy (new_line + used, line + pos, before_len);
-          used += before_len;
-          // Append replacement
-          if (used + replace_len >= new_cap)
-            {
-              new_cap = (new_cap == 0) ? 128 : new_cap * 2;
-              while (used + replace_len >= new_cap)
-                {
-                  new_cap *= 2;
-                }
-              char *temp = realloc (new_line, new_cap);
-              if (!temp)
-                {
-                  free (new_line);
-                  regfree (&reg);
-                  return;
-                }
-              new_line = temp;
-            }
-          memcpy (new_line + used, replace_str, replace_len);
-          used += replace_len;
-          pos += match.rm_eo;
+       size_t pos = 0;
+       regmatch_t match;
+       while (regexec (&reg, line + pos, 1, &match, 0) == 0)
+         {
+            // Append before match
+            size_t before_len = (size_t) match.rm_so;
+            if (used + before_len >= new_cap)
+              {
+                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
+                while (used + before_len >= new_cap)
+                  {
+                    new_cap *= 2;
+                  }
+                char *temp = realloc (new_line, new_cap);
+                if (!temp)
+                  {
+                    free (new_line);
+                    regfree (&reg);
+                    return;
+                  }
+                new_line = temp;
+              }
+            memcpy (new_line + used, line + pos, before_len);
+            used += before_len;
+            // Append replacement
+            if (used + replace_len >= new_cap)
+              {
+                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
+                while (used + replace_len >= new_cap)
+                  {
+                    new_cap *= 2;
+                  }
+                char *temp = realloc (new_line, new_cap);
+                if (!temp)
+                  {
+                    free (new_line);
+                    regfree (&reg);
+                    return;
+                  }
+                new_line = temp;
+              }
+            memcpy (new_line + used, replace_str, replace_len);
+            used += replace_len;
+            pos += match.rm_eo;
         }
       // Append rest
       size_t rest_len = len - pos;

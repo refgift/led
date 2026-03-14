@@ -4,6 +4,7 @@
 - **File Validation**: The editor now rejects files larger than 10MB or containing null bytes (binary files) to prevent crashes and display issues. If you encounter loading failures, check file size and type.
 - **Display Robustness**: Long lines (>10,000 chars) are rendered simply without highlighting for stability. Extremely large files may be slow to load.
 - **Legacy Issues**: Some edge cases with malformed content or unsupported file types may still cause issues, though crash prevention has been significantly improved.
+- **Search Functionality**: Regex search is now stable and crash-free, with proper handling of zero-terminated strings.
 
 ## Limitations
 - **Language Support**: Primarily designed for C/C++ files. Syntax highlighting and parsing assumptions may not work reliably for other languages.
@@ -22,4 +23,4 @@ Please help improve led by reporting bugs:
 - Submit at: https://github.com/refgift/led/issues
 
 ## Disclaimer
-This is a development version of led. Use at your own risk. Known issues are being addressed in updates. Thank you for your patience and feedback!</content>
+This is led version 1.0-beta2, a development version. Use at your own risk. Known issues are being addressed in updates. Thank you for your patience and feedback!</content>

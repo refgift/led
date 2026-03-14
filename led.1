@@ -1,0 +1,94 @@
+.TH LED 1 "2026-03-14" "1.0-beta2" "User Commands"
+.SH NAME
+led \- Larry's Editor, a terminal-based text editor
+.SH SYNOPSIS
+.B led
+[\fIoptions\fR] [\fIfile\fR]
+.SH DESCRIPTION
+.B led
+is a powerful and reliable terminal-based text editor for Linux/Unix systems. It features unlimited undo/redo, syntax highlighting for C/C++ code, search and replace with regex support, selection and clipboard operations, and a configurable user interface. Designed with data safety in mind, it includes crash recovery, auto-save with versioned backups, and comprehensive error handling.
+.SH OPTIONS
+.TP
+.B \-t
+Test mode: Loads the file, runs automated tests on the model/view/controller components, outputs results to stderr, and exits.
+.SH KEYBINDINGS
+.SS Navigation
+.TP
+.B Arrow Keys
+Move cursor up, down, left, right
+.TP
+.B Home
+Move to start of line (press twice for top of file)
+.TP
+.B End
+Move to end of line (press twice for bottom of file)
+.TP
+.B Page Up
+Scroll up one page
+.TP
+.B Page Down
+Scroll down one page
+.SS Editing
+.TP
+.B Printable Characters
+Insert text
+.TP
+.B Enter
+Insert new line
+.TP
+.B Backspace/Delete
+Delete character (backward/forward)
+.TP
+.B Ctrl+Z
+Undo last operation
+.TP
+.B Ctrl+Y
+Redo last undone operation
+.SS File Operations
+.TP
+.B Ctrl+S
+Save file
+.TP
+.B Ctrl+Q
+Quit editor
+.SS Selection and Clipboard
+.TP
+.B Ctrl+A
+Select all text
+.TP
+.B Ctrl+C
+Copy selected text (or current line if no selection)
+.TP
+.B Ctrl+X
+Cut selected text (or current line if no selection)
+.TP
+.B Ctrl+V
+Paste clipboard content
+.SS Search and Replace
+.TP
+.B Ctrl+/
+Enter search mode (type regex pattern, Enter to search, Esc to cancel)
+.TP
+.B Ctrl+R
+Enter replace mode (type search regex, Enter, type replace string, Enter to replace all matches, Esc to cancel)
+.SS Display
+.TP
+.B F2
+Toggle line number display
+.TP
+.B F3
+Toggle word wrap (visual soft wrap of long lines)
+.SH CONFIGURATION
+led supports customizable colors and syntax highlighting via ~/.config/led/colorization.conf. See the README.md file for details on configuration options.
+.SH FILES
+.TP
+.I ~/.config/led/colorization.conf
+Configuration file for colors and syntax highlighting.
+.SH SEE ALSO
+.BR vim (1),
+.BR emacs (1),
+.BR nano (1)
+.SH AUTHOR
+Developed with assistance from grok-code-fast-1.
+.SH BUGS
+Report bugs at https://github.com/refgift/led/issues

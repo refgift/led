@@ -1,13 +1,12 @@
 #include "controller.h"
+#include "editor.h"
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 #include <regex.h>
 #include <ctype.h>
-
 UndoStack undo_stack = { NULL, 0, 0 };
 UndoStack redo_stack = { NULL, 0, 0 };
-
 static char *
 my_strdup (const char *s)
 {
@@ -19,13 +18,11 @@ my_strdup (const char *s)
     memcpy (d, s, len + 1);
   return d;
 }
-
 void
 init_undo (void)
 {
   // Already initialized statically
 }
-
 void
 push_undo (bool is_insert, size_t line, size_t col, char ch)
 {
@@ -44,7 +41,6 @@ push_undo (bool is_insert, size_t line, size_t col, char ch)
   undo_stack.changes[undo_stack.count].ch = ch;
   undo_stack.count++;
 }
-
 void
 push_redo (bool is_insert, size_t line, size_t col, char ch)
 {
@@ -63,7 +59,6 @@ push_redo (bool is_insert, size_t line, size_t col, char ch)
   redo_stack.changes[redo_stack.count].ch = ch;
   redo_stack.count++;
 }
-
 void
 undo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
 {
@@ -88,7 +83,6 @@ undo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
         }
     }
 }
-
 void
 redo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
 {
@@ -113,13 +107,11 @@ redo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
         }
     }
 }
-
 void
 clear_redo (void)
 {
   redo_stack.count = 0;
 }
-
 void
 free_undo (void)
 {
@@ -132,39 +124,43 @@ free_undo (void)
   redo_stack.count = 0;
   redo_stack.capacity = 0;
 }
-
 void
 search_next (Buffer *buf, size_t *cursor_line, size_t *cursor_col,
              const char *pattern)
 {
   regex_t regex;
-  if (regcomp (&regex, pattern, REG_EXTENDED) != 0)
+  if (regcomp (&regex, pattern, 0) != 0)
     return;
   int found = 0;
-  for (size_t l = *cursor_line; l < buffer_num_lines (buf) && !found; l++)
+  int clamped = 0;
+  for (size_t l = *cursor_line; l < buffer_num_lines (buf) && !found && (!clamped || l == *cursor_line); l++)
     {
-      const char *line = buffer_get_line (buf, l);
-      regmatch_t match;
-      const char *search_line = line;
-      int flags = 0;
-      if (l == *cursor_line)
+       const char *line = buffer_get_line (buf, l);
+       size_t len = strlen (line);
+       if (l == *cursor_line && *cursor_col > len)
+         {
+           *cursor_col = len;
+           clamped = 1;
+         }
+       regmatch_t match;
+       size_t pos = (l == *cursor_line) ? *cursor_col : 0;
+      int line_flags = (pos > 0) ? REG_NOTBOL : 0;
+      while (regexec (&regex, line + pos, 1, &match, line_flags) == 0)
         {
-          size_t len = strlen (line);
-          if (*cursor_col > len)
-            *cursor_col = len;
-          search_line = line + *cursor_col;
-          flags = REG_NOTBOL;
-        }
-      if (regexec (&regex, search_line, 1, &match, flags) == 0)
-        {
+          if (match.rm_so == 0 && pos == *cursor_col && l == *cursor_line)
+            {
+              pos += match.rm_eo;
+              line_flags = REG_NOTBOL;
+              continue;
+            }
           *cursor_line = l;
-          *cursor_col = (l == *cursor_line ? *cursor_col : 0) + match.rm_so;
+          *cursor_col = pos + match.rm_so;
           found = 1;
+          break;
         }
     }
   regfree (&regex);
 }
-
 int
 handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
               size_t *cursor_line, size_t *cursor_col, int *show_line_numbers,

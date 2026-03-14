@@ -1,7 +1,7 @@
 # Dependencies: ncurses (for terminal UI), rx (regex library for search functionality)
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11
-LDFLAGS = -lncurses -lrx
+CFLAGS = -Wall -Wextra -std=c11 -g
+LDFLAGS = -lncurses
 TARGET = led
 SRCS = main.c model.c view.c controller.c editor.c config.c test_controller.c
 OBJS = $(SRCS:.c=.o)
