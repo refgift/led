@@ -3,15 +3,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <regex.h>
-#define INITIAL_LINES_CAPACITY 10UL
 #define MAX_FILE_SIZE (10 * 1024 * 1024)       // 10MB
 static void *
-safe_malloc (size_t size)
+safe_malloc (int size)
 {
   void *p = malloc (size);
   if (!p)
     {
-      fprintf (stderr, "Error: memory allocation failed for %zu bytes\n",
+      fprintf (stderr, "Error: memory allocation failed for %u bytes\n",
                size);
       exit (EXIT_FAILURE);
     }
@@ -20,7 +19,7 @@ safe_malloc (size_t size)
 static char *
 safe_strdup (const char *s)
 {
-  size_t len = strlen (s);
+  int len = strlen (s);
   char *d = safe_malloc (len + 1);
   memcpy (d, s, len + 1);
   return d;
@@ -35,7 +34,7 @@ buffer_init (Buffer *buf)
 void
 buffer_free (Buffer *buf)
 {
-  for (size_t i = 0; i < buf->num_lines; i++)
+  for (int i = 0; i < buf->num_lines; i++)
     {
       free (buf->lines[i]);
     }
@@ -53,14 +52,14 @@ buffer_load_from_file (Buffer *buf, const char *filename)
       return -1;
     }
   // Read entire file into temp buffer
-  size_t temp_cap = 1024;
+  int temp_cap = 1024;
   char *temp = malloc (temp_cap);
   if (!temp)
     {
       fclose (fp);
       return -1;
     }
-  size_t pos = 0;
+  int pos = 0;
   int c;
   while ((c = fgetc (fp)) != EOF)
     {
@@ -93,12 +92,12 @@ buffer_load_from_file (Buffer *buf, const char *filename)
       return -1;                // Binary file or null bytes
     }
   // Split into lines
-  size_t start = 0;
-  for (size_t i = 0; i <= pos; i++)
+  int start = 0;
+  for (int i = 0; i <= pos; i++)
     {
       if (temp[i] == '\n' || temp[i] == '\0')
         {
-          size_t len = i - start;
+          int len = i - start;
           if (len > 0)
             {
               char *line = malloc (len + 1);
@@ -124,13 +123,13 @@ buffer_load_from_file (Buffer *buf, const char *filename)
   return 0;
 }
 int
-buffer_delete_char (Buffer *buf, size_t line, size_t col)
+buffer_delete_char (Buffer *buf, int line, int col)
 {
   if (line >= buf->num_lines)
     {
       return -1;
     }
-  size_t len = strlen (buf->lines[line]);
+  int len = strlen (buf->lines[line]);
   if (col < len)
     {
       // Delete char in line
@@ -153,8 +152,8 @@ buffer_delete_char (Buffer *buf, size_t line, size_t col)
       // Merge with next line
       char *current = buf->lines[line];
       char *next = buf->lines[line + 1];
-      size_t len1 = strlen (current);
-      size_t len2 = strlen (next);
+      int len1 = strlen (current);
+      int len2 = strlen (next);
       char *merged = malloc (len1 + len2 + 1);
       if (!merged)
         {
@@ -168,7 +167,7 @@ buffer_delete_char (Buffer *buf, size_t line, size_t col)
       free (buf->lines[line + 1]);
       buf->lines[line] = merged;
       // Shift remaining lines
-      for (size_t i = line + 1; i < buf->num_lines - 1; i++)
+      for (int i = line + 1; i < buf->num_lines - 1; i++)
         {
           buf->lines[i] = buf->lines[i + 1];
         }
@@ -177,13 +176,13 @@ buffer_delete_char (Buffer *buf, size_t line, size_t col)
   return 0;
 }
 int
-buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
-                     size_t end_line, size_t end_col)
+buffer_delete_range (Buffer *buf, int start_line, int start_col,
+                     int end_line, int end_col)
 {
   if (start_line > end_line
       || (start_line == end_line && start_col > end_col))
     {
-      size_t temp = start_line;
+      int temp = start_line;
       start_line = end_line;
       end_line = temp;
       temp = start_col;
@@ -194,7 +193,7 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
     {
       // Delete chars in line
       char *current = buf->lines[start_line];
-      size_t len = strlen (current);
+      int len = strlen (current);
       if (start_col >= len)
         {
           return -1;
@@ -203,7 +202,7 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
         {
           end_col = len;
         }
-      size_t new_len = len - (end_col - start_col);
+      int new_len = len - (end_col - start_col);
       char *new_str = malloc (new_len + 1);
       if (!new_str)
         {
@@ -233,7 +232,7 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
       buf->lines[start_line] = new_start;
       // Delete from start of end_line to end_col
       char *end_line_str = buf->lines[end_line];
-      size_t end_len = strlen (end_line_str);
+      int end_len = strlen (end_line_str);
       char *new_end = malloc (end_len - end_col + 1);
       if (!new_end)
         {
@@ -245,7 +244,7 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
       free (buf->lines[end_line]);
       buf->lines[end_line] = new_end;
       // Delete lines in between
-      for (size_t i = 0; i < end_line - start_line - 1; i++)
+      for (int i = 0; i < end_line - start_line - 1; i++)
         {
           if (buffer_delete_line (buf, start_line + 1) != 0)
             {
@@ -257,8 +256,8 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
       // Merge start and end
       char *s = buf->lines[start_line];
       char *e = buf->lines[start_line + 1];
-      size_t sl = strlen (s);
-      size_t el = strlen (e);
+      int sl = strlen (s);
+      int el = strlen (e);
       char *merged = malloc (sl + el + 1);
       if (!merged)
         {
@@ -272,7 +271,7 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
       free (buf->lines[start_line + 1]);
       buf->lines[start_line] = merged;
       // Shift remaining lines
-      for (size_t i = start_line + 1; i < buf->num_lines - 1; i++)
+      for (int i = start_line + 1; i < buf->num_lines - 1; i++)
         {
           buf->lines[i] = buf->lines[i + 1];
         }
@@ -280,13 +279,13 @@ buffer_delete_range (Buffer *buf, size_t start_line, size_t start_col,
     }
   return 0;
 }
-size_t
+int
 buffer_num_lines (const Buffer *buf)
 {
   return buf->num_lines;
 }
 const char *
-buffer_get_line (const Buffer *buf, size_t line)
+buffer_get_line (const Buffer *buf, int line)
 {
   if (line >= buf->num_lines)
     {
@@ -294,8 +293,8 @@ buffer_get_line (const Buffer *buf, size_t line)
     }
   return buf->lines[line];
 }
-size_t
-buffer_get_line_length (const Buffer *buf, size_t line)
+int
+buffer_get_line_length (const Buffer *buf, int line)
 {
   if (line >= buf->num_lines)
     {
@@ -304,14 +303,14 @@ buffer_get_line_length (const Buffer *buf, size_t line)
   return strlen (buf->lines[line]);
 }
 char
-buffer_get_char (const Buffer *buf, size_t line, size_t col)
+buffer_get_char (const Buffer *buf, int line, int col)
 {
   if (line >= buf->num_lines)
     {
       return '\0';
     }
   const char *ln = buf->lines[line];
-  size_t len = strlen (ln);
+  int len = strlen (ln);
   if (col >= len)
     {
       return '\0';
@@ -319,7 +318,7 @@ buffer_get_char (const Buffer *buf, size_t line, size_t col)
   return ln[col];
 }
 int
-buffer_insert_line (Buffer *buf, size_t line, const char *content)
+buffer_insert_line (Buffer *buf, int line, const char *content)
 {
   if (line > buf->num_lines)
     {
@@ -340,7 +339,7 @@ buffer_insert_line (Buffer *buf, size_t line, const char *content)
       buf->lines = new_lines;
     }
   // Shift lines down
-  for (size_t i = buf->num_lines; i > line; i--)
+  for (int i = buf->num_lines; i > line; i--)
     {
       buf->lines[i] = buf->lines[i - 1];
     }
@@ -349,7 +348,7 @@ buffer_insert_line (Buffer *buf, size_t line, const char *content)
   return 0;
 }
 int
-buffer_delete_line (Buffer *buf, size_t line)
+buffer_delete_line (Buffer *buf, int line)
 {
   if (line >= buf->num_lines)
     {
@@ -357,7 +356,7 @@ buffer_delete_line (Buffer *buf, size_t line)
     }
   free (buf->lines[line]);
   // Shift lines up
-  for (size_t i = line; i < buf->num_lines - 1; i++)
+  for (int i = line; i < buf->num_lines - 1; i++)
     {
       buf->lines[i] = buf->lines[i + 1];
     }
@@ -365,7 +364,7 @@ buffer_delete_line (Buffer *buf, size_t line)
   return 0;
 }
 int
-buffer_insert_char (Buffer *buf, size_t line, size_t col, char c)
+buffer_insert_char (Buffer *buf, int line, int col, char c)
 {
   if (line >= buf->num_lines)
     {
@@ -375,7 +374,6 @@ buffer_insert_char (Buffer *buf, size_t line, size_t col, char c)
     {
       // Split line at col
       char *ln = buf->lines[line];
-      size_t len = strlen (ln);
       char *before = malloc (col + 1);
       if (!before)
         {
@@ -399,7 +397,7 @@ buffer_insert_char (Buffer *buf, size_t line, size_t col, char c)
     {
       // Insert char
       char *ln = buf->lines[line];
-      size_t len = strlen (ln);
+      int len = strlen (ln);
       if (col > len)
         {
           col = len;
@@ -420,15 +418,15 @@ buffer_insert_char (Buffer *buf, size_t line, size_t col, char c)
   return 0;
 }
 int
-buffer_insert_text (Buffer *buf, size_t line, size_t col, const char *text)
+buffer_insert_text (Buffer *buf, int line, int col, const char *text)
 {
   if (line >= buf->num_lines)
     {
       return -1;
     }
   const char *p = text;
-  size_t current_line = line;
-  size_t current_col = col;
+  int current_line = line;
+  int current_col = col;
   while (*p)
     {
       if (*p == '\n')
@@ -450,9 +448,9 @@ buffer_insert_text (Buffer *buf, size_t line, size_t col, const char *text)
             {
               end++;
             }
-          size_t len = end - p;
+          int len = end - p;
           char *ln = buf->lines[current_line];
-          size_t ln_len = strlen (ln);
+          int ln_len = strlen (ln);
           if (current_col > ln_len)
             {
               current_col = ln_len;
@@ -484,7 +482,7 @@ buffer_save_to_file (const Buffer *buf, const char *filename)
     {
       return -1;
     }
-  for (size_t i = 0; i < buf->num_lines; i++)
+  for (int i = 0; i < buf->num_lines; i++)
     {
       fputs (buf->lines[i], fp);
       if (i < buf->num_lines - 1)
@@ -504,21 +502,21 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
     {
       return;
     }
-  size_t replace_len = strlen (replace_str);
-  for (size_t i = 0; i < buf->num_lines; i++)
+  int replace_len = strlen (replace_str);
+  for (int i = 0; i < buf->num_lines; i++)
     {
       char *line = buf->lines[i];
-      size_t len = strlen (line);
+      int len = strlen (line);
       // Build new line
       char *new_line = NULL;
-      size_t new_cap = 0;
-      size_t used = 0;
-       size_t pos = 0;
+      int new_cap = 0;
+      int used = 0;
+       int pos = 0;
        regmatch_t match;
        while (regexec (&reg, line + pos, 1, &match, 0) == 0)
          {
             // Append before match
-            size_t before_len = (size_t) match.rm_so;
+            int before_len = (int) match.rm_so;
             if (used + before_len >= new_cap)
               {
                 new_cap = (new_cap == 0) ? 128 : new_cap * 2;
@@ -559,7 +557,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
             pos += match.rm_eo;
         }
       // Append rest
-      size_t rest_len = len - pos;
+      int rest_len = len - pos;
       if (used + rest_len >= new_cap)
         {
           new_cap = used + rest_len + 1;

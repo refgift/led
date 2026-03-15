@@ -59,7 +59,7 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->syntax_highlight = 0;
   if (ext)
     {
-      size_t len = strlen (ed->config.syntax.extensions);
+      int len = strlen (ed->config.syntax.extensions);
       char *list = malloc (len + 1);
       if (list)
         {
@@ -129,7 +129,7 @@ auto_save (Editor *ed)
 void
 editor_draw (WINDOW *win, Editor *ed)
 {
-  size_t dummy_y, dummy_x;
+  int dummy_y, dummy_x;
   draw_update (win, &ed->model, &ed->scroll_row, &ed->scroll_col,
                ed->cursor_line, ed->cursor_col, ed->show_line_numbers,
                ed->syntax_highlight, ed->search_mode, ed->search_buffer,

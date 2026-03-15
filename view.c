@@ -36,9 +36,9 @@ is_reserved_word (const char *word, const char *list)
   free (dup);
   return 0;
 }
-// Calculate the number of digits in a size_t number (for line numbers)
+// Calculate the number of digits in a int number (for line numbers)
 static int
-calculate_digits (size_t n)
+calculate_digits (int n)
 {
   if (n == 0)
     return 1;
@@ -53,11 +53,11 @@ calculate_digits (size_t n)
 }
 // Compute the visual column for a given logical position in a line
 static int
-visual_column (const char *line, size_t len, size_t logical_pos,
+visual_column (const char *line, int len, int logical_pos,
                int tab_width)
 {
   int vis = 0;
-  for (size_t i = 0; i < logical_pos && i < len; i++)
+  for (int i = 0; i < logical_pos && i < len; i++)
     {
       if (line[i] == '\t')
         {
@@ -75,7 +75,7 @@ visual_column (const char *line, size_t len, size_t logical_pos,
 // Caller must free the returned array.
 // highlight_pair: 1 to disable, else enable
 int *
-compute_line_colors (const char *full_line, size_t line_len,
+compute_line_colors (const char *full_line, int line_len,
                      int highlight_pair, EditorConfig *config)
 {
   if (highlight_pair == 1 || line_len > 10000)
@@ -86,7 +86,7 @@ compute_line_colors (const char *full_line, size_t line_len,
   if (!colors)
     return NULL;
   // Initialize all to normal color (1)
-  for (size_t i = 0; i < line_len; i++)
+  for (int i = 0; i < line_len; i++)
     {
       colors[i] = 1;
     }
@@ -95,7 +95,7 @@ compute_line_colors (const char *full_line, size_t line_len,
   // Parse paired keywords into array
   KeywordPair pairs[10];
   int num_pairs = 0;
-  if (config->syntax.paired_keywords)
+  if (strlen(config->syntax.paired_keywords) >0 )
     {
       char *dup_pk = malloc (strlen (config->syntax.paired_keywords) + 1);
       if (dup_pk)
@@ -109,12 +109,12 @@ compute_line_colors (const char *full_line, size_t line_len,
                 {
                   *dash = '\0';
                   strncpy (pairs[num_pairs].open, token,
-                           sizeof (pairs[num_pairs].open) - 1);
-                  pairs[num_pairs].open[sizeof (pairs[num_pairs].open) - 1] =
+                           strlen (pairs[num_pairs].open) - 1);
+                  pairs[num_pairs].open[strlen (pairs[num_pairs].open) - 1] =
                     '\0';
                   strncpy (pairs[num_pairs].close, dash + 1,
-                           sizeof (pairs[num_pairs].close) - 1);
-                  pairs[num_pairs].close[sizeof (pairs[num_pairs].close) -
+                           strlen (pairs[num_pairs].close) - 1);
+                  pairs[num_pairs].close[strlen (pairs[num_pairs].close) -
                                          1] = '\0';
                   num_pairs++;
                 }
@@ -130,10 +130,10 @@ compute_line_colors (const char *full_line, size_t line_len,
   int kw_stack[100];
   int kw_top = 0;
   int kw_level = 1;
-  size_t word_start = 0;
+  int word_start = 0;
   int in_word = 0;
   int word_count = 0;
-  for (size_t i = 0; i < line_len; i++)
+  for (int i = 0; i < line_len; i++)
     {
       char c = full_line[i];
       // Handle meta symbols (braces, etc.)
@@ -191,7 +191,7 @@ compute_line_colors (const char *full_line, size_t line_len,
                   in_word = 0;
                   continue;     // Skip if too many words
                 }
-              size_t wlen = i - word_start;
+              int wlen = i - word_start;
               char *word = malloc (wlen + 1);
               if (word)
                 {
@@ -207,7 +207,7 @@ compute_line_colors (const char *full_line, size_t line_len,
                             kw_stack[kw_top++] = kw_level;
                           int lvl = kw_level;
                           int color = 3 + (lvl > 4 ? 4 : lvl);
-                          for (size_t j = word_start; j < i; j++)
+                          for (int j = word_start; j < i; j++)
                             colors[j] = color;
                           kw_level++;
                           colored = 1;
@@ -218,7 +218,7 @@ compute_line_colors (const char *full_line, size_t line_len,
                             {
                               int lvl = kw_stack[--kw_top];
                               int color = 3 + (lvl > 4 ? 4 : lvl);
-                              for (size_t j = word_start; j < i; j++)
+                              for (int j = word_start; j < i; j++)
                                 colors[j] = color;
                             }
                           kw_level = (kw_level > 1) ? kw_level - 1 : 1;
@@ -230,7 +230,7 @@ compute_line_colors (const char *full_line, size_t line_len,
                       && is_reserved_word (word,
                                            config->syntax.reserved_words))
                     {
-                      for (size_t j = word_start; j < i; j++)
+                      for (int j = word_start; j < i; j++)
                         colors[j] = 8;
                     }
                   free (word);
@@ -244,7 +244,7 @@ compute_line_colors (const char *full_line, size_t line_len,
     {
       if (word_count++ <= 100)
         {
-          size_t wlen = line_len - word_start;
+          int wlen = line_len - word_start;
           char *word = malloc (wlen + 1);
           if (word)
             {
@@ -259,7 +259,7 @@ compute_line_colors (const char *full_line, size_t line_len,
                         kw_stack[kw_top++] = kw_level;
                       int lvl = kw_level;
                       int color = 3 + (lvl > 4 ? 4 : lvl);
-                      for (size_t j = word_start; j < line_len; j++)
+                      for (int j = word_start; j < line_len; j++)
                         colors[j] = color;
                       kw_level++;
                       colored = 1;
@@ -270,7 +270,7 @@ compute_line_colors (const char *full_line, size_t line_len,
                         {
                           int lvl = kw_stack[--kw_top];
                           int color = 3 + (lvl > 4 ? 4 : lvl);
-                          for (size_t j = word_start; j < line_len; j++)
+                          for (int j = word_start; j < line_len; j++)
                             colors[j] = color;
                         }
                       kw_level = (kw_level > 1) ? kw_level - 1 : 1;
@@ -280,7 +280,7 @@ compute_line_colors (const char *full_line, size_t line_len,
               if (!colored
                   && is_reserved_word (word, config->syntax.reserved_words))
                 {
-                  for (size_t j = word_start; j < line_len; j++)
+                  for (int j = word_start; j < line_len; j++)
                     colors[j] = 8;
                 }
               free (word);
@@ -291,16 +291,16 @@ compute_line_colors (const char *full_line, size_t line_len,
 }
 // Print a highlighted substring of a line
 static void
-print_highlighted (int y, int x, const char *full_line, size_t line_len,
-                   size_t start, size_t len, int highlight_pair,
+print_highlighted (int y, int x, const char *full_line, int line_len,
+                   int start, int len, int highlight_pair,
                    EditorConfig *config)
 {
   int *colors =
     compute_line_colors (full_line, line_len, highlight_pair, config);
   // Compute expanded length
-  size_t expanded_len = 0;
+  int expanded_len = 0;
   int current_vis = 0;
-  for (size_t i = start; i < start + len && i < line_len; i++)
+  for (int i = start; i < start + len && i < line_len; i++)
     {
       if (full_line[i] == '\t')
         {
@@ -326,9 +326,9 @@ print_highlighted (int y, int x, const char *full_line, size_t line_len,
                 &full_line[start]);
       return;
     }
-  size_t exp_idx = 0;
+  int exp_idx = 0;
   current_vis = 0;
-  for (size_t i = start; i < start + len && i < line_len; i++)
+  for (int i = start; i < start + len && i < line_len; i++)
     {
       if (full_line[i] == '\t')
         {
@@ -364,7 +364,7 @@ print_highlighted (int y, int x, const char *full_line, size_t line_len,
       free (expanded);
       return;
     }
-  size_t log_idx = start;
+  int log_idx = start;
   exp_idx = 0;
   current_vis = 0;
   while (log_idx < start + len && log_idx < line_len)
@@ -390,7 +390,7 @@ print_highlighted (int y, int x, const char *full_line, size_t line_len,
     }
   // Print
   int current_x = x;
-  for (size_t i = 0; i < expanded_len; i++)
+  for (int i = 0; i < expanded_len; i++)
     {
       if (current_x >= COLS)
         break;
@@ -405,7 +405,7 @@ print_highlighted (int y, int x, const char *full_line, size_t line_len,
 // Function to handle tab insertion
 // Inserts spaces or a tab character at the cursor position based on config
 void
-handle_tab_key (Buffer *buf, size_t cursor_line, size_t cursor_col,
+handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
                 EditorConfig *config)
 {
   if (!config || !buf)
@@ -414,7 +414,7 @@ handle_tab_key (Buffer *buf, size_t cursor_line, size_t cursor_col,
     {
       // Insert spaces to reach the next tab stop
       const char *line = buffer_get_line (buf, cursor_line);
-      size_t line_len = strlen (line);
+      int line_len = strlen (line);
       int current_vis =
         visual_column (line, line_len, cursor_col, config->display.tab_width);
       int spaces_to_insert =
@@ -436,10 +436,10 @@ handle_tab_key (Buffer *buf, size_t cursor_line, size_t cursor_col,
 }
 // Draw the initial editor view
 void
-draw_initial (WINDOW *win, Buffer *buf, size_t *scroll_row,
-              size_t *scroll_col, size_t cursor_line, size_t cursor_col,
+draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
+              int *scroll_col, int cursor_line, int cursor_col,
               int show_line_numbers, int syntax_highlight,
-              size_t *cursor_screen_y, size_t *cursor_screen_x,
+              int *cursor_screen_y, int *cursor_screen_x,
               EditorConfig *config)
 {
   clear ();
@@ -449,20 +449,20 @@ draw_initial (WINDOW *win, Buffer *buf, size_t *scroll_row,
   int max_lines = (LINES > 2) ? LINES - 2 : 0;
   for (int i = 0; i < max_lines; i++)
     {
-      size_t line_idx = *scroll_row + (size_t) i;
+      int line_idx = *scroll_row + (int) i;
       if (line_idx >= buffer_num_lines (buf))
         break;
       if (show_line_numbers)
         {
-          mvprintw (1 + i, 1, "%*zu ", num_digits, line_idx + 1);
+          mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
         }
       const char *line = buffer_get_line (buf, line_idx);
-      size_t line_len = strlen (line);
-      size_t start_col = *scroll_col;
+      int line_len = strlen (line);
+      int start_col = *scroll_col;
       if (start_col < line_len)
         {
-          size_t print_len = line_len - start_col;
-          size_t max_print = (size_t) (COLS - 2 - num_width);
+          int print_len = line_len - start_col;
+          int max_print = (int) (COLS - 2 - num_width);
           if (print_len > max_print)
             print_len = max_print;
           print_highlighted (1 + i, 1 + num_width, line, line_len, start_col,
@@ -470,41 +470,41 @@ draw_initial (WINDOW *win, Buffer *buf, size_t *scroll_row,
         }
     }
   // Calculate cursor screen position
-  size_t y_diff =
+  int y_diff =
     (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
   int screen_y = 1 + (int) y_diff;
   const char *line = buffer_get_line (buf, cursor_line);
-  size_t line_len = strlen (line);
+  int line_len = strlen (line);
   int vis_scroll =
     visual_column (line, line_len, *scroll_col, config->display.tab_width);
   int vis_cursor =
     visual_column (line, line_len, cursor_col, config->display.tab_width);
-  size_t x_diff =
-    (vis_cursor >= vis_scroll) ? (size_t) (vis_cursor - vis_scroll) : 0;
+  int x_diff =
+    (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   int screen_x = 1 + num_width + (int) x_diff;
   // Clamp to screen bounds
   if (screen_x < 1 + num_width)
     screen_x = 1 + num_width;
   if (screen_x > COLS - 1)
     screen_x = COLS - 1;
-  *cursor_screen_y = (size_t) screen_y;
-  *cursor_screen_x = (size_t) screen_x;
+  *cursor_screen_y = (int) screen_y;
+  *cursor_screen_x = (int) screen_x;
   move (screen_y, screen_x);
   refresh ();
 }
 // Draw an updated editor view (with scrolling, selection, status bar)
 void
-draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
-             size_t cursor_line, size_t cursor_col, int show_line_numbers,
+draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
+             int cursor_line, int cursor_col, int show_line_numbers,
              int syntax_highlight, int search_mode, char *search_buffer,
-             size_t selection_start_line, size_t selection_start_col,
-             size_t selection_end_line, size_t selection_end_col,
-             int selection_active, size_t *cursor_screen_y,
-             size_t *cursor_screen_x, int replace_step, char *replace_buffer,
+             int selection_start_line, int selection_start_col,
+             int selection_end_line, int selection_end_col,
+             int selection_active, int *cursor_screen_y,
+             int *cursor_screen_x, int replace_step, char *replace_buffer,
              EditorConfig *config, Editor *ed)
 {
   // Adjust scroll to keep cursor visible
-  size_t max_lines = (LINES > 2) ? LINES - 2 : 0;
+  int max_lines = (LINES > 2) ? LINES - 2 : 0;
   if (cursor_line < *scroll_row)
     {
       *scroll_row = cursor_line;
@@ -526,20 +526,20 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
   int num_width = show_line_numbers ? num_digits + 1 : 0;
   for (int i = 0; i < max_lines; i++)
     {
-      size_t line_idx = *scroll_row + (size_t) i;
+      int line_idx = *scroll_row + (int) i;
       if (line_idx >= buffer_num_lines (buf))
         break;
       if (show_line_numbers)
         {
-          mvprintw (1 + i, 1, "%*zu ", num_digits, line_idx + 1);
+          mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
         }
       const char *line = buffer_get_line (buf, line_idx);
-      size_t len = strlen (line);
-      size_t pos = *scroll_col;
+      int len = strlen (line);
+      int pos = *scroll_col;
       int x = 1 + num_width;
       // Handle selection
-      size_t sel_start = len;
-      size_t sel_end = len;
+      int sel_start = len;
+      int sel_end = len;
       if (selection_active && line_idx >= selection_start_line
           && line_idx <= selection_end_line)
         {
@@ -551,9 +551,9 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
       // Print before selection
       if (pos < sel_start)
         {
-          size_t end = (sel_start < len) ? sel_start : len;
-          size_t print_len = end - pos;
-          size_t max_print = (size_t) (COLS - 2 - num_width);
+          int end = (sel_start < len) ? sel_start : len;
+          int print_len = end - pos;
+          int max_print = (int) (COLS - 2 - num_width);
           if (print_len > max_print)
             print_len = max_print;
           print_highlighted (1 + i, x, line, len, pos, print_len,
@@ -564,10 +564,10 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
       // Print selection
       if (pos < sel_end)
         {
-          size_t end = sel_end;
-          size_t print_len = end - pos;
-          size_t max_print =
-            (size_t) (COLS - 2 - num_width - (x - 1 - num_width));
+          int end = sel_end;
+          int print_len = end - pos;
+          int max_print =
+            (int) (COLS - 2 - num_width - (x - 1 - num_width));
           if (print_len > max_print)
             print_len = max_print;
           if (syntax_highlight)
@@ -581,9 +581,9 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
       // Print after selection
       if (pos < len)
         {
-          size_t print_len = len - pos;
-          size_t max_print =
-            (size_t) (COLS - 2 - num_width - (x - 1 - num_width));
+          int print_len = len - pos;
+          int max_print =
+            (int) (COLS - 2 - num_width - (x - 1 - num_width));
           if (print_len > max_print)
             print_len = max_print;
           print_highlighted (1 + i, x, line, len, pos, print_len,
@@ -593,26 +593,26 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
   // Status bar
   char status_line[COLS + 1];
   // Temporary message prefix
-  char message_prefix[256] = "";
+  char message_prefix[COLS] = {};
   if (ed && ed->status_message[0]
       && (time (NULL) - ed->status_message_time) < 5)
     {
-      snprintf (message_prefix, sizeof (message_prefix), "%s | ",
+      snprintf (message_prefix, strlen (message_prefix), "%s | ",
                 ed->status_message);
     }
   if (replace_step == 1)
     {
-      snprintf (status_line, sizeof (status_line), "Replace search: %s",
+      snprintf (status_line, strlen (status_line), "Replace search: %s",
                 search_buffer ? search_buffer : "");
     }
   else if (replace_step == 2)
     {
-      snprintf (status_line, sizeof (status_line), "Replace with: %s",
+      snprintf (status_line, strlen (status_line), "Replace with: %s",
                 replace_buffer ? replace_buffer : "");
     }
   else if (search_mode)
     {
-      snprintf (status_line, sizeof (status_line), "Search: %s",
+      snprintf (status_line, strlen (status_line), "Search: %s",
                 search_buffer ? search_buffer : "");
     }
   else
@@ -625,27 +625,27 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           struct tm *tm_info = localtime (&now);
           if (config->statusbar.time_format == 24)
             {
-              strftime (time_str, sizeof (time_str), "%H:%M", tm_info);
+              strftime (time_str, strlen (time_str), "%H:%M", tm_info);
             }
           else
             {
-              strftime (time_str, sizeof (time_str), "%I:%M%p", tm_info);
+              strftime (time_str, strlen (time_str), "%I:%M%p", tm_info);
             }
         }
       char version_str[32] = "";
       if (config && config->statusbar.show_version)
         {
-          snprintf (version_str, sizeof (version_str), "%s ", VERSION);
+          snprintf (version_str, strlen (version_str), "%s ", VERSION);
         }
       char pos_str[64];
-      snprintf (pos_str, sizeof (pos_str), "Line %zu/%zu Col %zu",
+      snprintf (pos_str, strlen (pos_str), "Line %u/%u Col %u",
                 cursor_line + 1, buffer_num_lines (buf), cursor_col + 1);
       char filename_display[256] = "";
       if (ed && ed->filename)
         {
           const char *base = strrchr (ed->filename, '/');
           base = base ? base + 1 : ed->filename;
-          snprintf (filename_display, sizeof (filename_display), "%s%s", base,
+          snprintf (filename_display, strlen (filename_display), "%s%s", base,
                     ed->file_modified ? "*" : "");
         }
       // Assemble status line
@@ -657,7 +657,7 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           int start_pos = (COLS - total_len) / 2;
           if (start_pos < 1)
             start_pos = 1;
-          snprintf (status_line, sizeof (status_line), "%*s%s %s %s %s",
+          snprintf (status_line, strlen (status_line), "%*s%s %s %s %s",
                     start_pos - 1, "", version_str, filename_display, pos_str,
                     time_str);
         }
@@ -672,7 +672,7 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           char right[COLS / 2 + 1];
           if (left_space > 0)
             {
-              snprintf (left, sizeof (left), "%*s%s",
+              snprintf (left, strlen (left), "%*s%s",
                         left_space - (int) strlen (version_str), "",
                         version_str);
             }
@@ -682,14 +682,14 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
             }
           if (right_space > 0)
             {
-              snprintf (right, sizeof (right), "%s%*s", time_str,
+              snprintf (right, strlen (right), "%s%*s", time_str,
                         right_space - (int) strlen (time_str), "");
             }
           else
             {
               right[0] = '\0';
             }
-          snprintf (status_line, sizeof (status_line), "%s%s %s%s", left,
+          snprintf (status_line, strlen (status_line), "%s%s %s%s", left,
                     filename_display, pos_str, right);
         }
     }
@@ -697,24 +697,24 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
   if (message_prefix[0])
     {
       char temp[COLS + 1];
-      snprintf (temp, sizeof (temp), "%s%s", message_prefix, status_line);
-      strncpy (status_line, temp, sizeof (status_line) - 1);
-      status_line[sizeof (status_line) - 1] = '\0';
+      snprintf (temp, strlen (temp), "%s%s", message_prefix, status_line);
+      strncpy (status_line, temp, strlen (status_line) - 1);
+      status_line[strlen (status_line) - 1] = '\0';
     }
   status_line[COLS - 1] = '\0';
   mvprintw (LINES - 1, 1, "%s", status_line);
   // Cursor position
-  size_t y_diff =
+  int y_diff =
     (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
   int screen_y = 1 + (int) y_diff;
   const char *line = buffer_get_line (buf, cursor_line);
-  size_t line_len = strlen (line);
+  int line_len = strlen (line);
   int vis_scroll =
     visual_column (line, line_len, *scroll_col, config->display.tab_width);
   int vis_cursor =
     visual_column (line, line_len, cursor_col, config->display.tab_width);
-  size_t x_diff =
-    (vis_cursor >= vis_scroll) ? (size_t) (vis_cursor - vis_scroll) : 0;
+  int x_diff =
+    (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   int screen_x = 1 + num_width + (int) x_diff;
   // Clamp cursor
   if (screen_y < 1)
@@ -725,8 +725,8 @@ draw_update (WINDOW *win, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
     screen_x = 1 + num_width;
   if (screen_x > COLS - 1)
     screen_x = COLS - 1;
-  *cursor_screen_y = (size_t) screen_y;
-  *cursor_screen_x = (size_t) screen_x;
+  *cursor_screen_y = (int) screen_y;
+  *cursor_screen_x = (int) screen_x;
   move (screen_y, screen_x);
   refresh ();
 }

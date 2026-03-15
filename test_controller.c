@@ -8,13 +8,13 @@
 #include "view.h"
 #include "config.h"
 
-void simulate_input (Buffer * buf, size_t *scroll_row, size_t *scroll_col,
-                     size_t *cursor_line, size_t *cursor_col,
+void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
+                     int *cursor_line, int *cursor_col,
                      int *show_line_numbers, char *search_buffer,
                      int *search_mode, char **clipboard, const char *filename,
-                     size_t *selection_start_line,
-                     size_t *selection_start_col, size_t *selection_end_line,
-                     size_t *selection_end_col, int *selection_active,
+                     int *selection_start_line,
+                     int *selection_start_col, int *selection_end_line,
+                     int *selection_end_col, int *selection_active,
                      const char *inputs);
 
 void test_buffer_manipulation ();
@@ -148,7 +148,7 @@ test_search_functionality ()
   buffer_insert_line (&buf, 0, "hello world");
   buffer_insert_line (&buf, 1, "goodbye world");
 
-  size_t cursor_line = 0, cursor_col = 0;
+  int cursor_line = 0, cursor_col = 0;
 
   // Test search
   search_next (&buf, &cursor_line, &cursor_col, "world");
@@ -184,13 +184,13 @@ test_search_functionality ()
 //     buffer_init(&buf);
 //     buffer_insert_line(&buf, 0, "hello world");
 //     buffer_insert_line(&buf, 1, "hello again");
-//     size_t scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 0;
+//     int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 0;
 //     int show_line_numbers = 0;
 //     char search_buffer[256] = {0};
 //     int search_mode = 0;
 //     char* clipboard = NULL;
 //     const char* filename = NULL;
-//     size_t sel_start_l = 0, sel_start_c = 0, sel_end_l = 0, sel_end_c = 0;
+//     int sel_start_l = 0, sel_start_c = 0, sel_end_l = 0, sel_end_c = 0;
 //     int sel_active = 0;
 
 //     // Test search mode

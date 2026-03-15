@@ -6,8 +6,8 @@
 
 typedef struct {
     bool is_insert;
-    size_t line;
-    size_t col;
+    int line;
+    int col;
     char ch;
 } Change;
 
@@ -21,11 +21,11 @@ extern UndoStack undo_stack;
 extern UndoStack redo_stack;
 
 void init_undo(void);
-void push_undo(bool is_insert, size_t line, size_t col, char ch);
-void push_redo(bool is_insert, size_t line, size_t col, char ch);
-void undo_operation(Buffer* buf, size_t* cursor_line, size_t* cursor_col);
-void redo_operation(Buffer* buf, size_t* cursor_line, size_t* cursor_col);
+void push_undo(bool is_insert, int line, int col, char ch);
+void push_redo(bool is_insert, int line, int col, char ch);
+void undo_operation(Buffer* buf, int* cursor_line, int* cursor_col);
+void redo_operation(Buffer* buf, int* cursor_line, int* cursor_col);
 void clear_redo(void);
 void free_undo(void);
-void search_next(Buffer* buf, size_t* cursor_line, size_t* cursor_col, const char* pattern);
-int handle_input(int ch, Buffer* buf, size_t* scroll_row, size_t* scroll_col, size_t* cursor_line, size_t* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename, size_t* selection_start_line, size_t* selection_start_col, size_t* selection_end_line, size_t* selection_end_col, int* selection_active, Editor *ed);
+void search_next(Buffer* buf, int* cursor_line, int* cursor_col, const char* pattern);
+int handle_input(int ch, Buffer* buf, int* scroll_row, int* scroll_col, int* cursor_line, int* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename, int* selection_start_line, int* selection_start_col, int* selection_end_line, int* selection_end_col, int* selection_active, Editor *ed);

@@ -12,7 +12,7 @@ my_strdup (const char *s)
 {
   if (!s)
     return NULL;
-  size_t len = strlen (s);
+  int len = strlen (s);
   char *d = malloc (len + 1);
   if (d)
     memcpy (d, s, len + 1);
@@ -24,7 +24,7 @@ init_undo (void)
   // Already initialized statically
 }
 void
-push_undo (bool is_insert, size_t line, size_t col, char ch)
+push_undo (bool is_insert, int line, int col, char ch)
 {
   if (undo_stack.count >= undo_stack.capacity)
     {
@@ -42,7 +42,7 @@ push_undo (bool is_insert, size_t line, size_t col, char ch)
   undo_stack.count++;
 }
 void
-push_redo (bool is_insert, size_t line, size_t col, char ch)
+push_redo (bool is_insert, int line, int col, char ch)
 {
   if (redo_stack.count >= redo_stack.capacity)
     {
@@ -60,7 +60,7 @@ push_redo (bool is_insert, size_t line, size_t col, char ch)
   redo_stack.count++;
 }
 void
-undo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
+undo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
 {
   if (undo_stack.count > 0)
     {
@@ -84,7 +84,7 @@ undo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
     }
 }
 void
-redo_operation (Buffer *buf, size_t *cursor_line, size_t *cursor_col)
+redo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
 {
   if (redo_stack.count > 0)
     {
@@ -125,7 +125,7 @@ free_undo (void)
   redo_stack.capacity = 0;
 }
 void
-search_next (Buffer *buf, size_t *cursor_line, size_t *cursor_col,
+search_next (Buffer *buf, int *cursor_line, int *cursor_col,
              const char *pattern)
 {
   regex_t regex;
@@ -133,17 +133,17 @@ search_next (Buffer *buf, size_t *cursor_line, size_t *cursor_col,
     return;
   int found = 0;
   int clamped = 0;
-  for (size_t l = *cursor_line; l < buffer_num_lines (buf) && !found && (!clamped || l == *cursor_line); l++)
+  for (int l = *cursor_line; l < buffer_num_lines (buf) && !found && (!clamped || l == *cursor_line); l++)
     {
        const char *line = buffer_get_line (buf, l);
-       size_t len = strlen (line);
+       int len = strlen (line);
        if (l == *cursor_line && *cursor_col > len)
          {
            *cursor_col = len;
            clamped = 1;
          }
        regmatch_t match;
-       size_t pos = (l == *cursor_line) ? *cursor_col : 0;
+       int pos = (l == *cursor_line) ? *cursor_col : 0;
       int line_flags = (pos > 0) ? REG_NOTBOL : 0;
       while (regexec (&regex, line + pos, 1, &match, line_flags) == 0)
         {
@@ -162,14 +162,16 @@ search_next (Buffer *buf, size_t *cursor_line, size_t *cursor_col,
   regfree (&regex);
 }
 int
-handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
-              size_t *cursor_line, size_t *cursor_col, int *show_line_numbers,
+handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
+              int *cursor_line, int *cursor_col, int *show_line_numbers,
               char *search_buffer, int *search_mode, char **clipboard,
-              const char *filename, size_t *selection_start_line,
-              size_t *selection_start_col, size_t *selection_end_line,
-              size_t *selection_end_col, int *selection_active, Editor *ed)
+              const char *filename, int *selection_start_line,
+              int *selection_start_col, int *selection_end_line,
+              int *selection_end_col, int *selection_active, Editor *ed)
 {
   int error_occurred = 0;
+  if (show_line_numbers==NULL) {}
+  if (ed==NULL) {}
   if (*search_mode)
     {
       if (ch == '\n' || ch == 13)
@@ -188,7 +190,7 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
         }
       else if (ch >= 32 && ch <= 126)
         {
-          size_t len = strlen (search_buffer);
+          int len = strlen (search_buffer);
           if (len < 255)
             {
               search_buffer[len] = (char) ch;
@@ -197,7 +199,7 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
         }
       else if (ch == 127 || ch == 8)
         {
-          size_t len = strlen (search_buffer);
+          int len = strlen (search_buffer);
           if (len > 0)
             search_buffer[len - 1] = 0;
         }
@@ -271,19 +273,19 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
             }
           break;
         case KEY_PPAGE:
-          if (*scroll_row >= (size_t) LINES - 2)
+          if (*scroll_row >= (int) LINES - 2)
             *scroll_row -= LINES - 2;
           else
             *scroll_row = 0;
-          if (*cursor_line > *scroll_row + (size_t) LINES - 3)
+          if (*cursor_line > *scroll_row + (int) LINES - 3)
             *cursor_line = *scroll_row + LINES - 3;
           break;
         case KEY_NPAGE:
           *scroll_row += LINES - 2;
-          if (*scroll_row > buffer_num_lines (buf) - ((size_t) LINES - 2))
+          if (*scroll_row > buffer_num_lines (buf) - ((int) LINES - 2))
             *scroll_row =
               buffer_num_lines (buf) >
-              (size_t) LINES - 2 ? buffer_num_lines (buf) - (LINES - 2) : 0;
+              (int) LINES - 2 ? buffer_num_lines (buf) - (LINES - 2) : 0;
           if (*cursor_line < *scroll_row)
             *cursor_line = *scroll_row;
           break;
@@ -307,7 +309,7 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
             }
           else if (*cursor_line > 0)
             {
-              size_t prev_len =
+              int prev_len =
                 buffer_get_line_length (buf, *cursor_line - 1);
               if (buffer_delete_char (buf, *cursor_line - 1, prev_len) == 0)
                 {
@@ -367,12 +369,12 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           if (*selection_active)
             {
               // normalize
-              size_t sl = *selection_start_line, sc =
+              int sl = *selection_start_line, sc =
                 *selection_start_col, el = *selection_end_line, ec =
                 *selection_end_col;
               if (sl > el || (sl == el && sc > ec))
                 {
-                  size_t t = sl;
+                  int t = sl;
                   sl = el;
                   el = t;
                   t = sc;
@@ -380,25 +382,25 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
                   ec = t;
                 }
               // build string
-              size_t total = 0;
-              for (size_t l = sl; l <= el; l++)
+              int total = 0;
+              for (int l = sl; l <= el; l++)
                 {
                   const char *line = buffer_get_line (buf, l);
-                  size_t len = strlen (line);
-                  size_t s = (l == sl) ? sc : 0;
-                  size_t e = (l == el) ? ec : len;
+                  int len = strlen (line);
+                  int s = (l == sl) ? sc : 0;
+                  int e = (l == el) ? ec : len;
                   total += e - s + (l < el ? 1 : 0);
                 }
               *clipboard = malloc (total + 1);
               if (*clipboard)
                 {
                   char *p = *clipboard;
-                  for (size_t l = sl; l <= el; l++)
+                  for (int l = sl; l <= el; l++)
                     {
                       const char *line = buffer_get_line (buf, l);
-                      size_t len = strlen (line);
-                      size_t s = (l == sl) ? sc : 0;
-                      size_t e = (l == el) ? ec : len;
+                      int len = strlen (line);
+                      int s = (l == sl) ? sc : 0;
+                      int e = (l == el) ? ec : len;
                       memcpy (p, &line[s], e - s);
                       p += e - s;
                       if (l < el)
@@ -418,12 +420,12 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
           if (*selection_active)
             {
               // normalize
-              size_t sl = *selection_start_line, sc =
+              int sl = *selection_start_line, sc =
                 *selection_start_col, el = *selection_end_line, ec =
                 *selection_end_col;
               if (sl > el || (sl == el && sc > ec))
                 {
-                  size_t t = sl;
+                  int t = sl;
                   sl = el;
                   el = t;
                   t = sc;
@@ -431,25 +433,25 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
                   ec = t;
                 }
               // build string
-              size_t total = 0;
-              for (size_t l = sl; l <= el; l++)
+              int total = 0;
+              for (int l = sl; l <= el; l++)
                 {
                   const char *line = buffer_get_line (buf, l);
-                  size_t len = strlen (line);
-                  size_t s = (l == sl) ? sc : 0;
-                  size_t e = (l == el) ? ec : len;
+                  int len = strlen (line);
+                  int s = (l == sl) ? sc : 0;
+                  int e = (l == el) ? ec : len;
                   total += e - s + (l < el ? 1 : 0);
                 }
               *clipboard = malloc (total + 1);
               if (*clipboard)
                 {
                   char *p = *clipboard;
-                  for (size_t l = sl; l <= el; l++)
+                  for (int l = sl; l <= el; l++)
                     {
                       const char *line = buffer_get_line (buf, l);
-                      size_t len = strlen (line);
-                      size_t s = (l == sl) ? sc : 0;
-                      size_t e = (l == el) ? ec : len;
+                      int len = strlen (line);
+                      int s = (l == sl) ? sc : 0;
+                      int e = (l == el) ? ec : len;
                       memcpy (p, &line[s], e - s);
                       p += e - s;
                       if (l < el)
@@ -581,15 +583,15 @@ handle_input (int ch, Buffer *buf, size_t *scroll_row, size_t *scroll_col,
   // Adjust scroll
   if (*cursor_line < *scroll_row)
     *scroll_row = *cursor_line;
-  else if (*cursor_line >= *scroll_row + (size_t) LINES - 2)
+  else if (*cursor_line >= *scroll_row + (int) LINES - 2)
     *scroll_row = *cursor_line - (LINES - 3);
   if (*cursor_col < *scroll_col)
     *scroll_col = *cursor_col;
-  else if (*cursor_col >= *scroll_col + (size_t) COLS - 2)
+  else if (*cursor_col >= *scroll_col + (int) COLS - 2)
     *scroll_col = *cursor_col - (COLS - 3);
-  if (*scroll_row > buffer_num_lines (buf) - ((size_t) LINES - 2))
+  if (*scroll_row > buffer_num_lines (buf) - ((int) LINES - 2))
     *scroll_row =
       buffer_num_lines (buf) >
-      (size_t) LINES - 2 ? buffer_num_lines (buf) - (LINES - 2) : 0;
+      (int) LINES - 2 ? buffer_num_lines (buf) - (LINES - 2) : 0;
   return error_occurred ? -1 : 0;
 }

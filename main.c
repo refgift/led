@@ -64,7 +64,7 @@ main (int argc, char *argv[])
                  ed.config.colors.meta_level4_bg);
       init_pair (8, ed.config.colors.reserved_words_fg,
                  ed.config.colors.reserved_words_bg);
-      size_t dummy_y, dummy_x;
+      int dummy_y, dummy_x;
       draw_initial (stdscr, &ed.model, &ed.scroll_row, &ed.scroll_col,
                     ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
                     ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
@@ -97,13 +97,13 @@ run_tests (Editor *ed)
   // Basic test output
   fprintf (stderr, "Hello World\n");
   // Model tests
-  size_t total_size = 0;
-  for (size_t i = 0; i < ed->model.num_lines; i++)
+  int total_size = 0;
+  for (int i = 0; i < ed->model.num_lines; i++)
     {
       total_size += buffer_get_line_length (&ed->model, i) + 1; // +1 for newline
     }
-  fprintf (stderr, "Model Test: Buffer size: %zu bytes\n", total_size);
-  fprintf (stderr, "Model Test: Number of lines: %zu\n", ed->model.num_lines);
+  fprintf (stderr, "Model Test: Buffer size: %u bytes\n", total_size);
+  fprintf (stderr, "Model Test: Number of lines: %u\n", ed->model.num_lines);
   // Config test
   fprintf (stderr, "Config Test: Syntax extensions: %s\n",
            ed->config.syntax.extensions);
@@ -114,13 +114,13 @@ run_tests (Editor *ed)
   for (int i = 0; fake_inputs[i] != 0; i++)
     {
       editor_handle_input (ed, fake_inputs[i]);
-      size_t new_size = 0;
-      for (size_t j = 0; j < ed->model.num_lines; j++)
+      int new_size = 0;
+      for (int j = 0; j < ed->model.num_lines; j++)
         {
           new_size += buffer_get_line_length (&ed->model, j) + 1;
         }
       fprintf (stderr,
-               "Test Controller %d: Input %c, Buffer size: %zu, Cursor: (%zu,%zu)\n",
+               "Test Controller %d: Input %c, Buffer size: %u, Cursor: (%u,%u)\n",
                i, fake_inputs[i], new_size, ed->cursor_line, ed->cursor_col);
     }
   fprintf (stderr, "Tests completed\n");
