@@ -109,12 +109,12 @@ compute_line_colors (const char *full_line, int line_len,
                 {
                   *dash = '\0';
                   strncpy (pairs[num_pairs].open, token,
-                           strlen (pairs[num_pairs].open) - 1);
-                  pairs[num_pairs].open[strlen (pairs[num_pairs].open) - 1] =
+                            sizeof (pairs[num_pairs].open) - 1);
+                  pairs[num_pairs].open[sizeof (pairs[num_pairs].open) - 1] =
                     '\0';
                   strncpy (pairs[num_pairs].close, dash + 1,
-                           strlen (pairs[num_pairs].close) - 1);
-                  pairs[num_pairs].close[strlen (pairs[num_pairs].close) -
+                            sizeof (pairs[num_pairs].close) - 1);
+                  pairs[num_pairs].close[sizeof (pairs[num_pairs].close) -
                                          1] = '\0';
                   num_pairs++;
                 }
