@@ -1,5 +1,6 @@
 # Known Issues and Warnings for led EditorHello
 ## Critical Warnings
+- **Replace**: CTRL-R disabled for this release.
 - **File Validation**: The editor now rejects files larger than 10MB or containing null bytes (binary files) to prevent crashes and display issues. If you encounter loading failures, check file size and type.
 - **Display Robustness**: Long lines (>10,000 chars) are rendered simply without highlighting for stability. Extremely large files may be slow to load.
 - **Legacy Issues**: Some edge cases with malformed content or unsupported file types may still cause issues, though crash prevention has been significantly improved.
