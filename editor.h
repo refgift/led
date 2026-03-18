@@ -47,3 +47,5 @@ void editor_init(Editor* ed, int argc, char* argv[]);
 void editor_draw(WINDOW* win, Editor* ed);
 void editor_handle_input(Editor* ed, int ch);
 void editor_cleanup(Editor* ed);
+void auto_save(Editor* ed);
+void set_status_message(Editor* ed, const char* message);

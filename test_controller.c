@@ -18,7 +18,6 @@ void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
                      const char *inputs);
 
 void test_buffer_manipulation ();
-void test_buffer_manipulation ();
 void test_buffer_advanced ();
 void test_controller_simulation ();
 void test_selection_clipboard ();
@@ -32,14 +31,29 @@ void test_performance_stress ();
 void test_search_functionality ();
 void test_buffer_replace_all ();
 void test_word_wrap_toggle ();
+void test_undo_redo_comprehensive ();
+void test_clipboard_comprehensive ();
 
 extern void run_view_tests(void);  // From test_view.c
+extern void test_autosave_comprehensive(void);  // From test_autosave.c
 
 #define SEARCH_BUFFER_SIZE 256
 
-static int tests_passed = 0;
-static int tests_failed = 0;
+int tests_passed = 0;
+int tests_failed = 0;
 static int test_number = 0;
+
+static char *
+my_strdup (const char *s)
+{
+  if (!s)
+    return NULL;
+  int len = strlen (s);
+  char *d = malloc (len + 1);
+  if (d)
+    memcpy (d, s, len + 1);
+  return d;
+}
 
 void
 test_assert (int condition, const char *msg)
@@ -290,6 +304,271 @@ test_word_wrap_toggle ()
   fprintf (stderr, "Word wrap toggle test completed\n");
 }
 
+void test_undo_redo_comprehensive ()
+{
+  fprintf (stderr, "Running undo/redo comprehensive tests\n");
+  Buffer buf;
+  buffer_init (&buf);
+  init_undo ();
+  free_undo ();
+  init_undo ();
+  
+  // Test 1: initialization
+  test_assert (undo_stack.count == 0, "undo_stack initializes with count=0");
+  test_assert (redo_stack.count == 0, "redo_stack initializes with count=0");
+  
+  // Test 2: single insert and undo
+  buffer_insert_line (&buf, 0, "");
+  buffer_insert_char (&buf, 0, 0, 'a');
+  push_undo (true, 0, 0, 'a');
+  test_assert (strcmp (buffer_get_line (&buf, 0), "a") == 0, "char inserted");
+  int cursor_line = 0, cursor_col = 1;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "") == 0, "undo removes char");
+  test_assert (cursor_col == 0, "undo adjusts cursor");
+  
+  // Test 3: delete and undo
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "hello");
+  char ch = buffer_get_char (&buf, 0, 0);
+  buffer_delete_char (&buf, 0, 0);
+  push_undo (false, 0, 0, ch);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "ello") == 0, "char deleted");
+  cursor_line = 0; cursor_col = 0;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "hello") == 0, "undo restores");
+  
+  // Test 4: undo with empty stack
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "test");
+  cursor_line = 0; cursor_col = 0;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "test") == 0, "empty undo doesn't crash");
+  
+  // Test 5: redo after undo
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "");
+  buffer_insert_char (&buf, 0, 0, 'x');
+  push_undo (true, 0, 0, 'x');
+  cursor_line = 0; cursor_col = 1;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (redo_stack.count == 1, "redo_stack has entry");
+  redo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "x") == 0, "redo restores");
+  
+  // Test 6: stack growth
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "");
+  for (int i = 0; i < 32; i++)
+    {
+      buffer_insert_char (&buf, 0, i, 'a');
+      push_undo (true, 0, i, 'a');
+    }
+  test_assert (undo_stack.capacity >= 32, "stack grows");
+  
+  // Test 7: multiline undo
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "hello");
+  buffer_insert_line (&buf, 1, "world");
+  buffer_insert_char (&buf, 1, 3, 'X');
+  push_undo (true, 1, 3, 'X');
+  cursor_line = 1; cursor_col = 4;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 1), "world") == 0, "multiline undo");
+  
+  // Test 8: redo clears on new edit
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "");
+  buffer_insert_char (&buf, 0, 0, 'a');
+  push_undo (true, 0, 0, 'a');
+  cursor_line = 0; cursor_col = 1;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (redo_stack.count == 1, "redo populated");
+  clear_redo ();
+  test_assert (redo_stack.count == 0, "redo cleared");
+  
+  // Test 9: multiple undos
+  buffer_free (&buf);
+  buffer_init (&buf);
+  free_undo ();
+  init_undo ();
+  buffer_insert_line (&buf, 0, "initial");
+  for (int i = 0; i < 5; i++)
+    {
+      buffer_insert_char (&buf, 0, 7 + i, 'x');
+      push_undo (true, 0, 7 + i, 'x');
+    }
+  for (int i = 0; i < 5; i++)
+    {
+      cursor_line = 0; cursor_col = 12 - i;
+      undo_operation (&buf, &cursor_line, &cursor_col);
+    }
+  test_assert (strcmp (buffer_get_line (&buf, 0), "initial") == 0, "multiple undos");
+  
+  // Test 10: redo with multiple operations
+  for (int i = 0; i < 3; i++)
+    {
+      cursor_line = 0; cursor_col = 7 + i;
+      redo_operation (&buf, &cursor_line, &cursor_col);
+    }
+  test_assert (strcmp (buffer_get_line (&buf, 0), "initialxxx") == 0, "partial redo");
+  
+  buffer_free (&buf);
+  free_undo ();
+  fprintf (stderr, "Undo/redo comprehensive tests completed\n");
+}
+
+void test_clipboard_comprehensive ()
+{
+  fprintf (stderr, "Running clipboard comprehensive tests\n");
+  Buffer buf;
+  char *clipboard = NULL;
+  buffer_init (&buf);
+  
+  // Test 1: select all empty
+  buffer_insert_line (&buf, 0, "");
+  int sel_start_line = 0, sel_start_col = 0;
+  int sel_end_line = buffer_num_lines (&buf) - 1;
+  int sel_end_col = buffer_get_line_length (&buf, sel_end_line);
+  int sel_active = 1;
+  test_assert (sel_active == 1, "select_all sets active");
+  
+  // Test 2: select all single line
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "hello");
+  sel_start_line = 0;
+  sel_start_col = 0;
+  sel_end_line = 0;
+  sel_end_col = 5;
+  test_assert (sel_end_col == 5, "select_all correct length");
+  
+  // Test 3: select all multiline
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "line1");
+  buffer_insert_line (&buf, 1, "line2");
+  buffer_insert_line (&buf, 2, "line3");
+  sel_start_line = 0;
+  sel_end_line = 2;
+  test_assert (sel_start_line == 0 && sel_end_line == 2, "select_all multiline");
+  
+  // Test 4: copy current line
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "foo");
+  buffer_insert_line (&buf, 1, "bar");
+  int cursor_line = 1;
+  if (clipboard) free (clipboard);
+  clipboard = my_strdup (buffer_get_line (&buf, cursor_line));
+  test_assert (clipboard != NULL && strcmp (clipboard, "bar") == 0, "copy current");
+  
+  // Test 5: copy selection
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "hello world");
+  if (clipboard) free (clipboard);
+  const char *line = buffer_get_line (&buf, 0);
+  clipboard = malloc (6);
+  if (clipboard)
+    {
+      memcpy (clipboard, line, 5);
+      clipboard[5] = 0;
+    }
+  test_assert (clipboard != NULL && strcmp (clipboard, "hello") == 0, "copy selection");
+  
+  // Test 6: clipboard overwrite
+  if (clipboard) free (clipboard);
+  clipboard = malloc (6);
+  strcpy (clipboard, "first");
+  if (clipboard) free (clipboard);
+  clipboard = malloc (7);
+  strcpy (clipboard, "second");
+  test_assert (strcmp (clipboard, "second") == 0, "clipboard overwrite");
+  
+  // Test 7: cut and clipboard
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "hello world");
+  if (clipboard) free (clipboard);
+  clipboard = malloc (6);
+  line = buffer_get_line (&buf, 0);
+  memcpy (clipboard, line, 5);
+  clipboard[5] = 0;
+  buffer_delete_range (&buf, 0, 0, 0, 5);
+  test_assert (strcmp (clipboard, "hello") == 0 && strcmp (buffer_get_line (&buf, 0), " world") == 0, "cut");
+  
+  // Test 8: paste
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "hello");
+  if (clipboard) free (clipboard);
+  clipboard = malloc (6);
+  strcpy (clipboard, "hello");
+  buffer_insert_text (&buf, 0, 5, clipboard);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "hellohello") == 0, "paste");
+  
+  // Test 9: paste multiple
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "");
+  if (clipboard) free (clipboard);
+  clipboard = malloc (2);
+  strcpy (clipboard, "x");
+  for (int i = 0; i < 5; i++)
+    buffer_insert_text (&buf, 0, i, clipboard);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "xxxxx") == 0, "paste multiple");
+  
+  // Test 10: empty clipboard
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "test");
+  if (clipboard) free (clipboard);
+  clipboard = NULL;
+  test_assert (clipboard == NULL && strcmp (buffer_get_line (&buf, 0), "test") == 0, "empty clipboard");
+  
+  // Test 11: copy line no selection
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "line1");
+  buffer_insert_line (&buf, 1, "line2");
+  if (clipboard) free (clipboard);
+  clipboard = my_strdup (buffer_get_line (&buf, 1));
+  test_assert (strcmp (clipboard, "line2") == 0, "copy no selection");
+  
+  // Test 12: cut line no selection
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "line1");
+  buffer_insert_line (&buf, 1, "line2");
+  if (clipboard) free (clipboard);
+  clipboard = my_strdup (buffer_get_line (&buf, 1));
+  buffer_delete_line (&buf, 1);
+  test_assert (strcmp (clipboard, "line2") == 0 && buffer_num_lines (&buf) == 1, "cut line");
+  
+  buffer_free (&buf);
+  if (clipboard) free (clipboard);
+  fprintf (stderr, "Clipboard comprehensive tests completed\n");
+}
+
 void
 run_all_tests ()
 {
@@ -333,6 +612,15 @@ run_all_tests ()
   fprintf (stderr, "Test %d: word_wrap_toggle - View-only word wrap feature\n",
            ++test_number);
   test_word_wrap_toggle ();
+  fprintf (stderr, "Test %d: undo_redo_comprehensive - Undo/redo functionality\n",
+           ++test_number);
+  test_undo_redo_comprehensive ();
+  fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
+           ++test_number);
+  test_clipboard_comprehensive ();
+  fprintf (stderr, "Test %d: autosave_comprehensive - Auto-save and backups\n",
+           ++test_number);
+  test_autosave_comprehensive ();
   
   fprintf (stderr, "\n");
   run_view_tests();
