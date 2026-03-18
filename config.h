@@ -2,7 +2,7 @@
 #define CONFIG_H
 #include <ncurses.h>
 #include <time.h>
-#define VERSION "1.0-beta2"
+#define VERSION "1.0-beta3"
 typedef struct {
     int normal_fg, normal_bg;
     int selection_fg, selection_bg;
