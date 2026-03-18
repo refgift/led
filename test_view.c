@@ -113,9 +113,9 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
           n /= 10;
         }
       }
-      char num_str[32];
-      snprintf(num_str, 32, "%*u ", num_digits, logical_line + 1);
-      screen_put_string(sb, visual_row, 1, num_str, strlen(num_str));
+       char num_str[32];
+       snprintf(num_str, 32, "%*d ", num_digits, logical_line + 1);
+       screen_put_string(sb, visual_row, 1, num_str, strlen(num_str));
     }
     
     // Render line with word wrap consideration
@@ -182,7 +182,7 @@ void test_truncate_no_wrap(void) {
   Buffer buf;
   buffer_init(&buf);
   EditorConfig config;
-  load_editor_config(&config);
+  (void) load_editor_config(&config);
   config.display.word_wrap = 0;  // OFF
   
   // Long line (100 chars)
@@ -221,7 +221,7 @@ void test_wrap_enabled(void) {
   Buffer buf;
   buffer_init(&buf);
   EditorConfig config;
-  load_editor_config(&config);
+  (void) load_editor_config(&config);
   config.display.word_wrap = 1;  // ON
   
   // Long line (100 chars)
@@ -269,7 +269,7 @@ void test_render_no_model_change(void) {
   Buffer buf;
   buffer_init(&buf);
   EditorConfig config;
-  load_editor_config(&config);
+  (void) load_editor_config(&config);
   
   const char *line1 = "First line";
   const char *line2 = "Second line that is quite long and should wrap if word wrapping is enabled for testing";
@@ -310,7 +310,7 @@ void test_toggle_changes_visual_rows(void) {
   Buffer buf;
   buffer_init(&buf);
   EditorConfig config;
-  load_editor_config(&config);
+  (void) load_editor_config(&config);
   
   // Create test content with multiple long lines
   buffer_insert_line(&buf, 0, "Line 1: short");

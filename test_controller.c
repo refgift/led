@@ -251,7 +251,7 @@ test_word_wrap_toggle ()
   fprintf (stderr, "Running word wrap toggle test\n");
   Buffer buf;
   EditorConfig config;
-  load_editor_config (&config);
+  (void) load_editor_config (&config);
   
   buffer_init (&buf);
   

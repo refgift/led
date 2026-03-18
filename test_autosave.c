@@ -1,4 +1,5 @@
 #define _DEFAULT_SOURCE
+#define _BSD_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,10 @@
 
 extern int tests_passed;
 extern int tests_failed;
+
+// Forward declarations for platform-specific functions
+extern char *mkdtemp(char *);
+extern int rmdir(const char *);
 
 void
 test_assert_autosave (int condition, const char *msg)
@@ -35,16 +40,6 @@ file_exists (const char *path)
   return stat (path, &st) == 0;
 }
 
-// Get file size
-static long
-get_file_size (const char *path)
-{
-  struct stat st;
-  if (stat (path, &st) != 0)
-    return -1;
-  return st.st_size;
-}
-
 // Read entire file into buffer
 static char *
 read_file_content (const char *path)
@@ -60,7 +55,7 @@ read_file_content (const char *path)
   char *buf = malloc (size + 1);
   if (buf)
     {
-      fread (buf, 1, size, fp);
+      (void) fread (buf, 1, size, fp);
       buf[size] = 0;
     }
   fclose (fp);
@@ -74,7 +69,7 @@ test_autosave_comprehensive ()
   
   // Create temp directory for test files
   char temp_dir[] = "/tmp/led_autosave_test_XXXXXX";
-  mkdtemp (temp_dir);
+  (void) mkdtemp (temp_dir);
   
   // Test 1: keystroke_threshold_default
   {

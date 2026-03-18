@@ -745,7 +745,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   // Status bar
   char status_line[COLS + 1];
   // Temporary message prefix
-  char message_prefix[COLS] = {};
+  char message_prefix[COLS];
+  message_prefix[0] = 0;
   if (ed && ed->status_message[0]
       && (time (NULL) - ed->status_message_time) < 5)
     {
@@ -774,15 +775,15 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
       if (config && config->statusbar.show_time)
         {
           time_t now = time (NULL);
-          struct tm *tm_info = localtime (&now);
-          if (config->statusbar.time_format == 24)
-            {
-              strftime (time_str, 16, "%H:%M", tm_info);
-            }
-          else
-            {
-              strftime (time_str, 16, "%I:%M%p", tm_info);
-            }
+           struct tm *tm_info = localtime (&now);
+           if (config->statusbar.time_format == 24)
+             {
+               (void) strftime (time_str, 16, "%H:%M", tm_info);
+             }
+           else
+             {
+               (void) strftime (time_str, 16, "%I:%M%p", tm_info);
+             }
         }
       char version_str[32] = "";
       if (config && config->statusbar.show_version)
@@ -791,7 +792,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
         }
        char pos_str[64];
        int total_lines = calculate_total_visual_lines (buf, config, num_width);
-       snprintf (pos_str, 64, "Line %u/%u Col %u",
+       snprintf (pos_str, 64, "Line %d/%d Col %d",
                  cursor_line + 1, total_lines, cursor_col + 1);
       char filename_display[256] = "";
       if (ed && ed->filename)
