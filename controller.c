@@ -180,11 +180,10 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             {
               search_next (buf, cursor_line, cursor_col, search_buffer);
             }
-          *search_mode = 0;
-          search_buffer[0] = 0;
+          // Stay in search mode, allow repeated searches with Enter
         }
       else if (ch == 27)
-        {                       // ESC
+        {                       // ESC exits search mode
           *search_mode = 0;
           search_buffer[0] = 0;
         }
