@@ -51,6 +51,70 @@ calculate_digits (int n)
   while (n > 0);
   return digits;
 }
+// Calculate how many visual rows a logical line uses when word wrapping
+static int
+visual_rows_for_line (const char *line, int available_width)
+{
+  if (!line || available_width <= 0)
+    return 1;
+
+  int len = strlen (line);
+  if (len == 0)
+    return 1;
+
+  int rows = 0;
+  int pos = 0;
+
+  while (pos < len)
+    {
+      int segment_len = available_width;
+
+      // Break at space if possible
+      if (pos + segment_len < len)
+        {
+          int break_at = segment_len;
+          for (int i = segment_len; i > 0; i--)
+            {
+              if (line[pos + i] == ' ')
+                {
+                  break_at = i;
+                  break;
+                }
+            }
+          segment_len = break_at;
+          if (segment_len == 0)
+            segment_len = available_width;
+        }
+      else
+        {
+          segment_len = len - pos;
+        }
+
+      pos += segment_len;
+      rows++;
+    }
+
+  return rows;
+}
+// Calculate total visual lines in buffer (accounting for word wrap)
+static int
+calculate_total_visual_lines (Buffer *buf, EditorConfig *config, int num_width)
+{
+  if (!config->display.word_wrap)
+    return buffer_num_lines (buf);
+
+  int available_width = COLS - 2 - num_width;
+  if (available_width <= 0)
+    available_width = 40;  // Fallback
+
+  int total = 0;
+  for (int i = 0; i < buffer_num_lines (buf); i++)
+    {
+      const char *line = buffer_get_line (buf, i);
+      total += visual_rows_for_line (line, available_width);
+    }
+  return total;
+}
 // Compute the visual column for a given logical position in a line
 static int
 visual_column (const char *line, int len, int logical_pos,
@@ -725,9 +789,10 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
         {
           snprintf (version_str, 32, "%s ", VERSION);
         }
-      char pos_str[64];
-      snprintf (pos_str, 64, "Line %u/%u Col %u",
-                cursor_line + 1, buffer_num_lines (buf), cursor_col + 1);
+       char pos_str[64];
+       int total_lines = calculate_total_visual_lines (buf, config, num_width);
+       snprintf (pos_str, 64, "Line %u/%u Col %u",
+                 cursor_line + 1, total_lines, cursor_col + 1);
       char filename_display[256] = "";
       if (ed && ed->filename)
         {

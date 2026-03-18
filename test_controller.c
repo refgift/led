@@ -252,7 +252,7 @@ test_word_wrap_toggle ()
   
   test_assert (initial_lines == 1, 
                "word_wrap: buffer has 1 logical line before toggle");
-  test_assert (initial_length == strlen(long_line),
+  test_assert (initial_length == (int) strlen(long_line),
                "word_wrap: line length unchanged before toggle");
   
   // Toggle word wrap OFF (default)
@@ -276,7 +276,7 @@ test_word_wrap_toggle ()
                "word_wrap ON: buffer line count unchanged");
   test_assert (strcmp(buffer_get_line (&buf, 0), long_line) == 0,
                "word_wrap ON: buffer content unchanged");
-  test_assert (strlen(buffer_get_line (&buf, 0)) == initial_length,
+  test_assert ((int)strlen(buffer_get_line (&buf, 0)) == initial_length,
                "word_wrap ON: buffer line length unchanged");
   
   // Toggle back to OFF

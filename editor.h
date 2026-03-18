@@ -38,6 +38,9 @@ typedef struct {
 
     // File status
     int file_modified;
+    
+    // Visual rendering state (for word wrap support)
+    int total_visual_lines;  // Total visual lines when word_wrap ON
 } Editor;
 
 void editor_init(Editor* ed, int argc, char* argv[]);

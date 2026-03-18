@@ -285,7 +285,7 @@ void test_render_no_model_change(void) {
   shadow_render(sb1, &buf, 0, 0, 0, 0, 0, &config);
   
   test_assert(buffer_num_lines(&buf) == orig_lines, "render (wrap OFF): model unchanged");
-  test_assert(strlen(buffer_get_line(&buf, 1)) == orig_len, "render (wrap OFF): line length unchanged");
+  test_assert((int)strlen(buffer_get_line(&buf, 1)) == orig_len, "render (wrap OFF): line length unchanged");
   
   // Render with word_wrap ON
   config.display.word_wrap = 1;
@@ -293,7 +293,7 @@ void test_render_no_model_change(void) {
   shadow_render(sb2, &buf, 0, 0, 0, 0, 0, &config);
   
   test_assert(buffer_num_lines(&buf) == orig_lines, "render (wrap ON): model unchanged");
-  test_assert(strlen(buffer_get_line(&buf, 1)) == orig_len, "render (wrap ON): line length unchanged");
+  test_assert((int)strlen(buffer_get_line(&buf, 1)) == orig_len, "render (wrap ON): line length unchanged");
   
   screen_free(sb1);
   screen_free(sb2);
