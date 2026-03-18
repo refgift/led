@@ -76,7 +76,7 @@ set_default_config (EditorConfig *config)
   config->statusbar.show_version = 1;
   config->statusbar.show_time = 0;
   config->statusbar.time_format = 24;
-  config->statusbar.style = 0;  // balanced
+  config->statusbar.style = 1;  // balanced
   // Display
   config->display.show_line_numbers = 0;
   config->display.syntax_highlight = 0;

@@ -108,17 +108,6 @@ compute_line_colors (const char *full_line, int line_len,
               char *dash = strchr (token, '-');
               if (dash)
                 {
-<<<<<<< HEAD
-                  *dash = '\0';
-                  strncpy (pairs[num_pairs].open, token,
-                            sizeof (pairs[num_pairs].open) - 1);
-                  pairs[num_pairs].open[sizeof (pairs[num_pairs].open) - 1] =
-                    '\0';
-                  strncpy (pairs[num_pairs].close, dash + 1,
-                            sizeof (pairs[num_pairs].close) - 1);
-                  pairs[num_pairs].close[sizeof (pairs[num_pairs].close) -
-                                         1] = '\0';
-=======
         *dash = '\0';
                    strncpy (pairs[num_pairs].open, token,
                             sizeof(pairs[num_pairs].open) - 1);
@@ -126,7 +115,6 @@ compute_line_colors (const char *full_line, int line_len,
                    strncpy (pairs[num_pairs].close, dash + 1,
                             sizeof(pairs[num_pairs].close) - 1);
                    pairs[num_pairs].close[sizeof(pairs[num_pairs].close) - 1] = '\0';
->>>>>>> 3e947d0 (Fixed a crach in coloring .c files)
                   num_pairs++;
                 }
               token = strtok (NULL, ",");
