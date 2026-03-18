@@ -94,34 +94,7 @@ main (int argc, char *argv[])
 void
 run_tests (Editor *ed)
 {
-  // Basic test output
-  fprintf (stderr, "Hello World\n");
-  // Model tests
-  int total_size = 0;
-  for (int i = 0; i < ed->model.num_lines; i++)
-    {
-      total_size += buffer_get_line_length (&ed->model, i) + 1; // +1 for newline
-    }
-  fprintf (stderr, "Model Test: Buffer size: %u bytes\n", total_size);
-  fprintf (stderr, "Model Test: Number of lines: %u\n", ed->model.num_lines);
-  // Config test
-  fprintf (stderr, "Config Test: Syntax extensions: %s\n",
-           ed->config.syntax.extensions);
-  fprintf (stderr, "Config Test: Paired keywords: %s\n",
-           ed->config.syntax.paired_keywords);
-  // Test controller: simulate inputs
-  int fake_inputs[] = { 'H', 'e', 'l', 'l', 'o', 19, 0 };       // 'H','e','l','l','o', Ctrl+S (19), terminator
-  for (int i = 0; fake_inputs[i] != 0; i++)
-    {
-      editor_handle_input (ed, fake_inputs[i]);
-      int new_size = 0;
-      for (int j = 0; j < ed->model.num_lines; j++)
-        {
-          new_size += buffer_get_line_length (&ed->model, j) + 1;
-        }
-      fprintf (stderr,
-               "Test Controller %d: Input %c, Buffer size: %u, Cursor: (%u,%u)\n",
-               i, fake_inputs[i], new_size, ed->cursor_line, ed->cursor_col);
-    }
-  fprintf (stderr, "Tests completed\n");
+  (void) ed;
+  // Run the comprehensive test suite instead of simple simulation
+  run_all_tests ();
 }

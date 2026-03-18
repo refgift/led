@@ -30,6 +30,7 @@ void test_edge_cases ();
 void test_config_themes ();
 void test_performance_stress ();
 void test_search_functionality ();
+void test_buffer_replace_all ();
 
 #define SEARCH_BUFFER_SIZE 256
 
@@ -179,42 +180,45 @@ test_search_functionality ()
   fprintf (stderr, "Search functionality test completed\n");
 }
 
-// static void test_search_replace() {
-//     Buffer buf;
-//     buffer_init(&buf);
-//     buffer_insert_line(&buf, 0, "hello world");
-//     buffer_insert_line(&buf, 1, "hello again");
-//     int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 0;
-//     int show_line_numbers = 0;
-//     char search_buffer[256] = {0};
-//     int search_mode = 0;
-//     char* clipboard = NULL;
-//     const char* filename = NULL;
-//     int sel_start_l = 0, sel_start_c = 0, sel_end_l = 0, sel_end_c = 0;
-//     int sel_active = 0;
+void
+test_buffer_replace_all ()
+{
+  fprintf (stderr, "Running buffer replace test\n");
+  Buffer buf;
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "hello world");
+  buffer_insert_line (&buf, 1, "hello again");
 
-//     // Test search mode
-//     simulate_input(&buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col, &show_line_numbers, search_buffer, &search_mode, &clipboard, filename, &sel_start_l, &sel_start_c, &sel_end_l, &sel_end_c, &sel_active, "\x1f"); // Ctrl+/
-//     test_assert(search_mode == 1, "Ctrl+/ enters search mode");
+  // Test basic literal string replace
+  buffer_replace_all (&buf, "hello", "hi");
+  test_assert (strcmp (buffer_get_line (&buf, 0), "hi world") == 0,
+               "replace_all changes first occurrence");
+  test_assert (strcmp (buffer_get_line (&buf, 1), "hi again") == 0,
+               "replace_all changes second occurrence");
 
-//     // Type search term
-//     simulate_input(&buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col, &show_line_numbers, search_buffer, &search_mode, &clipboard, filename, &sel_start_l, &sel_start_c, &sel_end_l, &sel_end_c, &sel_active, "world\n");
-//     test_assert(search_mode == 0, "enter exits search mode");
-//     test_assert(cursor_col == 6, "cursor moves to found text");
+  // Test multiple replacements in one line
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "foo foo foo");
+  buffer_replace_all (&buf, "foo", "bar");
+  test_assert (strcmp (buffer_get_line (&buf, 0), "bar bar bar") == 0,
+               "replace_all handles multiple matches on same line");
 
-//     // Test replace
-//     simulate_input(&buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col, &show_line_numbers, search_buffer, &search_mode, &clipboard, filename, &sel_start_l, &sel_start_c, &sel_end_l, &sel_end_c, &sel_active, "\x12"); // Ctrl+R
-//     // Assume replace step 1, type search
-//     simulate_input(&buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col, &show_line_numbers, search_buffer, &search_mode, &clipboard, filename, &sel_start_l, &sel_start_c, &sel_end_l, &sel_end_c, &sel_active, "hello\n");
-//     // Type replace
-//     simulate_input(&buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col, &show_line_numbers, search_buffer, &search_mode, &clipboard, filename, &sel_start_l, &sel_start_c, &sel_end_l, &sel_end_c, &sel_active, "hi\n");
-//     test_assert(strcmp(buffer_get_line(&buf, 0), "hi world") == 0, "replace changes first hello");
-//     test_assert(strcmp(buffer_get_line(&buf, 1), "hi again") == 0, "replace changes second hello");
+  // Test empty replacement
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "abcdef");
+  buffer_replace_all (&buf, "cd", "");
+  test_assert (strcmp (buffer_get_line (&buf, 0), "abef") == 0,
+               "empty replacement deletes matched text");
 
-//     // Cleanup
-//     if (clipboard) free(clipboard);
-//     buffer_free(&buf);
-// }
+  // Test invalid regex (should not crash)
+  buffer_replace_all (&buf, "[invalid(", "test");
+  test_assert (1, "invalid regex does not crash");
+
+  buffer_free (&buf);
+  fprintf (stderr, "Buffer replace test completed\n");
+}
 
 void
 run_all_tests ()
@@ -253,9 +257,9 @@ run_all_tests ()
   // test_performance_stress();
   fprintf(stderr, "Test %d: search_functionality - Search operations\n", ++test_number);
   test_search_functionality();
-  fprintf (stderr, "Test %d: search_replace - Search and replace workflow\n",
+  fprintf (stderr, "Test %d: buffer_replace_all - Buffer replace operations\n",
            ++test_number);
-  // test_search_replace(); // Commented due to build issues
+  test_buffer_replace_all ();
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,
            tests_failed);
 }

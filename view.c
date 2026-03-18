@@ -596,22 +596,22 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   if (ed && ed->status_message[0]
       && (time (NULL) - ed->status_message_time) < 5)
     {
-      snprintf (message_prefix, strlen (message_prefix), "%s | ",
+      snprintf (message_prefix, COLS, "%s | ",
                 ed->status_message);
     }
   if (replace_step == 1)
     {
-      snprintf (status_line, strlen (status_line), "Replace search: %s",
+      snprintf (status_line, COLS, "Replace search: %s",
                 search_buffer ? search_buffer : "");
     }
   else if (replace_step == 2)
     {
-      snprintf (status_line, strlen (status_line), "Replace with: %s",
+      snprintf (status_line, COLS, "Replace with: %s",
                 replace_buffer ? replace_buffer : "");
     }
   else if (search_mode)
     {
-      snprintf (status_line, strlen (status_line), "Search: %s",
+      snprintf (status_line, COLS, "Search: %s",
                 search_buffer ? search_buffer : "");
     }
   else
@@ -624,27 +624,27 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           struct tm *tm_info = localtime (&now);
           if (config->statusbar.time_format == 24)
             {
-              strftime (time_str, strlen (time_str), "%H:%M", tm_info);
+              strftime (time_str, 16, "%H:%M", tm_info);
             }
           else
             {
-              strftime (time_str, strlen (time_str), "%I:%M%p", tm_info);
+              strftime (time_str, 16, "%I:%M%p", tm_info);
             }
         }
       char version_str[32] = "";
       if (config && config->statusbar.show_version)
         {
-          snprintf (version_str, strlen (version_str), "%s ", VERSION);
+          snprintf (version_str, 32, "%s ", VERSION);
         }
       char pos_str[64];
-      snprintf (pos_str, strlen (pos_str), "Line %u/%u Col %u",
+      snprintf (pos_str, 64, "Line %u/%u Col %u",
                 cursor_line + 1, buffer_num_lines (buf), cursor_col + 1);
       char filename_display[256] = "";
       if (ed && ed->filename)
         {
           const char *base = strrchr (ed->filename, '/');
           base = base ? base + 1 : ed->filename;
-          snprintf (filename_display, strlen (filename_display), "%s%s", base,
+          snprintf (filename_display, 256, "%s%s", base,
                     ed->file_modified ? "*" : "");
         }
       // Assemble status line
@@ -656,7 +656,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           int start_pos = (COLS - total_len) / 2;
           if (start_pos < 1)
             start_pos = 1;
-          snprintf (status_line, strlen (status_line), "%*s%s %s %s %s",
+          snprintf (status_line, COLS, "%*s%s %s %s %s",
                     start_pos - 1, "", version_str, filename_display, pos_str,
                     time_str);
         }
@@ -671,7 +671,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           char right[COLS / 2 + 1];
           if (left_space > 0)
             {
-              snprintf (left, strlen (left), "%*s%s",
+              snprintf (left, COLS / 2 + 1, "%*s%s",
                         left_space - (int) strlen (version_str), "",
                         version_str);
             }
@@ -681,14 +681,14 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
             }
           if (right_space > 0)
             {
-              snprintf (right, strlen (right), "%s%*s", time_str,
+              snprintf (right, COLS / 2 + 1, "%s%*s", time_str,
                         right_space - (int) strlen (time_str), "");
             }
           else
             {
               right[0] = '\0';
             }
-          snprintf (status_line, strlen (status_line), "%s%s %s%s", left,
+          snprintf (status_line, COLS, "%s%s %s%s", left,
                     filename_display, pos_str, right);
         }
     }
@@ -696,9 +696,9 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   if (message_prefix[0])
     {
       char temp[COLS + 1];
-      snprintf (temp, strlen (temp), "%s%s", message_prefix, status_line);
-      strncpy (status_line, temp, strlen (status_line) - 1);
-      status_line[strlen (status_line) - 1] = '\0';
+      snprintf (temp, COLS, "%s%s", message_prefix, status_line);
+      strncpy (status_line, temp, COLS - 1);
+      status_line[COLS - 1] = '\0';
     }
   status_line[COLS - 1] = '\0';
   mvprintw (LINES - 1, 1, "%s", status_line);
