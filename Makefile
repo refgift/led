@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -D_POSIX_C_SOURCE -Wall -Wextra -std=c11 -g
 LDFLAGS = -lncurses
 TARGET = led
-SRCS = main.c model.c view.c controller.c editor.c config.c test_controller.c
+SRCS = main.c model.c view.c controller.c editor.c config.c test_controller.c test_view.c
 OBJS = $(SRCS:.c=.o)
 
 $(TARGET): $(OBJS)

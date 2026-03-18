@@ -33,6 +33,8 @@ void test_search_functionality ();
 void test_buffer_replace_all ();
 void test_word_wrap_toggle ();
 
+extern void run_view_tests(void);  // From test_view.c
+
 #define SEARCH_BUFFER_SIZE 256
 
 static int tests_passed = 0;
@@ -331,6 +333,10 @@ run_all_tests ()
   fprintf (stderr, "Test %d: word_wrap_toggle - View-only word wrap feature\n",
            ++test_number);
   test_word_wrap_toggle ();
+  
+  fprintf (stderr, "\n");
+  run_view_tests();
+  
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,
            tests_failed);
 }
