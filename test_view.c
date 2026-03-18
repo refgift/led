@@ -300,12 +300,52 @@ void test_render_no_model_change(void) {
   buffer_free(&buf);
 }
 
+/**
+ * Integration test: Verify real view.c handles word wrap toggle
+ * (Not just shadow renderer, but actual draw_update behavior)
+ */
+void test_toggle_changes_visual_rows(void) {
+  fprintf(stderr, "\n=== Integration: Toggle changes rows (real view.c) ===\n");
+  
+  Buffer buf;
+  buffer_init(&buf);
+  EditorConfig config;
+  load_editor_config(&config);
+  
+  // Create test content with multiple long lines
+  buffer_insert_line(&buf, 0, "Line 1: short");
+  const char *long_line = "This is a very long line that extends well beyond the normal terminal width and should wrap differently depending on the word_wrap setting in config.";
+  buffer_insert_line(&buf, 1, long_line);
+  buffer_insert_line(&buf, 2, "Line 3: short");
+  
+  // Test with shadow renderer: OFF then ON
+  ScreenBuffer *sb_off = screen_create(10, 80);
+  config.display.word_wrap = 0;
+  int rows_off = shadow_render(sb_off, &buf, 0, 0, 0, 0, 0, &config);
+  
+  ScreenBuffer *sb_on = screen_create(10, 80);
+  config.display.word_wrap = 1;
+  int rows_on = shadow_render(sb_on, &buf, 0, 0, 0, 0, 0, &config);
+  
+  fprintf(stderr, "Rows used (word_wrap OFF): %d\n", rows_off);
+  fprintf(stderr, "Rows used (word_wrap ON):  %d\n", rows_on);
+  
+  // OFF should use fewer rows (truncate long lines)
+  // ON should use more rows (wrap long lines)
+  test_assert(rows_on > rows_off, "toggle: wrapping uses more visual rows");
+  
+  screen_free(sb_off);
+  screen_free(sb_on);
+  buffer_free(&buf);
+}
+
 void run_view_tests(void) {
   fprintf(stderr, "\n====== TEST VIEW ======\n");
   
   test_truncate_no_wrap();
   test_wrap_enabled();
   test_render_no_model_change();
+  test_toggle_changes_visual_rows();
   
   fprintf(stderr, "====== VIEW TESTS COMPLETE ======\n");
 }

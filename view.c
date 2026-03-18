@@ -523,71 +523,160 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   box (win, 0, 0);
   int num_digits = calculate_digits (buffer_num_lines (buf));
   int num_width = show_line_numbers ? num_digits + 1 : 0;
-  for (int i = 0; i < max_lines; i++)
+  int available_width = COLS - 2 - num_width;
+  
+  int visual_row = 0;  // Current row on screen
+  int logical_line = *scroll_row;  // Current logical line in buffer
+  
+  while (visual_row < max_lines && logical_line < buffer_num_lines (buf))
     {
-      int line_idx = *scroll_row + (int) i;
-      if (line_idx >= buffer_num_lines (buf))
-        break;
-      if (show_line_numbers)
-        {
-          mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
-        }
-      const char *line = buffer_get_line (buf, line_idx);
+      const char *line = buffer_get_line (buf, logical_line);
       int len = strlen (line);
-      int pos = *scroll_col;
-      int x = 1 + num_width;
+      int pos = (*scroll_col && !config->display.word_wrap) ? *scroll_col : 0;
+      
       // Handle selection
       int sel_start = len;
       int sel_end = len;
-      if (selection_active && line_idx >= selection_start_line
-          && line_idx <= selection_end_line)
+      if (selection_active && logical_line >= selection_start_line
+          && logical_line <= selection_end_line)
         {
           sel_start =
-            (line_idx == selection_start_line) ? selection_start_col : 0;
+            (logical_line == selection_start_line) ? selection_start_col : 0;
           sel_end =
-            (line_idx == selection_end_line) ? selection_end_col : len;
+            (logical_line == selection_end_line) ? selection_end_col : len;
         }
-      // Print before selection
-      if (pos < sel_start)
+      
+      // Render line with word wrap handling
+      if (config->display.word_wrap)
         {
-          int end = (sel_start < len) ? sel_start : len;
-          int print_len = end - pos;
-          int max_print = (int) (COLS - 2 - num_width);
-          if (print_len > max_print)
-            print_len = max_print;
-          print_highlighted (1 + i, x, line, len, pos, print_len,
-                             syntax_highlight ? 4 : 1, config);
-          x += print_len;
-          pos += print_len;
+          // Word wrap enabled: split across multiple visual rows
+          while (pos < len && visual_row < max_lines)
+            {
+              // Show line number only on first visual row of this logical line
+              if (show_line_numbers && pos == ((*scroll_col && !config->display.word_wrap) ? *scroll_col : 0))
+                {
+                  mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+                }
+              
+              int segment_len = available_width;
+              
+              // Don't split in middle of word: break at space if possible
+              if (pos + segment_len < len)
+                {
+                  int break_at = segment_len;
+                  for (int i = segment_len; i > 0; i--)
+                    {
+                      if (line[pos + i] == ' ')
+                        {
+                          break_at = i;
+                          break;
+                        }
+                    }
+                  segment_len = break_at;
+                  if (segment_len == 0)
+                    segment_len = available_width;  // No space found, break hard
+                }
+              else
+                {
+                  segment_len = len - pos;
+                }
+              
+              int x = 1 + num_width;
+              
+              // Print segment (respecting selection)
+              int seg_end = pos + segment_len;
+              
+              // Before selection
+              if (pos < sel_start && seg_end > pos)
+                {
+                  int end = (sel_start < seg_end) ? sel_start : seg_end;
+                  int print_len = end - pos;
+                  print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+                                     syntax_highlight ? 4 : 1, config);
+                  x += print_len;
+                  pos += print_len;
+                }
+              
+              // Selection
+              if (pos < sel_end && seg_end > pos)
+                {
+                  int end = (sel_end < seg_end) ? sel_end : seg_end;
+                  int print_len = end - pos;
+                  if (syntax_highlight)
+                    attron (COLOR_PAIR (2));
+                  mvprintw (1 + visual_row, x, "%.*s", (int) print_len, &line[pos]);
+                  if (syntax_highlight)
+                    attroff (COLOR_PAIR (2));
+                  x += print_len;
+                  pos += print_len;
+                }
+              
+              // After selection
+              if (pos < seg_end)
+                {
+                  int print_len = seg_end - pos;
+                  print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+                                     syntax_highlight ? 4 : 1, config);
+                  pos += print_len;
+                }
+              
+              visual_row++;
+            }
         }
-      // Print selection
-      if (pos < sel_end)
+      else
         {
-          int end = sel_end;
-          int print_len = end - pos;
-          int max_print =
-            (int) (COLS - 2 - num_width - (x - 1 - num_width));
-          if (print_len > max_print)
-            print_len = max_print;
-          if (syntax_highlight)
-            attron (COLOR_PAIR (2));
-          mvprintw (1 + i, x, "%.*s", (int) print_len, &line[pos]);
-          if (syntax_highlight)
-            attroff (COLOR_PAIR (2));
-          x += print_len;
-          pos += print_len;
+          // Word wrap disabled: truncate (original behavior)
+          if (show_line_numbers)
+            {
+              mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+            }
+          
+          int x = 1 + num_width;
+          
+          // Print before selection
+          if (pos < sel_start)
+            {
+              int end = (sel_start < len) ? sel_start : len;
+              int print_len = end - pos;
+              int max_print = available_width;
+              if (print_len > max_print)
+                print_len = max_print;
+              print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+                                 syntax_highlight ? 4 : 1, config);
+              x += print_len;
+              pos += print_len;
+            }
+          // Print selection
+          if (pos < sel_end)
+            {
+              int end = sel_end;
+              int print_len = end - pos;
+              int max_print = available_width - (x - 1 - num_width);
+              if (print_len > max_print)
+                print_len = max_print;
+              if (syntax_highlight)
+                attron (COLOR_PAIR (2));
+              mvprintw (1 + visual_row, x, "%.*s", (int) print_len, &line[pos]);
+              if (syntax_highlight)
+                attroff (COLOR_PAIR (2));
+              x += print_len;
+              pos += print_len;
+            }
+          // Print after selection
+          if (pos < len)
+            {
+              int print_len = len - pos;
+              int max_print = available_width - (x - 1 - num_width);
+              if (print_len > max_print)
+                print_len = max_print;
+              print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+                                 syntax_highlight ? 4 : 1, config);
+            }
+          
+          visual_row++;
         }
-      // Print after selection
-      if (pos < len)
-        {
-          int print_len = len - pos;
-          int max_print =
-            (int) (COLS - 2 - num_width - (x - 1 - num_width));
-          if (print_len > max_print)
-            print_len = max_print;
-          print_highlighted (1 + i, x, line, len, pos, print_len,
-                             syntax_highlight ? 4 : 1, config);
-        }
+      
+      logical_line++;
     }
   // Status bar
   char status_line[COLS + 1];
