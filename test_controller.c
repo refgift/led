@@ -31,6 +31,7 @@ void test_config_themes ();
 void test_performance_stress ();
 void test_search_functionality ();
 void test_buffer_replace_all ();
+void test_word_wrap_toggle ();
 
 #define SEARCH_BUFFER_SIZE 256
 
@@ -229,6 +230,65 @@ test_buffer_replace_all ()
 }
 
 void
+test_word_wrap_toggle ()
+{
+  fprintf (stderr, "Running word wrap toggle test\n");
+  Buffer buf;
+  EditorConfig config;
+  load_editor_config (&config);
+  
+  buffer_init (&buf);
+  
+  // Create a line longer than typical screen width (80+ chars)
+  const char *long_line = "This is a very long line that definitely exceeds the normal terminal width of eighty columns and should wrap when word wrap is enabled.";
+  buffer_insert_line (&buf, 0, long_line);
+  
+  // Record initial state
+  int initial_lines = buffer_num_lines (&buf);
+  const char *initial_content = buffer_get_line (&buf, 0);
+  int initial_length = strlen (initial_content);
+  
+  test_assert (initial_lines == 1, 
+               "word_wrap: buffer has 1 logical line before toggle");
+  test_assert (initial_length == strlen(long_line),
+               "word_wrap: line length unchanged before toggle");
+  
+  // Toggle word wrap OFF (default)
+  config.display.word_wrap = 0;
+  test_assert (config.display.word_wrap == 0,
+               "word_wrap: can toggle OFF");
+  
+  // Verify model unchanged after OFF toggle
+  test_assert (buffer_num_lines (&buf) == initial_lines,
+               "word_wrap OFF: buffer line count unchanged");
+  test_assert (strcmp(buffer_get_line (&buf, 0), long_line) == 0,
+               "word_wrap OFF: buffer content unchanged");
+  
+  // Toggle word wrap ON
+  config.display.word_wrap = 1;
+  test_assert (config.display.word_wrap == 1,
+               "word_wrap: can toggle ON");
+  
+  // Verify model still unchanged after ON toggle
+  test_assert (buffer_num_lines (&buf) == initial_lines,
+               "word_wrap ON: buffer line count unchanged");
+  test_assert (strcmp(buffer_get_line (&buf, 0), long_line) == 0,
+               "word_wrap ON: buffer content unchanged");
+  test_assert (strlen(buffer_get_line (&buf, 0)) == initial_length,
+               "word_wrap ON: buffer line length unchanged");
+  
+  // Toggle back to OFF
+  config.display.word_wrap = 0;
+  test_assert (config.display.word_wrap == 0,
+               "word_wrap: can toggle back to OFF");
+  test_assert (buffer_num_lines (&buf) == initial_lines,
+               "word_wrap OFF again: buffer line count still unchanged");
+  
+  buffer_free (&buf);
+  fprintf (stderr, "Word wrap toggle test completed\n");
+}
+
+void
 run_all_tests ()
 {
   fprintf (stderr, "Running led test suite...\n");
@@ -268,6 +328,9 @@ run_all_tests ()
   fprintf (stderr, "Test %d: buffer_replace_all - Buffer replace operations\n",
            ++test_number);
   test_buffer_replace_all ();
+  fprintf (stderr, "Test %d: word_wrap_toggle - View-only word wrap feature\n",
+           ++test_number);
+  test_word_wrap_toggle ();
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,
            tests_failed);
 }
