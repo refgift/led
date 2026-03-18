@@ -1,4 +1,4 @@
-# led - Larry's Editor for Linux/Unix Terminal (Version 1.0-beta2)
+# led - Larry's Editor for Linux/Unix Terminal (Version 1.0-beta3)
 > **Warning**: See [WARNINGS.md](WARNINGS.md) for known issues, limitations, and safety notes.
 ## Dedication
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a word processor that truly serves authors inspired its development. Stephenson lamented that computer editors delete as easily as they create, unlike paper which preserves every word. This editor strives to provide the safety and reliability of paper in the digital realm, ensuring no work is lost to accidents or crashes.
