@@ -445,7 +445,7 @@ void test_clipboard_comprehensive ()
   
   // Test 1: select all empty
   buffer_insert_line (&buf, 0, "");
-  int sel_start_line = 0, sel_start_col = 0;
+  int sel_start_line = 0;
   int sel_end_line = buffer_num_lines (&buf) - 1;
   int sel_end_col = buffer_get_line_length (&buf, sel_end_line);
   int sel_active = 1;
@@ -456,7 +456,6 @@ void test_clipboard_comprehensive ()
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello");
   sel_start_line = 0;
-  sel_start_col = 0;
   sel_end_line = 0;
   sel_end_col = 5;
   test_assert (sel_end_col == 5, "select_all correct length");

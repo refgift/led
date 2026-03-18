@@ -10,7 +10,7 @@ safe_malloc (int size)
   void *p = malloc (size);
   if (!p)
     {
-      fprintf (stderr, "Error: memory allocation failed for %zu bytes\n",
+      fprintf (stderr, "Error: memory allocation failed for %d bytes\n",
                size);
       exit (EXIT_FAILURE);
     }

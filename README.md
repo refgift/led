@@ -16,7 +16,7 @@ constraints that govern the territory of editing: safety, reliability, and user
 sovereignty.
 Led invites developers who see software as a craft of reliable tools, not 
 disposable artifacts. Contributors are welcome to extend this vision, ensuring 
-that digital editing respects the user's work as paper once didpermanent, 
+that digital editing respects the user's work as paper once did: permanent, 
 safe, and under their control.
 This is led version 1.0-beta, a powerful and reliable terminal-based text 
 editor for Linux/Unix, developed with the assistance of AI. 

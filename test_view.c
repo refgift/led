@@ -114,6 +114,8 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
         }
       }
        char num_str[32];
+       // Cap num_digits to 10 to prevent buffer overflow
+       if (num_digits > 10) num_digits = 10;
        snprintf(num_str, 32, "%*d ", num_digits, logical_line + 1);
        screen_put_string(sb, visual_row, 1, num_str, strlen(num_str));
     }

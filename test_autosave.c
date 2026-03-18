@@ -104,7 +104,7 @@ test_autosave_comprehensive ()
   {
     char test_file[512];
     snprintf (test_file, sizeof (test_file), "%s/test2.txt", temp_dir);
-    char backup_file[512];
+    char backup_file[1024];
     snprintf (backup_file, sizeof (backup_file), "%s.bak.1", test_file);
     
     Buffer buf;
@@ -167,7 +167,7 @@ test_autosave_comprehensive ()
     int backup_count = 0;
     for (int i = 1; i <= 10; i++)
       {
-        char backup_file[512];
+        char backup_file[1024];
         snprintf (backup_file, sizeof (backup_file), "%s.bak.%d", test_file, i);
         if (file_exists (backup_file))
           backup_count++;
@@ -179,7 +179,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-        char backup_file[512];
+        char backup_file[1024];
         snprintf (backup_file, sizeof (backup_file), "%s.bak.%d", test_file, i);
         unlink (backup_file);
       }
@@ -214,7 +214,7 @@ test_autosave_comprehensive ()
     auto_save (&ed);
     
     // Check .bak.1 has version1
-    char backup_file[512];
+    char backup_file[1024];
     snprintf (backup_file, sizeof (backup_file), "%s.bak.1", test_file);
     char *content1 = read_file_content (backup_file);
     test_assert_autosave (content1 != NULL && strcmp (content1, "version1") == 0,
@@ -233,7 +233,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-        char bak[512];
+        char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
         unlink (bak);
       }
@@ -296,7 +296,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-        char bak[512];
+        char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
         unlink (bak);
       }
@@ -392,7 +392,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-        char bak[512];
+        char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
         unlink (bak);
       }
@@ -427,7 +427,7 @@ test_autosave_comprehensive ()
       }
     
     // .bak.10 should now contain save #11 (wrapped around)
-    char backup_file[512];
+    char backup_file[1024];
     snprintf (backup_file, sizeof (backup_file), "%s.bak.10", test_file);
     char *content = read_file_content (backup_file);
     
@@ -445,7 +445,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-        char bak[512];
+        char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
         unlink (bak);
       }
