@@ -1,5 +1,6 @@
 #include "controller.h"
 #include "editor.h"
+#include "view.h"
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -229,26 +230,68 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               *cursor_col = 0;
             }
           break;
-        case KEY_UP:
-          if (*cursor_line > 0)
-            {
-              (*cursor_line)--;
-              if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
-                {
-                  *cursor_col = buffer_get_line_length (buf, *cursor_line);
-                }
-            }
-          break;
-        case KEY_DOWN:
-          if (*cursor_line < buffer_num_lines (buf) - 1)
-            {
-              (*cursor_line)++;
-              if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
-                {
-                  *cursor_col = buffer_get_line_length (buf, *cursor_line);
-                }
-            }
-          break;
+case KEY_UP:
+  if (ed->config.display.word_wrap) {
+    int num_digits = calculate_digits(buffer_num_lines(buf));
+    int num_width = *show_line_numbers ? num_digits + 1 : 0;
+    int available_width = COLS - 2 - num_width;
+    const char* current_line = buffer_get_line(buf, *cursor_line);
+    int current_vis_row = get_visual_row_for_column(current_line, *cursor_col, available_width, ed->config.display.tab_width);
+    if (current_vis_row > 0) {
+      // Move to previous visual row in same logical line
+      int prev_start_col = get_start_column_for_visual_row(current_line, current_vis_row - 1, available_width, ed->config.display.tab_width);
+      *cursor_col = prev_start_col;
+    } else {
+      // Move to previous logical line, to its last visual row
+      if (*cursor_line > 0) {
+        (*cursor_line)--;
+        const char* prev_line = buffer_get_line(buf, *cursor_line);
+        int prev_vis_rows = visual_rows_for_line(prev_line, available_width);
+        int last_start_col = get_start_column_for_visual_row(prev_line, prev_vis_rows - 1, available_width, ed->config.display.tab_width);
+        *cursor_col = last_start_col;
+      }
+    }
+  } else {
+    if (*cursor_line > 0)
+      {
+        (*cursor_line)--;
+        if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
+          {
+            *cursor_col = buffer_get_line_length (buf, *cursor_line);
+          }
+      }
+  }
+  break;
+case KEY_DOWN:
+  if (ed->config.display.word_wrap) {
+    const char* current_line = buffer_get_line(buf, *cursor_line);
+    int num_digits = calculate_digits(buffer_num_lines(buf));
+    int num_width = *show_line_numbers ? num_digits + 1 : 0;
+    int available_width = COLS - 2 - num_width;
+    int vis_rows = visual_rows_for_line(current_line, available_width);
+    int current_vis_row = get_visual_row_for_column(current_line, *cursor_col, available_width, ed->config.display.tab_width);
+    if (current_vis_row < vis_rows - 1) {
+      // Move to next visual row in same logical line
+      int next_start_col = get_start_column_for_visual_row(current_line, current_vis_row + 1, available_width, ed->config.display.tab_width);
+      *cursor_col = next_start_col;
+    } else {
+      // Move to next logical line
+      if (*cursor_line < buffer_num_lines(buf) - 1) {
+        (*cursor_line)++;
+        *cursor_col = 0;
+      }
+    }
+  } else {
+    if (*cursor_line < buffer_num_lines (buf) - 1)
+      {
+        (*cursor_line)++;
+        if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
+          {
+            *cursor_col = buffer_get_line_length (buf, *cursor_line);
+          }
+      }
+  }
+  break;
         case KEY_HOME:
           if (*cursor_col == 0)
             {

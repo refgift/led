@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <time.h>               // For time functions in status bar
+#include <string.h>             // For strdup
 // Meta symbols for basic syntax highlighting (braces, semicolons, etc.)
 static const char *meta_symbols = ";,{}()[]";
 // Structure for keyword pairs (e.g., if-else, for-while)
@@ -37,7 +38,7 @@ is_reserved_word (const char *word, const char *list)
   return 0;
 }
 // Calculate the number of digits in a int number (for line numbers)
-static int
+int
 calculate_digits (int n)
 {
   if (n == 0)
@@ -52,7 +53,7 @@ calculate_digits (int n)
   return digits;
 }
 // Calculate how many visual rows a logical line uses when word wrapping
-static int
+int
 visual_rows_for_line (const char *line, int available_width)
 {
   if (!line || available_width <= 0)
@@ -115,6 +116,112 @@ calculate_total_visual_lines (Buffer *buf, EditorConfig *config, int num_width)
     }
   return total;
 }
+
+// Get the 0-based visual row for a given logical column
+int get_visual_row_for_column(const char* line, int col, int available_width, int tab_width) {
+  if (!line || available_width <= 0) return 0;
+
+  int len = strlen(line);
+  int pos = 0;
+  int vis_row = 0;
+  int current_vis_col = 0;
+
+  while (pos < len && pos < col) {
+    int segment_len = available_width - current_vis_col;
+
+    if (segment_len <= 0) {
+      vis_row++;
+      current_vis_col = 0;
+      segment_len = available_width;
+    }
+
+    int break_at = segment_len;
+    for (int i = segment_len; i > 0; i--) {
+      if (pos + i >= len) break;
+      if (line[pos + i] == ' ') {
+        break_at = i;
+        break;
+      }
+    }
+    if (break_at == 0) break_at = segment_len;
+
+    int actual_len = (pos + break_at > col) ? (col - pos) : break_at;
+
+    for (int i = 0; i < actual_len; i++) {
+      if (line[pos + i] == '\t') {
+        int spaces = tab_width - (current_vis_col % tab_width);
+        current_vis_col += spaces;
+      } else {
+        current_vis_col++;
+      }
+    }
+
+    pos += actual_len;
+
+    if (current_vis_col >= available_width) {
+      vis_row++;
+      current_vis_col = 0;
+    }
+  }
+
+  return vis_row;
+}
+
+// Get the starting logical column for a given visual row
+int get_start_column_for_visual_row(const char* line, int target_vis_row, int available_width, int tab_width) {
+  if (!line || available_width <= 0 || target_vis_row < 0) return 0;
+
+  int len = strlen(line);
+  int pos = 0;
+  int vis_row = 0;
+  int current_vis_col = 0;
+
+  while (pos < len && vis_row < target_vis_row) {
+    int segment_len = available_width - current_vis_col;
+
+    if (segment_len <= 0) {
+      vis_row++;
+      current_vis_col = 0;
+      segment_len = available_width;
+      continue;
+    }
+
+    int break_at = segment_len;
+    for (int i = segment_len; i > 0; i--) {
+      if (pos + i >= len) break;
+      if (line[pos + i] == ' ') {
+        break_at = i;
+        break;
+      }
+    }
+    if (break_at == 0) break_at = segment_len;
+
+    int actual_move = break_at;
+
+    for (int i = 0; i < actual_move; i++) {
+      if (pos + i >= len) break;
+      if (line[pos + i] == '\t') {
+        int spaces = tab_width - (current_vis_col % tab_width);
+        current_vis_col += spaces;
+      } else {
+        current_vis_col++;
+      }
+
+      if (current_vis_col >= available_width) {
+        pos += i + 1;
+        vis_row++;
+        current_vis_col = 0;
+        break;
+      }
+    }
+
+    if (current_vis_col < available_width) {
+      pos += actual_move;
+    }
+  }
+
+  return pos;
+}
 // Compute the visual column for a given logical position in a line
 static int
 visual_column (const char *line, int len, int logical_pos,
@@ -140,7 +247,7 @@ visual_column (const char *line, int len, int logical_pos,
 // highlight_pair: 1 to disable, else enable
 int *
 compute_line_colors (const char *full_line, int line_len,
-                     int highlight_pair, EditorConfig *config)
+                     int highlight_pair, EditorConfig *config, int *brace_level, int *kw_level)
 {
   if (highlight_pair == 1 || line_len > 10000)
     {
@@ -186,13 +293,11 @@ compute_line_colors (const char *full_line, int line_len,
           free (dup_pk);
         }
     }
-  // Stacks for nesting levels (braces and keywords)
+  // Use input levels
   int brace_stack[256];
   int brace_top = 0;
-  int brace_level = 1;
   int kw_stack[100];
   int kw_top = 0;
-  int kw_level = 1;
   int word_start = 0;
   int in_word = 0;
   int word_count = 0;
@@ -210,10 +315,10 @@ compute_line_colors (const char *full_line, int line_len,
             {
               // Opening brace
               if (brace_top < 256)
-                brace_stack[brace_top++] = brace_level;
-              int lvl = brace_level;
+                brace_stack[brace_top++] = *brace_level;
+              int lvl = *brace_level;
               colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);  // Levels 4-7
-              brace_level++;
+              (*brace_level)++;
             }
           else if (c == '}' || c == ')' || c == ']')
             {
@@ -227,7 +332,7 @@ compute_line_colors (const char *full_line, int line_len,
                 {
                   colors[i] = 4;        // Default
                 }
-              brace_level = (brace_level > 1) ? brace_level - 1 : 1;
+              *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
             }
           else
             {
@@ -267,12 +372,12 @@ compute_line_colors (const char *full_line, int line_len,
                       if (strcmp (word, pairs[p].open) == 0)
                         {
                           if (kw_top < 100)
-                            kw_stack[kw_top++] = kw_level;
-                          int lvl = kw_level;
+                            kw_stack[kw_top++] = *kw_level;
+                          int lvl = *kw_level;
                           int color = 3 + (lvl > 4 ? 4 : lvl);
                           for (int j = word_start; j < i; j++)
                             colors[j] = color;
-                          kw_level++;
+                          (*kw_level)++;
                           colored = 1;
                         }
                       else if (strcmp (word, pairs[p].close) == 0)
@@ -284,7 +389,7 @@ compute_line_colors (const char *full_line, int line_len,
                               for (int j = word_start; j < i; j++)
                                 colors[j] = color;
                             }
-                          kw_level = (kw_level > 1) ? kw_level - 1 : 1;
+                          *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
                           colored = 1;
                         }
                     }
@@ -319,12 +424,12 @@ compute_line_colors (const char *full_line, int line_len,
                   if (strcmp (word, pairs[p].open) == 0)
                     {
                       if (kw_top < 100)
-                        kw_stack[kw_top++] = kw_level;
-                      int lvl = kw_level;
+                        kw_stack[kw_top++] = *kw_level;
+                      int lvl = *kw_level;
                       int color = 3 + (lvl > 4 ? 4 : lvl);
                       for (int j = word_start; j < line_len; j++)
                         colors[j] = color;
-                      kw_level++;
+                      (*kw_level)++;
                       colored = 1;
                     }
                   else if (strcmp (word, pairs[p].close) == 0)
@@ -336,7 +441,7 @@ compute_line_colors (const char *full_line, int line_len,
                           for (int j = word_start; j < line_len; j++)
                             colors[j] = color;
                         }
-                      kw_level = (kw_level > 1) ? kw_level - 1 : 1;
+                      *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
                       colored = 1;
                     }
                 }
@@ -352,14 +457,88 @@ compute_line_colors (const char *full_line, int line_len,
     }
   return colors;
 }
+
+extern char* strdup(char*);
+
+// Compute starting nesting levels for a given line by parsing previous lines
+void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *kw_level, EditorConfig *config) {
+  *brace_level = 1;
+  *kw_level = 1;
+
+  // Parse paired keywords into array (same as in compute_line_colors)
+  KeywordPair pairs[10];
+  memset(pairs, 0, sizeof(pairs));
+  int num_pairs = 0;
+  if (strlen(config->syntax.paired_keywords) > 0) {
+    char *dup_pk = strdup((char*)config->syntax.paired_keywords);
+    if (dup_pk) {
+      char *token = strtok(dup_pk, ",");
+      while (token && num_pairs < 10) {
+        char *dash = strchr(token, '-');
+        if (dash) {
+          *dash = '\0';
+          strncpy(pairs[num_pairs].open, token, sizeof(pairs[num_pairs].open) - 1);
+          pairs[num_pairs].open[sizeof(pairs[num_pairs].open) - 1] = '\0';
+          strncpy(pairs[num_pairs].close, dash + 1, sizeof(pairs[num_pairs].close) - 1);
+          pairs[num_pairs].close[sizeof(pairs[num_pairs].close) - 1] = '\0';
+          num_pairs++;
+        }
+        token = strtok(NULL, ",");
+      }
+      free(dup_pk);
+    }
+  }
+
+  for (int l = 0; l < start_line; l++) {
+    const char *line = buffer_get_line(buf, l);
+    int len = strlen(line);
+
+    for (int i = 0; i < len; i++) {
+      char c = line[i];
+
+      // Handle braces
+      if (c == '{' || c == '(' || c == '[') {
+        (*brace_level)++;
+      } else if (c == '}' || c == ')' || c == ']') {
+        if (*brace_level > 1) (*brace_level)--;
+      }
+
+      // Handle keywords
+      if (isalnum(c) || c == '_') {
+        // Collect word
+        char word[32];
+        int wlen = 0;
+        while (i < len && (isalnum(line[i]) || line[i] == '_') && wlen < 31) {
+          word[wlen++] = line[i++];
+        }
+        word[wlen] = '\0';
+        i--;  // Adjust for loop increment
+
+        for (int p = 0; p < num_pairs; p++) {
+          if (strcmp(word, pairs[p].open) == 0) {
+            (*kw_level)++;
+            break;
+          } else if (strcmp(word, pairs[p].close) == 0) {
+            if (*kw_level > 1) (*kw_level)--;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
 // Print a highlighted substring of a line
 static void
 print_highlighted (int y, int x, const char *full_line, int line_len,
                    int start, int len, int highlight_pair,
-                   EditorConfig *config)
+                   EditorConfig *config, Buffer *buf, int logical_line)
 {
-  int *colors =
-    compute_line_colors (full_line, line_len, highlight_pair, config);
+  int brace_level = 1;
+int kw_level = 1;
+get_starting_levels(buf, logical_line, &brace_level, &kw_level, config);
+int *colors =
+    compute_line_colors (full_line, line_len, highlight_pair, config, &brace_level, &kw_level);
   // Compute expanded length
   int expanded_len = 0;
   int current_vis = 0;
@@ -529,7 +708,7 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
           if (print_len > max_print)
             print_len = max_print;
           print_highlighted (1 + i, 1 + num_width, line, line_len, start_col,
-                             print_len, syntax_highlight ? 4 : 1, config);
+                             print_len, syntax_highlight ? 4 : 1, config, buf, line_idx);
         }
     }
   // Calculate cursor screen position
@@ -656,7 +835,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   int end = (sel_start < seg_end) ? sel_start : seg_end;
                   int print_len = end - pos;
                   print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                     syntax_highlight ? 4 : 1, config);
+                                     syntax_highlight ? 4 : 1, config, buf, logical_line);
                   x += print_len;
                   pos += print_len;
                 }
@@ -680,7 +859,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                 {
                   int print_len = seg_end - pos;
                   print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                     syntax_highlight ? 4 : 1, config);
+                                     syntax_highlight ? 4 : 1, config, buf, logical_line);
                   pos += print_len;
                 }
               
@@ -706,7 +885,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
               if (print_len > max_print)
                 print_len = max_print;
               print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                 syntax_highlight ? 4 : 1, config);
+                                 syntax_highlight ? 4 : 1, config, buf, logical_line);
               x += print_len;
               pos += print_len;
             }
@@ -734,7 +913,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
               if (print_len > max_print)
                 print_len = max_print;
               print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                 syntax_highlight ? 4 : 1, config);
+                                 syntax_highlight ? 4 : 1, config, buf, logical_line);
             }
           
           visual_row++;
