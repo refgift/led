@@ -15,4 +15,4 @@ int get_visual_row_for_column(const char* line, int col, int available_width, in
 
 int get_start_column_for_visual_row(const char* line, int visual_row, int available_width, int tab_width);
 
-void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *kw_level, EditorConfig *config);
+void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[256], int *kw_level, int *kw_top, int kw_stack[100], EditorConfig *config);
