@@ -16,3 +16,9 @@ int get_visual_row_for_column(const char* line, int col, int available_width, in
 int get_start_column_for_visual_row(const char* line, int visual_row, int available_width, int tab_width);
 
 void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[], int *kw_level, int *kw_top, int kw_stack[], EditorConfig *config);
+
+int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config, int num_width);
+
+int get_visual_cursor_row(Buffer *buf, int cursor_line, int cursor_col, EditorConfig *config, int num_width);
+
+int visual_column (const char *line, int len, int logical_pos, int tab_width);

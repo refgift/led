@@ -64,18 +64,9 @@ visual_rows_for_line (const char *line, int available_width, int tab_width)
     return 1;
   int rows = 0;
   int pos = 0;
-  int current_vis_col = 0;
   while (pos < len)
     {
-      int segment_len = available_width - current_vis_col;
-      if (segment_len <= 0)
-        {
-          rows++;
-          current_vis_col = 0;
-          segment_len = available_width;
-          continue;
-        }
-      // Break at space if possible
+      int segment_len = available_width;
       int break_at = segment_len;
       if (pos + segment_len < len)
         {
@@ -87,35 +78,33 @@ visual_rows_for_line (const char *line, int available_width, int tab_width)
                   break;
                 }
             }
-          if (break_at == 0)
-            break_at = segment_len;
+          if (break_at == segment_len)
+            {
+              break_at = segment_len;
+            }
         }
       else
         {
           break_at = len - pos;
         }
-      // Account for tabs in visual width
+      // Process char by char to handle tabs
+      int i = 0;
       int actual_vis = 0;
-      for (int i = 0; i < break_at && actual_vis < segment_len; i++)
+      while (i < break_at)
         {
-          if (line[pos + i] == '\t')
-            {
-              int spaces = tab_width - (current_vis_col % tab_width);
-              actual_vis += spaces;
-              current_vis_col += spaces;
-            }
-          else
-            {
-              actual_vis++;
-              current_vis_col++;
-            }
+          int char_vis = (line[pos + i] == '\t') ? tab_width - (actual_vis % tab_width) : 1;
+          if (actual_vis + char_vis > available_width)
+            break;
+          actual_vis += char_vis;
+          i++;
         }
-      pos += break_at;
+      if (i == 0 && break_at > 0)
+        {
+          // Advance at least one char to prevent infinite loop
+          i = 1;
+        }
+      pos += i;
       rows++;
-      if (actual_vis >= segment_len)
-        {
-          current_vis_col = 0;
-        }
     }
   return rows;
 }
@@ -222,8 +211,28 @@ int get_start_column_for_visual_row(const char* line, int target_vis_row, int av
   }
   return pos;
 }
+// New function: Get the global visual line number for a logical line (sum of visual rows before it)
+int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config, int num_width) {
+  int available_width = COLS - 2 - num_width;
+  if (available_width <= 0) available_width = 80; // fallback
+  int visual = 0;
+  for (int i = 0; i < target_logical; i++) {
+    const char* line = buffer_get_line(buf, i);
+    visual += visual_rows_for_line(line, available_width, config->display.tab_width);
+  }
+  return visual;
+}
+// New function: Get the global visual row for the cursor (visual line + intra-line visual row)
+int get_visual_cursor_row(Buffer *buf, int cursor_line, int cursor_col, EditorConfig *config, int num_width) {
+  int visual = get_visual_line_number(buf, cursor_line, config, num_width);
+  const char* line = buffer_get_line(buf, cursor_line);
+  int available_width = COLS - 2 - num_width;
+  if (available_width <= 0) available_width = 80;
+  visual += get_visual_row_for_column(line, cursor_col, available_width, config->display.tab_width);
+  return visual;
+}
 // Compute the visual column for a given logical position in a line
-static int
+int
 visual_column (const char *line, int len, int logical_pos,
                int tab_width)
 {
@@ -279,13 +288,13 @@ compute_line_colors (const char *full_line, int line_len,
               char *dash = strchr (token, '-');
               if (dash)
                 {
-        *dash = '\0';
-                   strncpy (pairs[num_pairs].open, token,
-                            sizeof(pairs[num_pairs].open) - 1);
-                   pairs[num_pairs].open[sizeof(pairs[num_pairs].open) - 1] = '\0';
-                   strncpy (pairs[num_pairs].close, dash + 1,
-                            sizeof(pairs[num_pairs].close) - 1);
-                   pairs[num_pairs].close[sizeof(pairs[num_pairs].close) - 1] = '\0';
+                  *dash = '\0';
+                  strncpy (pairs[num_pairs].open, token,
+                           sizeof(pairs[num_pairs].open) - 1);
+                  pairs[num_pairs].open[sizeof(pairs[num_pairs].open) - 1] = '\0';
+                  strncpy (pairs[num_pairs].close, dash + 1,
+                           sizeof(pairs[num_pairs].close) - 1);
+                  pairs[num_pairs].close[sizeof(pairs[num_pairs].close) - 1] = '\0';
                   num_pairs++;
                 }
               token = strtok (NULL, ",");
@@ -365,32 +374,32 @@ compute_line_colors (const char *full_line, int line_len,
                   word[wlen] = '\0';
                   int colored = 0;
                   // Check for paired keywords
-              for (int p = 0; p < num_pairs && !colored; p++)
-                {
-                  if (strcmp (word, pairs[p].open) == 0)
+                  for (int p = 0; p < num_pairs && !colored; p++)
                     {
-                      if (*kw_top < 100)
-                        kw_stack[(*kw_top)++] = *kw_level;
-                      int lvl = *kw_level;
-                      int color = 3 + (lvl > 4 ? 4 : lvl);
-                      for (int j = word_start; j < i; j++)
-                        colors[j] = color;
-                      (*kw_level)++;
-                      colored = 1;
-                    }
-                  else if (strcmp (word, pairs[p].close) == 0)
-                    {
-                      if (*kw_top > 0)
+                      if (strcmp (word, pairs[p].open) == 0)
                         {
-                          int lvl = kw_stack[--(*kw_top)];
+                          if (*kw_top < 100)
+                            kw_stack[(*kw_top)++] = *kw_level;
+                          int lvl = *kw_level;
                           int color = 3 + (lvl > 4 ? 4 : lvl);
                           for (int j = word_start; j < i; j++)
                             colors[j] = color;
+                          (*kw_level)++;
+                          colored = 1;
                         }
-                      *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
-                      colored = 1;
+                      else if (strcmp (word, pairs[p].close) == 0)
+                        {
+                          if (*kw_top > 0)
+                            {
+                              int lvl = kw_stack[--(*kw_top)];
+                              int color = 3 + (lvl > 4 ? 4 : lvl);
+                              for (int j = word_start; j < i; j++)
+                                colors[j] = color;
+                            }
+                          *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
+                          colored = 1;
+                        }
                     }
-                }
                   // Check for reserved words (if not paired)
                   if (!colored
                       && is_reserved_word (word,
@@ -481,8 +490,8 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
     } else {
       if (in_word) {
         int wlen = i - word_start;
-    char word[32];
-    memset(word, 0, sizeof(word));
+        char word[32];
+        memset(word, 0, sizeof(word));
         if (wlen < 31) memcpy(word, full_line + word_start, wlen);
         for (int p = 0; p < num_pairs; p++) {
           if (strcmp(word, pairs[p].open) == 0) {
@@ -561,15 +570,15 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
                    EditorConfig *config, Buffer *buf, int logical_line)
 {
   int brace_level = 1;
-int brace_top = 0;
+  int brace_top = 0;
   int brace_stack[256];
   memset(brace_stack, 0, sizeof(brace_stack));
-int kw_level = 1;
-int kw_top = 0;
+  int kw_level = 1;
+  int kw_top = 0;
   int kw_stack[100];
   memset(kw_stack, 0, sizeof(kw_stack));
-get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
-int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack);
+  get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
+  int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack);
   // Compute expanded length
   int expanded_len = 0;
   int current_vis = 0;
@@ -778,26 +787,35 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
 {
   // Adjust scroll to keep cursor visible
   int max_lines = (LINES > 2) ? LINES - 2 : 0;
-  if (cursor_line < *scroll_row)
-    {
-      *scroll_row = cursor_line;
-    }
-  else if (cursor_line >= *scroll_row + max_lines)
-    {
-      *scroll_row = cursor_line - max_lines + 1;
-    }
-  if (*scroll_row >= buffer_num_lines (buf)
-      && buffer_num_lines (buf) > max_lines)
-    {
-      *scroll_row = buffer_num_lines (buf) - max_lines;
-    }
-  if (*scroll_row >= buffer_num_lines (buf))
-    *scroll_row = 0;
-  clear ();
-  box (win, 0, 0);
   int num_digits = calculate_digits (buffer_num_lines (buf));
   int num_width = show_line_numbers ? num_digits + 1 : 0;
   int available_width = COLS - 2 - num_width;
+
+  // Visual-aware scroll adjustment
+  int visual_cursor = get_visual_cursor_row(buf, cursor_line, cursor_col, config, num_width);
+  int visual_scroll = get_visual_line_number(buf, *scroll_row, config, num_width);
+
+  if (visual_cursor < visual_scroll) {
+    // Scroll up
+    int new_scroll = cursor_line;
+    while (new_scroll > 0 && get_visual_line_number(buf, new_scroll, config, num_width) > visual_cursor) {
+      new_scroll--;
+    }
+    *scroll_row = new_scroll;
+  } else if (visual_cursor >= visual_scroll + max_lines) {
+    // Scroll down
+    int new_scroll = *scroll_row;
+    while (new_scroll < buffer_num_lines(buf) - 1 && get_visual_line_number(buf, new_scroll, config, num_width) + max_lines <= visual_cursor) {
+      new_scroll++;
+    }
+    *scroll_row = new_scroll;
+  }
+
+  // Recalculate visual_scroll after adjustment
+  visual_scroll = get_visual_line_number(buf, *scroll_row, config, num_width);
+
+  clear ();
+  box (win, 0, 0);
   
   int visual_row = 0;  // Current row on screen
   int logical_line = *scroll_row;  // Current logical line in buffer
@@ -1065,12 +1083,11 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
       strncpy (status_line, temp, COLS - 1);
       status_line[COLS - 1] = '\0';
     }
-  status_line[COLS - 1] = '\0';
+  // Prepend message
   mvprintw (LINES - 1, 1, "%s", status_line);
   // Cursor position
-  int y_diff =
-    (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
-  int screen_y = 1 + (int) y_diff;
+  int visual_screen_y = visual_cursor - visual_scroll;
+  int screen_y = 1 + visual_screen_y;
   const char *line = buffer_get_line (buf, cursor_line);
   int line_len = strlen (line);
   int vis_scroll =
@@ -1094,9 +1111,4 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   move (screen_y, screen_x);
   refresh ();
 	sched_yield();
-
-
-
-
-
 }

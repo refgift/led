@@ -5,6 +5,7 @@
 #include "model.h"
 #include "config.h"
 #include "editor.h"
+#include "view.h"
 
 /**
  * test_view.c - Shadow View (text-only, no ncurses)
@@ -168,7 +169,42 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
     
     logical_line++;
   }
-  
+
+  // Calculate cursor position (visual-aware)
+  int visual_cursor = 0;
+  int l = 0;
+  while (l < cursor_line) {
+    const char* ln = buffer_get_line(buf, l);
+    visual_cursor += visual_rows_for_line(ln, available_width, config->display.tab_width);
+    l++;
+  }
+  const char* cl = buffer_get_line(buf, cursor_line);
+  visual_cursor += get_visual_row_for_column(cl, cursor_col, available_width, config->display.tab_width);
+
+  int visual_scroll = 0;
+  l = 0;
+  while (l < scroll_row) {
+    const char* ln = buffer_get_line(buf, l);
+    visual_scroll += visual_rows_for_line(ln, available_width, config->display.tab_width);
+    l++;
+  }
+
+  sb->cursor_y = visual_cursor - visual_scroll;
+
+  // Cursor x: visual column in its visual row
+  int vis_row_in_line = get_visual_row_for_column(cl, cursor_col, available_width, config->display.tab_width);
+  int start_col_in_row = get_start_column_for_visual_row(cl, vis_row_in_line, available_width, config->display.tab_width);
+  int rel_col = cursor_col - start_col_in_row;
+  int vis_x = 0;
+  for (int i = 0; i < rel_col; i++) {
+    if (cl[start_col_in_row + i] == '\t') {
+      vis_x += config->display.tab_width - (vis_x % config->display.tab_width);
+    } else {
+      vis_x++;
+    }
+  }
+  sb->cursor_x = 1 + num_width + vis_x;
+
   return visual_row;
 }
 
@@ -341,6 +377,54 @@ void test_toggle_changes_visual_rows(void) {
   buffer_free(&buf);
 }
 
+/**
+ * Test: Cursor positioning at end of wrapped line with small width
+ */
+void test_wrap_cursor_end(void) {
+  fprintf(stderr, "\n=== Test: Cursor at end in wrap mode (small width) ===\n");
+  
+  Buffer buf;
+  buffer_init(&buf);
+  EditorConfig config;
+  (void) load_editor_config(&config);
+  config.display.word_wrap = 1;  // ON
+  
+  // Long line that will wrap in 20 cols
+  const char *long_line = "This is a test line that is long enough to wrap multiple times in small width.";
+  buffer_insert_line(&buf, 0, long_line);
+  
+  int cursor_line = 0;
+  int cursor_col = (int)strlen(long_line); // end of line
+  int scroll_row = 0;
+  int scroll_col = 0;
+  
+  // Small width: 20 cols
+  ScreenBuffer *sb = screen_create(10, 20);
+  int rows_used = shadow_render(sb, &buf, scroll_row, scroll_col, cursor_line, cursor_col, 0, &config);
+  
+  fprintf(stderr, "Rendered output (20 cols, word_wrap ON):\n");
+  screen_print(sb);
+  
+  // Check wrapping happened
+  int available_width = 20 - 2; // adjust for borders (line numbers disabled)
+  int expected_vis_rows = visual_rows_for_line(long_line, available_width, config.display.tab_width);
+  fprintf(stderr, "expected_vis_rows: %d, rows_used: %d\n", expected_vis_rows, rows_used);
+  test_assert(expected_vis_rows > 1, "long line wraps in small width");
+  test_assert(rows_used == expected_vis_rows, "all visual rows rendered");
+  
+  // Cursor should be on the last visual row, at the end of the last segment
+  int last_row_len = 0;
+  for (int i = 1; i < 20; i++) { // count non-space in last row
+    if (sb->rows[expected_vis_rows - 1][i] != ' ') last_row_len++;
+    else break;
+  }
+  test_assert(sb->cursor_y == expected_vis_rows - 1, "cursor on last visual row");
+  test_assert(sb->cursor_x == 1 + last_row_len, "cursor at end of last segment");
+  
+  screen_free(sb);
+  buffer_free(&buf);
+}
+
 void run_view_tests(void) {
   fprintf(stderr, "\n====== TEST VIEW ======\n");
   
@@ -348,6 +432,7 @@ void run_view_tests(void) {
   test_wrap_enabled();
   test_render_no_model_change();
   test_toggle_changes_visual_rows();
+  test_wrap_cursor_end();
   
   fprintf(stderr, "====== VIEW TESTS COMPLETE ======\n");
 }
