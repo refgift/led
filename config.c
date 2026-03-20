@@ -80,7 +80,7 @@ set_default_config (EditorConfig *config)
   // Display
   config->display.show_line_numbers = 0;
   config->display.syntax_highlight = 0;
-  config->display.word_wrap = 0;
+  config->display.word_wrap = 0; // Temporarily disabled due to editing bugs in large files
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 1;
   // Performance
