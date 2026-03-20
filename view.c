@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <time.h>               // For time functions in status bar
 #include <string.h>             // For strdup
+#include <sched.h>              // For sched_yield
 // Meta symbols for basic syntax highlighting (braces, semicolons, etc.)
 static const char *meta_symbols = ";,{}()[]";
 // Structure for keyword pairs (e.g., if-else, for-while)
@@ -487,7 +488,7 @@ compute_line_colors (const char *full_line, int line_len,
 
 
 // Helper to update nesting state for a line without coloring
-static void update_nesting(const char *full_line, int line_len, int *brace_level, int *brace_top, int brace_stack[256], int *kw_level, int *kw_top, int kw_stack[100], KeywordPair *pairs, int num_pairs) {
+static void update_nesting(const char *full_line, int line_len, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack, KeywordPair *pairs, int num_pairs) {
   int word_start = 0;
   int in_word = 0;
 
@@ -515,7 +516,8 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
     } else {
       if (in_word) {
         int wlen = i - word_start;
-        char word[32] = {0};
+    char word[32];
+    memset(word, 0, sizeof(word));
         if (wlen < 31) memcpy(word, full_line + word_start, wlen);
 
         for (int p = 0; p < num_pairs; p++) {
@@ -537,7 +539,8 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
   // Word at end
   if (in_word) {
     int wlen = line_len - word_start;
-    char word[32] = {0};
+    char word[32];
+    memset(word, 0, sizeof(word));
     if (wlen < 31) memcpy(word, full_line + word_start, wlen);
 
     for (int p = 0; p < num_pairs; p++) {
@@ -553,7 +556,7 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
 }
 
 // Compute starting nesting state for a line
-void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[256], int *kw_level, int *kw_top, int kw_stack[100], EditorConfig *config) {
+void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[], int *kw_level, int *kw_top, int kw_stack[], EditorConfig *config) {
   *brace_level = 1;
   *brace_top = 0;
   *kw_level = 1;
@@ -601,10 +604,12 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
 {
   int brace_level = 1;
 int brace_top = 0;
-int brace_stack[256] = {0};
+  int brace_stack[256];
+  memset(brace_stack, 0, sizeof(brace_stack));
 int kw_level = 1;
 int kw_top = 0;
-int kw_stack[100] = {0};
+  int kw_stack[100];
+  memset(kw_stack, 0, sizeof(kw_stack));
 get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
 int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack);
   // Compute expanded length
@@ -856,6 +861,12 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           sel_end =
             (logical_line == selection_end_line) ? selection_end_col : len;
         }
+
+      // Yield every 50 lines to prevent busy loop
+      if ((logical_line - *scroll_row) % 50 == 0) {
+          sched_yield();  // Yield processor
+          refresh(); // Update screen and check input
+      }
       
       // Render line with word wrap handling
       if (config->display.word_wrap)

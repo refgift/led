@@ -15,7 +15,7 @@ This document outlines the standard development workflow for the led text editor
 - Lint the code: `make lint` (uses splint for static analysis).
 
 Integrate cleaning into scripts or hooks:
-- Add to Git pre-commit hook: Edit `.git/hooks/pre-commit` to include `make clean && make test` (create if not exists).
+- Add to Git pre-commit hook: Edit `.git/hooks/pre-commit` to include `make clean && make lint && make test` (create if not exists).
 
 ## Development Best Practices
 - **Code Changes**: Follow MVC structure (model.c for data, view.c for rendering, controller.c for input).
