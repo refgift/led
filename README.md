@@ -1,6 +1,5 @@
-# led - Larry's Editor for Linux/Unix Terminal (Version 1.0-beta3)
-> **Warning**: See [WARNINGS.md](WARNINGS.md) for known issues, limitations, 
-and safety notes. Note: Word wrap is temporarily disabled due to editing bugs in large files; a full fix is planned soon.
+# led - Larry's Editor for Linux/Unix Terminal (Version 1.0.0)
+> See [WARNINGS.md](WARNINGS.md) for known limitations and safety notes. Word wrap is enabled with improvements for editing and tabs.
 
 ## Dedication
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a 
@@ -21,7 +20,7 @@ disposable artifacts. Contributors are welcome to extend this vision, ensuring
 that digital editing respects the user's work as paper once did: permanent, 
 safe, and under their control.
 
-This is led version 1.0-beta3, a powerful and reliable terminal-based text 
+This is led version 1.0.0, a powerful and reliable terminal-based text 
 editor for Linux/Unix, developed with the assistance of AI. 
 It features a robust model-view-controller architecture with advanced 
 capabilities including unlimited undo/redo, configurable auto-save with 

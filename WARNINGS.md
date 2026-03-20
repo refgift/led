@@ -1,5 +1,5 @@
 # Known Issues and Warnings for led Editor
-## Status Update (2026-03-19)
+## Status Update (2026-03-20)
 All major functions are operational with enhanced stability:
 - **Search & Replace**: Fully functional with improved regex handling and safety checks ✓
 - **Syntax Highlighting**: Multi-line nested blocks now correctly colorized ✓
@@ -23,4 +23,4 @@ Report bugs to help us improve:
 - Crash logs: Use `gdb ./led` and share backtrace.
 - Submit at: https://github.com/refgift/led/issues
 ## Disclaimer
-This is led version 1.0-beta3, a development build. Use cautiously—report issues for faster fixes. Thanks for your feedback!</content>
+This is led version 1.0.0, a stable production release. Report any issues at: https://github.com/refgift/led/issues for ongoing improvements. Thanks for your feedback!</content>
