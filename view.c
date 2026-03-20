@@ -54,7 +54,7 @@ calculate_digits (int n)
 }
 // Calculate how many visual rows a logical line uses when word wrapping
 int
-visual_rows_for_line (const char *line, int available_width)
+visual_rows_for_line (const char *line, int available_width, int tab_width)
 {
   if (!line || available_width <= 0)
     return 1;
@@ -65,15 +65,23 @@ visual_rows_for_line (const char *line, int available_width)
 
   int rows = 0;
   int pos = 0;
+  int current_vis_col = 0;
 
   while (pos < len)
     {
-      int segment_len = available_width;
+      int segment_len = available_width - current_vis_col;
+      if (segment_len <= 0)
+        {
+          rows++;
+          current_vis_col = 0;
+          segment_len = available_width;
+          continue;
+        }
 
       // Break at space if possible
+      int break_at = segment_len;
       if (pos + segment_len < len)
         {
-          int break_at = segment_len;
           for (int i = segment_len; i > 0; i--)
             {
               if (line[pos + i] == ' ')
@@ -82,17 +90,37 @@ visual_rows_for_line (const char *line, int available_width)
                   break;
                 }
             }
-          segment_len = break_at;
-          if (segment_len == 0)
-            segment_len = available_width;
+          if (break_at == 0)
+            break_at = segment_len;
         }
       else
         {
-          segment_len = len - pos;
+          break_at = len - pos;
         }
 
-      pos += segment_len;
+      // Account for tabs in visual width
+      int actual_vis = 0;
+      for (int i = 0; i < break_at && actual_vis < segment_len; i++)
+        {
+          if (line[pos + i] == '\t')
+            {
+              int spaces = tab_width - (current_vis_col % tab_width);
+              actual_vis += spaces;
+              current_vis_col += spaces;
+            }
+          else
+            {
+              actual_vis++;
+              current_vis_col++;
+            }
+        }
+
+      pos += break_at;
       rows++;
+      if (actual_vis >= segment_len)
+        {
+          current_vis_col = 0;
+        }
     }
 
   return rows;
@@ -112,7 +140,7 @@ calculate_total_visual_lines (Buffer *buf, EditorConfig *config, int num_width)
   for (int i = 0; i < buffer_num_lines (buf); i++)
     {
       const char *line = buffer_get_line (buf, i);
-      total += visual_rows_for_line (line, available_width);
+      total += visual_rows_for_line (line, available_width, config->display.tab_width);
     }
   return total;
 }

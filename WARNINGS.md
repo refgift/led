@@ -14,7 +14,7 @@ All major functions are operational with enhanced stability:
 ## Limitations
 - **Language Support**: Optimized for C/C++; other languages may have incomplete highlighting or parsing.
 - **Performance**: Dense or very large files may load slowly; consider splitting files for better experience.
-- **Word Wrap**: Temporarily disabled due to editing issues in large files; fix planned soon.
+- **Word Wrap**: Enabled with improvements for editing and tabs; report any remaining issues with large files.
 
 ## Workarounds
 - For large files, use external tools to split before editing.

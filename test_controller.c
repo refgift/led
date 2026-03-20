@@ -300,8 +300,22 @@ test_word_wrap_toggle ()
   test_assert (buffer_num_lines (&buf) == initial_lines,
                "word_wrap OFF again: buffer line count still unchanged");
   
+  // Test editing in word wrap mode
+  config.display.word_wrap = 1;
+  buffer_insert_line (&buf, 0, "This is a long line that should wrap");
+  int cursor_line = 0, cursor_col = 10;
+  // Simulate insert
+  buffer_insert_char (&buf, cursor_line, cursor_col, 'X');
+  test_assert (strcmp (buffer_get_line (&buf, 0), "This is a Xlong line that should wrap") == 0,
+               "Insert in wrapped line updates buffer correctly");
+  
+  // Simulate delete
+  buffer_delete_char (&buf, cursor_line, cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "This is a long line that should wrap") == 0,
+               "Delete in wrapped line updates buffer correctly");
+  
   buffer_free (&buf);
-  fprintf (stderr, "Word wrap toggle test completed\n");
+  fprintf (stderr, "Word wrap toggle and editing test completed\n");
 }
 
 void test_undo_redo_comprehensive ()

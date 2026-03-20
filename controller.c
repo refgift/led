@@ -246,7 +246,7 @@ case KEY_UP:
       if (*cursor_line > 0) {
         (*cursor_line)--;
         const char* prev_line = buffer_get_line(buf, *cursor_line);
-        int prev_vis_rows = visual_rows_for_line(prev_line, available_width);
+        int prev_vis_rows = visual_rows_for_line(prev_line, available_width, ed->config.display.tab_width);
         int last_start_col = get_start_column_for_visual_row(prev_line, prev_vis_rows - 1, available_width, ed->config.display.tab_width);
         *cursor_col = last_start_col;
       }
@@ -268,7 +268,7 @@ case KEY_DOWN:
     int num_digits = calculate_digits(buffer_num_lines(buf));
     int num_width = *show_line_numbers ? num_digits + 1 : 0;
     int available_width = COLS - 2 - num_width;
-    int vis_rows = visual_rows_for_line(current_line, available_width);
+    int vis_rows = visual_rows_for_line(current_line, available_width, ed->config.display.tab_width);
     int current_vis_row = get_visual_row_for_column(current_line, *cursor_col, available_width, ed->config.display.tab_width);
     if (current_vis_row < vis_rows - 1) {
       // Move to next visual row in same logical line
@@ -343,6 +343,8 @@ case KEY_DOWN:
                   push_undo (false, *cursor_line, *cursor_col - 1, deleted);
                   clear_redo ();
                   (*cursor_col)--;
+                  int new_len = buffer_get_line_length (buf, *cursor_line);
+                  if (*cursor_col > new_len) *cursor_col = new_len;
                 }
               else
                 {
@@ -359,6 +361,8 @@ case KEY_DOWN:
                   clear_redo ();
                   (*cursor_line)--;
                   *cursor_col = prev_len;
+                  int new_len = buffer_get_line_length (buf, *cursor_line);
+                  if (*cursor_col > new_len) *cursor_col = new_len;
                 }
               else
                 {
@@ -374,6 +378,8 @@ case KEY_DOWN:
                 {
                   push_undo (false, *cursor_line, *cursor_col, deleted);
                   clear_redo ();
+                  int new_len = buffer_get_line_length (buf, *cursor_line);
+                  if (*cursor_col > new_len) *cursor_col = new_len;
                 }
               else
                 {
@@ -388,6 +394,8 @@ case KEY_DOWN:
                              buffer_get_line_length (buf, *cursor_line),
                              '\n');
                   clear_redo ();
+                  int new_len = buffer_get_line_length (buf, *cursor_line);
+                  if (*cursor_col > new_len) *cursor_col = new_len;
                 }
               else
                 {

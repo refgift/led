@@ -9,7 +9,7 @@ void draw_update(WINDOW* win, Buffer* buf, int* scroll_row, int* scroll_col, int
 
 int calculate_digits(int n);
 
-int visual_rows_for_line(const char *line, int available_width);
+int visual_rows_for_line(const char *line, int available_width, int tab_width);
 
 int get_visual_row_for_column(const char* line, int col, int available_width, int tab_width);
 
