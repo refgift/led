@@ -523,6 +523,23 @@ case KEY_DOWN:
                 {
                   error_occurred = 1;
                 }
+              else
+                {
+                  if (buffer_num_lines (buf) == 0)
+                    {
+                      buffer_insert_line (buf, 0, "");
+                      *cursor_line = 0;
+                      *cursor_col = 0;
+                    }
+                  else
+                    {
+                      if (*cursor_line >= buffer_num_lines (buf))
+                        {
+                          *cursor_line = buffer_num_lines (buf) - 1;
+                        }
+                      *cursor_col = buffer_get_line_length (buf, *cursor_line);
+                    }
+                }
             }
           break;
         case 22:               // Ctrl+V to paste

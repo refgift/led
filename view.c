@@ -247,7 +247,7 @@ visual_column (const char *line, int len, int logical_pos,
 // highlight_pair: 1 to disable, else enable
 int *
 compute_line_colors (const char *full_line, int line_len,
-                     int highlight_pair, EditorConfig *config, int starting_brace_level, int starting_brace_top, int *starting_brace_stack, int starting_kw_level, int starting_kw_top, int *starting_kw_stack)
+                     int highlight_pair, EditorConfig *config, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack)
 {
   if (highlight_pair == 1 || line_len > 10000)
     {
@@ -294,15 +294,7 @@ compute_line_colors (const char *full_line, int line_len,
         }
     }
   // Copy starting stacks and levels
-  int brace_level = starting_brace_level;
-  int brace_top = starting_brace_top;
-  int brace_stack[256];
-  memcpy(brace_stack, starting_brace_stack, starting_brace_top * sizeof(int));
-
-  int kw_level = starting_kw_level;
-  int kw_top = starting_kw_top;
-  int kw_stack[100];
-  memcpy(kw_stack, starting_kw_stack, starting_kw_top * sizeof(int));
+  // State is updated in place via pointers
   int word_start = 0;
   int in_word = 0;
   int word_count = 0;
@@ -319,25 +311,26 @@ compute_line_colors (const char *full_line, int line_len,
           else if (c == '{' || c == '(' || c == '[')
             {
               // Opening brace
-              if (brace_top < 256)
-                brace_stack[brace_top++] = brace_level;
-              int lvl = brace_level;
-              colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);  // Levels 4-7
-              brace_level++;
+               if (*brace_top < 256)
+                 brace_stack[*brace_top] = *brace_level;
+               (*brace_top)++;
+               int lvl = *brace_level;
+               colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);  // Levels 4-7
+               (*brace_level)++;
             }
           else if (c == '}' || c == ')' || c == ']')
             {
               // Closing brace
-              if (brace_top > 0)
+              if (*brace_top > 0)
                 {
-                  int lvl = brace_stack[--brace_top];
+                  int lvl = brace_stack[--(*brace_top)];
                   colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);
                 }
               else
                 {
                   colors[i] = 4;        // Default
                 }
-              brace_level = (brace_level > 1) ? brace_level - 1 : 1;
+              *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
             }
           else
             {
@@ -372,32 +365,32 @@ compute_line_colors (const char *full_line, int line_len,
                   word[wlen] = '\0';
                   int colored = 0;
                   // Check for paired keywords
-                  for (int p = 0; p < num_pairs && !colored; p++)
+              for (int p = 0; p < num_pairs && !colored; p++)
+                {
+                  if (strcmp (word, pairs[p].open) == 0)
                     {
-                      if (strcmp (word, pairs[p].open) == 0)
+                      if (*kw_top < 100)
+                        kw_stack[(*kw_top)++] = *kw_level;
+                      int lvl = *kw_level;
+                      int color = 3 + (lvl > 4 ? 4 : lvl);
+                      for (int j = word_start; j < i; j++)
+                        colors[j] = color;
+                      (*kw_level)++;
+                      colored = 1;
+                    }
+                  else if (strcmp (word, pairs[p].close) == 0)
+                    {
+                      if (*kw_top > 0)
                         {
-                          if (kw_top < 100)
-                            kw_stack[kw_top++] = kw_level;
-                          int lvl = kw_level;
+                          int lvl = kw_stack[--(*kw_top)];
                           int color = 3 + (lvl > 4 ? 4 : lvl);
                           for (int j = word_start; j < i; j++)
                             colors[j] = color;
-                          kw_level++;
-                          colored = 1;
                         }
-                      else if (strcmp (word, pairs[p].close) == 0)
-                        {
-                          if (kw_top > 0)
-                            {
-                              int lvl = kw_stack[--kw_top];
-                              int color = 3 + (lvl > 4 ? 4 : lvl);
-                              for (int j = word_start; j < i; j++)
-                                colors[j] = color;
-                            }
-                          kw_level = (kw_level > 1) ? kw_level - 1 : 1;
-                          colored = 1;
-                        }
+                      *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
+                      colored = 1;
                     }
+                }
                   // Check for reserved words (if not paired)
                   if (!colored
                       && is_reserved_word (word,
@@ -428,25 +421,25 @@ compute_line_colors (const char *full_line, int line_len,
                 {
                   if (strcmp (word, pairs[p].open) == 0)
                     {
-                      if (kw_top < 100)
-                        kw_stack[kw_top++] = kw_level;
-                      int lvl = kw_level;
+                      if (*kw_top < 100)
+                        kw_stack[(*kw_top)++] = *kw_level;
+                      int lvl = *kw_level;
                       int color = 3 + (lvl > 4 ? 4 : lvl);
                       for (int j = word_start; j < line_len; j++)
                         colors[j] = color;
-                      kw_level++;
+                      (*kw_level)++;
                       colored = 1;
                     }
                   else if (strcmp (word, pairs[p].close) == 0)
                     {
-                      if (kw_top > 0)
+                      if (*kw_top > 0)
                         {
-                          int lvl = kw_stack[--kw_top];
+                          int lvl = kw_stack[--(*kw_top)];
                           int color = 3 + (lvl > 4 ? 4 : lvl);
                           for (int j = word_start; j < line_len; j++)
                             colors[j] = color;
                         }
-                      kw_level = (kw_level > 1) ? kw_level - 1 : 1;
+                      *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
                       colored = 1;
                     }
                 }
@@ -463,7 +456,7 @@ compute_line_colors (const char *full_line, int line_len,
   return colors;
 }
 
-extern char* strdup(char*);
+
 
 // Helper to update nesting state for a line without coloring
 static void update_nesting(const char *full_line, int line_len, int *brace_level, int *brace_top, int brace_stack[256], int *kw_level, int *kw_top, int kw_stack[100], KeywordPair *pairs, int num_pairs) {
@@ -543,8 +536,10 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
   memset(pairs, 0, sizeof(pairs));
   int num_pairs = 0;
   if (strlen(config->syntax.paired_keywords) > 0) {
-    char *dup_pk = strdup(config->syntax.paired_keywords);
+    int pk_len = strlen(config->syntax.paired_keywords);
+    char *dup_pk = malloc(pk_len + 1);
     if (dup_pk) {
+      strcpy(dup_pk, config->syntax.paired_keywords);
       char *token = strtok(dup_pk, ",");
       while (token && num_pairs < 10) {
         char *dash = strchr(token, '-');
@@ -583,7 +578,7 @@ int kw_level = 1;
 int kw_top = 0;
 int kw_stack[100] = {0};
 get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
-int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack);
+int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack);
   // Compute expanded length
   int expanded_len = 0;
   int current_vis = 0;

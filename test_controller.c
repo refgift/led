@@ -553,19 +553,63 @@ void test_clipboard_comprehensive ()
   clipboard = my_strdup (buffer_get_line (&buf, 1));
   test_assert (strcmp (clipboard, "line2") == 0, "copy no selection");
   
-  // Test 12: cut line no selection
-  buffer_free (&buf);
-  buffer_init (&buf);
-  buffer_insert_line (&buf, 0, "line1");
-  buffer_insert_line (&buf, 1, "line2");
-  if (clipboard) free (clipboard);
-  clipboard = my_strdup (buffer_get_line (&buf, 1));
-  buffer_delete_line (&buf, 1);
-  test_assert (strcmp (clipboard, "line2") == 0 && buffer_num_lines (&buf) == 1, "cut line");
+// Test 12: cut line no selection
+buffer_free (&buf);
+buffer_init (&buf);
+buffer_insert_line (&buf, 0, "line1");
+buffer_insert_line (&buf, 1, "line2");
+buffer_insert_line (&buf, 2, "line3");
+if (clipboard) free (clipboard);
+clipboard = my_strdup (buffer_get_line (&buf, 2));
+buffer_delete_line (&buf, 2);
+test_assert (strcmp (clipboard, "line3") == 0 && buffer_num_lines (&buf) == 2, "cut line");
+
+// Test 13: cut last line when only one line
+buffer_free (&buf);
+buffer_init (&buf);
+buffer_insert_line (&buf, 0, "onlyline");
+if (clipboard) free (clipboard);
+clipboard = my_strdup (buffer_get_line (&buf, 0));
+buffer_delete_line (&buf, 0);
+test_assert (strcmp (clipboard, "onlyline") == 0 && buffer_num_lines (&buf) == 0, "cut single line leaves empty buffer");
   
   buffer_free (&buf);
   if (clipboard) free (clipboard);
   fprintf (stderr, "Clipboard comprehensive tests completed\n");
+}
+
+void
+test_ctrl_x_last_line (void)
+{
+  fprintf (stderr, "Running Ctrl-X last line test\n");
+  Buffer buf;
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "testline");
+  int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 0;
+  int show_line_numbers = 0;
+  char search_buffer[SEARCH_BUFFER_SIZE] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+  int selection_start_line = 0, selection_start_col = 0;
+  int selection_end_line = 0, selection_end_col = 0;
+  int selection_active = 0;
+  cursor_line = 0;
+  cursor_col = 0;
+  handle_input (24, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &selection_start_line, &selection_start_col,
+                &selection_end_line, &selection_end_col, &selection_active,
+                NULL);
+  test_assert (buffer_num_lines (&buf) == 1
+               && strcmp (buffer_get_line (&buf, 0), "") == 0
+               && cursor_line == 0 && cursor_col == 0
+               && strcmp (clipboard, "testline") == 0,
+               "Ctrl-X on single line leaves empty line and adjusts cursor");
+  if (clipboard)
+    free (clipboard);
+  buffer_free (&buf);
+  fprintf (stderr, "Ctrl-X last line test completed\n");
 }
 
 void
@@ -614,12 +658,15 @@ run_all_tests ()
   fprintf (stderr, "Test %d: undo_redo_comprehensive - Undo/redo functionality\n",
            ++test_number);
   test_undo_redo_comprehensive ();
-  fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
-           ++test_number);
+fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
+            ++test_number);
   test_clipboard_comprehensive ();
+  fprintf (stderr, "Test %d: ctrl_x_last_line - Cut last line in controller\n",
+            ++test_number);
+  test_ctrl_x_last_line ();
   fprintf (stderr, "Test %d: autosave_comprehensive - Auto-save and backups\n",
-           ++test_number);
-  test_autosave_comprehensive ();
+            ++test_number);
+  test_autosave_comprehensive (); 
   
   fprintf (stderr, "\n");
   run_view_tests();

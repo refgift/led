@@ -1,1 +1,3 @@
-Sample text for testing the editor.Hello
+Sample text for testing the editor. {
+
+}
