@@ -167,6 +167,8 @@ load_editor_config (EditorConfig *config)
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
     }
+  // Temporarily disable word wrap due to bugs
+  config->display.word_wrap = 0;
   fclose (file);
   return CONFIG_SUCCESS;
 }

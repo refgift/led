@@ -149,7 +149,8 @@ editor_handle_input (Editor *ed, int ch)
     }
   else if (ch == KEY_F (3))
     {
-      ed->config.display.word_wrap = !ed->config.display.word_wrap;
+      // Word wrap is temporarily disabled due to bugs
+      set_status_message (ed, "Word wrap is temporarily disabled");
       return;
     }
   if (ch == 18)
@@ -166,7 +167,7 @@ editor_handle_input (Editor *ed, int ch)
     {
       if (ch == 27)
         ed->replace_step = 0;
-      else if (ch == 10 || ch == 13)
+      else if (ch == 10 || ch == 13 || ch == KEY_ENTER)
         ed->replace_step = 2;
       else if (isprint (ch)
                && strlen (ed->search_buffer) < sizeof (ed->search_buffer) - 1)
@@ -178,7 +179,7 @@ editor_handle_input (Editor *ed, int ch)
     {
       if (ch == 27)
         ed->replace_step = 0;
-      else if (ch == 10 || ch == 13)
+      else if (ch == 10 || ch == 13 || ch == KEY_ENTER)
         {
           buffer_replace_all (&ed->model, ed->search_buffer,
                               ed->replace_buffer);

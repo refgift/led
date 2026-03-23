@@ -213,6 +213,9 @@ int get_start_column_for_visual_row(const char* line, int target_vis_row, int av
 }
 // New function: Get the global visual line number for a logical line (sum of visual rows before it)
 int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config, int num_width) {
+  if (!config->display.word_wrap) {
+    return target_logical;
+  }
   int available_width = COLS - 2 - num_width;
   if (available_width <= 0) available_width = 80; // fallback
   int visual = 0;
@@ -224,6 +227,9 @@ int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config
 }
 // New function: Get the global visual row for the cursor (visual line + intra-line visual row)
 int get_visual_cursor_row(Buffer *buf, int cursor_line, int cursor_col, EditorConfig *config, int num_width) {
+  if (!config->display.word_wrap) {
+    return cursor_line;
+  }
   int visual = get_visual_line_number(buf, cursor_line, config, num_width);
   const char* line = buffer_get_line(buf, cursor_line);
   int available_width = COLS - 2 - num_width;
@@ -1090,12 +1096,21 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   int screen_y = 1 + visual_screen_y;
   const char *line = buffer_get_line (buf, cursor_line);
   int line_len = strlen (line);
-  int vis_scroll =
-    visual_column (line, line_len, *scroll_col, config->display.tab_width);
-  int vis_cursor =
-    visual_column (line, line_len, cursor_col, config->display.tab_width);
-  int x_diff =
-    (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
+  int x_diff;
+  if (config->display.word_wrap) {
+    // Calculate intra-row visual column for word wrap
+    int target_vis_row = get_visual_row_for_column(line, cursor_col, available_width, config->display.tab_width);
+    int start_col = get_start_column_for_visual_row(line, target_vis_row, available_width, config->display.tab_width);
+    int vis_total = visual_column(line, line_len, cursor_col, config->display.tab_width);
+    int vis_start = visual_column(line, line_len, start_col, config->display.tab_width);
+    int vis_col_in_row = vis_total - vis_start;
+    x_diff = vis_col_in_row;
+  } else {
+    // Existing logic for no word wrap
+    int vis_scroll = visual_column (line, line_len, *scroll_col, config->display.tab_width);
+    int vis_cursor = visual_column (line, line_len, cursor_col, config->display.tab_width);
+    x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
+  }
   int screen_x = 1 + num_width + (int) x_diff;
   // Clamp cursor
   if (screen_y < 1)
@@ -1104,8 +1119,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
     screen_y = LINES - 1;
   if (screen_x < 1 + num_width)
     screen_x = 1 + num_width;
-  if (screen_x > COLS - 1)
-    screen_x = COLS - 1;
+  if (screen_x > COLS - 2)
+    screen_x = COLS - 2;
   *cursor_screen_y = (int) screen_y;
   *cursor_screen_x = (int) screen_x;
   move (screen_y, screen_x);

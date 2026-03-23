@@ -175,7 +175,7 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
   if (ed==NULL) {}
   if (*search_mode)
     {
-      if (ch == '\n' || ch == 13)
+      if (ch == '\n' || ch == 13 || ch == KEY_ENTER)
         {
           if (strlen (search_buffer) > 0)
             {
@@ -220,15 +220,40 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             }
           break;
         case KEY_RIGHT:
-          if (*cursor_col < buffer_get_line_length (buf, *cursor_line))
-            {
+          if (ed->config.display.word_wrap) {
+            const char* line = buffer_get_line(buf, *cursor_line);
+            int num_digits = calculate_digits(buffer_num_lines(buf));
+            int num_width = *show_line_numbers ? num_digits + 1 : 0;
+            int available_width = COLS - 2 - num_width;
+            int vis_rows = visual_rows_for_line(line, available_width, ed->config.display.tab_width);
+            int current_vis_row = get_visual_row_for_column(line, *cursor_col, available_width, ed->config.display.tab_width);
+            int vis_cols_in_row = visual_column(line, strlen(line), *cursor_col, ed->config.display.tab_width) -
+                                  (current_vis_row > 0 ? visual_column(line, strlen(line),
+                                     get_start_column_for_visual_row(line, current_vis_row, available_width, ed->config.display.tab_width),
+                                     ed->config.display.tab_width) : 0);
+            if (vis_cols_in_row < available_width && *cursor_col < buffer_get_line_length(buf, *cursor_line)) {
+              // Move right within the visual row
               (*cursor_col)++;
-            }
-          else if (*cursor_line < buffer_num_lines (buf) - 1)
-            {
+            } else if (current_vis_row < vis_rows - 1) {
+              // Move to next visual row
+              int next_start_col = get_start_column_for_visual_row(line, current_vis_row + 1, available_width, ed->config.display.tab_width);
+              *cursor_col = next_start_col;
+            } else if (*cursor_line < buffer_num_lines(buf) - 1) {
+              // Move to next logical line
               (*cursor_line)++;
               *cursor_col = 0;
             }
+          } else {
+            if (*cursor_col < buffer_get_line_length (buf, *cursor_line))
+              {
+                (*cursor_col)++;
+              }
+            else if (*cursor_line < buffer_num_lines (buf) - 1)
+              {
+                (*cursor_line)++;
+                *cursor_col = 0;
+              }
+          }
           break;
 case KEY_UP:
   if (ed->config.display.word_wrap) {
@@ -593,7 +618,7 @@ case KEY_DOWN:
           *selection_active = 1;
           break;
         default:
-          if (ch == '\n' ||  ch == '\t' || (ch >= 32 && ch <= 126))
+          if (ch == '\n' || ch == KEY_ENTER ||  ch == '\t' || (ch >= 32 && ch <= 126))
             {                   // Printable chars or newline
               if (ch == '\n')
                 {

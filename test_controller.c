@@ -33,6 +33,8 @@ void test_buffer_replace_all ();
 void test_word_wrap_toggle ();
 void test_undo_redo_comprehensive ();
 void test_clipboard_comprehensive ();
+void test_enter_key_newline_insertion ();
+void test_right_arrow_repeat_navigation ();
 
 extern void run_view_tests(void);  // From test_view.c
 extern void test_autosave_comprehensive(void);  // From test_autosave.c
@@ -627,6 +629,98 @@ test_ctrl_x_last_line (void)
 }
 
 void
+test_enter_key_newline_insertion (void)
+{
+  fprintf (stderr, "Running enter key newline insertion test\n");
+  Buffer buf;
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "Hello world");
+  int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 5; // Cursor at "Hello| world"
+  int show_line_numbers = 0;
+  char search_buffer[SEARCH_BUFFER_SIZE] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+  int selection_start_line = 0, selection_start_col = 0;
+  int selection_end_line = 0, selection_end_col = 0;
+  int selection_active = 0;
+  // Simulate Enter key
+  handle_input ('\n', &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &selection_start_line, &selection_start_col,
+                &selection_end_line, &selection_end_col, &selection_active,
+                NULL);
+  test_assert (buffer_num_lines (&buf) == 2
+               && strcmp (buffer_get_line (&buf, 0), "Hello") == 0
+               && strcmp (buffer_get_line (&buf, 1), " world") == 0
+               && cursor_line == 1 && cursor_col == 0,
+               "Enter inserts newline, splits line, and moves cursor to new line start");
+  buffer_free (&buf);
+  fprintf (stderr, "Enter key newline insertion test completed\n");
+}
+
+void
+test_right_arrow_repeat_navigation (void)
+{
+  fprintf (stderr, "Running right arrow repeat navigation test\n");
+  Buffer buf;
+  buffer_init (&buf);
+  // Create a multi-line document with a very long line
+  buffer_insert_line (&buf, 0, "Line one");
+  buffer_insert_line (&buf, 1, ""); // Empty line
+  char long_line[200];
+  memset(long_line, 'a', 199);
+  long_line[199] = '\0'; // Very long line
+  buffer_insert_line (&buf, 2, long_line);
+  buffer_insert_line (&buf, 3, "Last"); // Last line
+  int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 0;
+  int show_line_numbers = 0;
+  char search_buffer[SEARCH_BUFFER_SIZE] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+  int selection_start_line = 0, selection_start_col = 0;
+  int selection_end_line = 0, selection_end_col = 0;
+  int selection_active = 0;
+  Editor ed = {0}; // Dummy
+  ed.config.display.word_wrap = 1; // Test with word wrap ON
+  ed.config.display.tab_width = 8;
+  COLS = 80; // Set terminal width for test
+
+  // Start at beginning
+  cursor_line = 0;
+  cursor_col = 0;
+
+  // Simulate repeated right arrow presses until end of document
+  int total_chars = 0;
+  for (int l = 0; l < buffer_num_lines (&buf); l++)
+    {
+      total_chars += buffer_get_line_length (&buf, l) + 1; // +1 for newline
+    }
+  // Move right until we can't anymore
+  while (1)
+    {
+      int prev_line = cursor_line;
+      int prev_col = cursor_col;
+      handle_input (KEY_RIGHT, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                    &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                    filename, &selection_start_line, &selection_start_col,
+                    &selection_end_line, &selection_end_col, &selection_active,
+                    &ed);
+      if (cursor_line == prev_line && cursor_col == prev_col)
+        break; // No movement, at end
+    }
+
+  // Should be at end of last line
+  int expected_line = buffer_num_lines (&buf) - 1;
+  int expected_col = buffer_get_line_length (&buf, expected_line);
+  test_assert (cursor_line == expected_line && cursor_col == expected_col,
+               "Right arrow repeat reaches end of document correctly");
+  buffer_free (&buf);
+  fprintf (stderr, "Right arrow repeat navigation test completed\n");
+}
+
+void
 run_all_tests ()
 {
   fprintf (stderr, "Running led test suite...\n");
@@ -676,10 +770,16 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
             ++test_number);
   test_clipboard_comprehensive ();
   fprintf (stderr, "Test %d: ctrl_x_last_line - Cut last line in controller\n",
-            ++test_number);
+             ++test_number);
   test_ctrl_x_last_line ();
+  fprintf (stderr, "Test %d: enter_key_newline_insertion - Enter key inserts newline\n",
+             ++test_number);
+  test_enter_key_newline_insertion ();
+  fprintf (stderr, "Test %d: right_arrow_repeat_navigation - Right arrow navigation through document\n",
+             ++test_number);
+  test_right_arrow_repeat_navigation ();
   fprintf (stderr, "Test %d: autosave_comprehensive - Auto-save and backups\n",
-            ++test_number);
+             ++test_number);
   test_autosave_comprehensive (); 
   
   fprintf (stderr, "\n");

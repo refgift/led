@@ -425,6 +425,44 @@ void test_wrap_cursor_end(void) {
   buffer_free(&buf);
 }
 
+void test_cursor_position_after_newline_wrap(void) {
+  fprintf(stderr, "\n=== Test: Cursor position after newline with word wrap ===\n");
+
+  Buffer buf;
+  buffer_init(&buf);
+  EditorConfig config;
+  (void) load_editor_config(&config);
+  config.display.word_wrap = 1;  // ON
+
+  // Long line that will wrap
+  const char *long_line = "This is a very long line that should wrap across multiple visual rows in a narrow terminal width.";
+  buffer_insert_line(&buf, 0, long_line);
+
+  // Simulate newline insertion: split at column 10
+  buffer_insert_char(&buf, 0, 10, '\n');
+  int cursor_line = 1; // New line
+  int cursor_col = 0;  // Start of new line
+  int scroll_row = 0;
+  int scroll_col = 0;
+
+  // Narrow width to force wrapping
+  ScreenBuffer *sb = screen_create(10, 40);
+  int rows_used = shadow_render(sb, &buf, scroll_row, scroll_col, cursor_line, cursor_col, 0, &config);
+
+  // Cursor should be at left edge (column 1, after border)
+  test_assert(sb->cursor_x == 1, "Cursor at left edge after newline in wrap mode");
+
+  // Test with wrap OFF
+  config.display.word_wrap = 0;
+  screen_free(sb);
+  sb = screen_create(10, 40);
+  rows_used = shadow_render(sb, &buf, scroll_row, scroll_col, cursor_line, cursor_col, 0, &config);
+  test_assert(sb->cursor_x == 1, "Cursor at left edge after newline in no-wrap mode");
+
+  screen_free(sb);
+  buffer_free(&buf);
+}
+
 void run_view_tests(void) {
   fprintf(stderr, "\n====== TEST VIEW ======\n");
   
@@ -433,6 +471,7 @@ void run_view_tests(void) {
   test_render_no_model_change();
   test_toggle_changes_visual_rows();
   test_wrap_cursor_end();
-  
+  test_cursor_position_after_newline_wrap();
+
   fprintf(stderr, "====== VIEW TESTS COMPLETE ======\n");
 }
