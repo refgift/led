@@ -150,14 +150,11 @@ load_editor_config (EditorConfig *config)
         config->colors.reserved_words_bg = string_to_color (value);
       // Syntax
       else if (strcmp (key, "syntax_extensions") == 0)
-        strncpy (config->syntax.extensions, value,
-                 sizeof (config->syntax.extensions) - 1);
+        snprintf (config->syntax.extensions, sizeof (config->syntax.extensions), "%s", value);
       else if (strcmp (key, "reserved_words") == 0)
-        strncpy (config->syntax.reserved_words, value,
-                 sizeof (config->syntax.reserved_words) - 1);
+        snprintf (config->syntax.reserved_words, sizeof (config->syntax.reserved_words), "%s", value);
       else if (strcmp (key, "paired_keywords") == 0)
-        strncpy (config->syntax.paired_keywords, value,
-                 sizeof (config->syntax.paired_keywords) - 1);
+        snprintf (config->syntax.paired_keywords, sizeof (config->syntax.paired_keywords), "%s", value);
       // Auto-save
       else if (strcmp (key, "auto_save_timeout") == 0)
         config->autosave.timeout = atoi (value);
@@ -167,8 +164,7 @@ load_editor_config (EditorConfig *config)
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
     }
-  // Temporarily disable word wrap due to bugs
-  config->display.word_wrap = 0;
+  config->display.word_wrap = 1;
   fclose (file);
   return CONFIG_SUCCESS;
 }

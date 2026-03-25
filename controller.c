@@ -29,12 +29,16 @@ push_undo (bool is_insert, int line, int col, char ch)
 {
   if (undo_stack.count >= undo_stack.capacity)
     {
-      undo_stack.capacity =
+      if (undo_stack.capacity >= 10000)
+        return;                 // Cap at 10,000 operations
+      int new_capacity =
         undo_stack.capacity == 0 ? 16 : undo_stack.capacity * 2;
-      undo_stack.changes =
-        realloc (undo_stack.changes, undo_stack.capacity * sizeof (Change));
-      if (!undo_stack.changes)
+      Change *temp =
+        realloc (undo_stack.changes, new_capacity * sizeof (Change));
+      if (!temp)
         return;                 // Handle error
+      undo_stack.changes = temp;
+      undo_stack.capacity = new_capacity;
     }
   undo_stack.changes[undo_stack.count].is_insert = is_insert;
   undo_stack.changes[undo_stack.count].line = line;
@@ -47,12 +51,16 @@ push_redo (bool is_insert, int line, int col, char ch)
 {
   if (redo_stack.count >= redo_stack.capacity)
     {
-      redo_stack.capacity =
+      if (redo_stack.capacity >= 10000)
+        return;                 // Cap at 10,000 operations
+      int new_capacity =
         redo_stack.capacity == 0 ? 16 : redo_stack.capacity * 2;
-      redo_stack.changes =
-        realloc (redo_stack.changes, redo_stack.capacity * sizeof (Change));
-      if (!redo_stack.changes)
+      Change *temp =
+        realloc (redo_stack.changes, new_capacity * sizeof (Change));
+      if (!temp)
         return;                 // Handle error
+      redo_stack.changes = temp;
+      redo_stack.capacity = new_capacity;
     }
   redo_stack.changes[redo_stack.count].is_insert = is_insert;
   redo_stack.changes[redo_stack.count].line = line;
@@ -129,8 +137,12 @@ void
 search_next (Buffer *buf, int *cursor_line, int *cursor_col,
              const char *pattern)
 {
+  if (strlen (pattern) > 100)
+    {
+      return;                     // Pattern too long
+    }
   regex_t regex;
-  if (regcomp (&regex, pattern, 0) != 0)
+  if (regcomp (&regex, pattern, REG_EXTENDED) != 0)
     return;
   int found = 0;
   int clamped = 0;

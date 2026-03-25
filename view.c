@@ -496,9 +496,10 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
     } else {
       if (in_word) {
         int wlen = i - word_start;
-        char word[32];
-        memset(word, 0, sizeof(word));
-        if (wlen < 31) memcpy(word, full_line + word_start, wlen);
+        char *word = malloc(wlen + 1);
+        if (!word) continue;
+        memcpy(word, full_line + word_start, wlen);
+        word[wlen] = '\0';
         for (int p = 0; p < num_pairs; p++) {
           if (strcmp(word, pairs[p].open) == 0) {
             if (*kw_top < 100) kw_stack[(*kw_top)++] = *kw_level;
@@ -510,6 +511,7 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
             break;
           }
         }
+        free(word);
         in_word = 0;
       }
     }
@@ -517,9 +519,10 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
   // Word at end
   if (in_word) {
     int wlen = line_len - word_start;
-    char word[32];
-    memset(word, 0, sizeof(word));
-    if (wlen < 31) memcpy(word, full_line + word_start, wlen);
+    char *word = malloc(wlen + 1);
+    if (!word) return;
+    memcpy(word, full_line + word_start, wlen);
+    word[wlen] = '\0';
     for (int p = 0; p < num_pairs; p++) {
       if (strcmp(word, pairs[p].open) == 0) {
         if (*kw_top < 100) kw_stack[(*kw_top)++] = *kw_level;
@@ -529,6 +532,7 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
         *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
       }
     }
+    free(word);
   }
 }
 // Compute starting nesting state for a line

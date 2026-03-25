@@ -3,7 +3,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <regex.h>
+#include <sys/stat.h>
 #define MAX_FILE_SIZE (10 * 1024 * 1024)       // 10MB
+#define MAX_LINE_LENGTH 10000
 static void *
 safe_malloc (int size)
 {
@@ -11,8 +13,8 @@ safe_malloc (int size)
   if (!p)
     {
       fprintf (stderr, "Error: memory allocation failed for %d bytes\n",
-               size);
-      exit (EXIT_FAILURE);
+                size);
+      return NULL;
     }
   return p;
 }
@@ -21,6 +23,10 @@ safe_strdup (const char *s)
 {
   int len = strlen (s);
   char *d = safe_malloc (len + 1);
+  if (!d)
+    {
+      return NULL;
+    }
   memcpy (d, s, len + 1);
   return d;
 }
@@ -46,6 +52,15 @@ buffer_free (Buffer *buf)
 int
 buffer_load_from_file (Buffer *buf, const char *filename)
 {
+  struct stat st;
+  if (stat (filename, &st) != 0)
+    {
+      return -1;
+    }
+  if (st.st_size > MAX_FILE_SIZE)
+    {
+      return -1;                  // File too large
+    }
   FILE *fp = fopen (filename, "rb");
   if (!fp)
     {
@@ -98,6 +113,10 @@ buffer_load_from_file (Buffer *buf, const char *filename)
       if (temp[i] == '\n' || temp[i] == '\0')
         {
           int len = i - start;
+          if (len > MAX_LINE_LENGTH)
+            {
+              len = MAX_LINE_LENGTH; // Truncate long lines
+            }
           char *line = malloc (len + 1);
           if (!line)
             {
@@ -176,6 +195,11 @@ int
 buffer_delete_range (Buffer *buf, int start_line, int start_col,
                      int end_line, int end_col)
 {
+  if (start_line < 0 || end_line < 0 || start_line >= buf->num_lines
+      || end_line >= buf->num_lines)
+    {
+      return -1;
+    }
   if (start_line > end_line
       || (start_line == end_line && start_col > end_col))
     {
@@ -341,6 +365,15 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
       buf->lines[i] = buf->lines[i - 1];
     }
   buf->lines[line] = safe_strdup (content);
+  if (!buf->lines[line])
+    {
+      // Shift back on failure
+      for (int i = line; i < buf->num_lines; i++)
+        {
+          buf->lines[i] = buf->lines[i + 1];
+        }
+      return -1;
+    }
   buf->num_lines++;
   return 0;
 }
@@ -381,6 +414,11 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
       memcpy (before, ln, col);
       before[col] = '\0';
       char *after = safe_strdup (ln + col);
+      if (!after)
+        {
+          free (before);
+          return -1;
+        }
       free (buf->lines[line]);
       buf->lines[line] = before;
       if (buffer_insert_line (buf, line + 1, after) != 0)
@@ -494,8 +532,12 @@ void
 buffer_replace_all (Buffer *buf, const char *search_regex,
                     const char *replace_str)
 {
+  if (strlen (search_regex) > 100)
+    {
+      return;                     // Pattern too long
+    }
   regex_t reg;
-  if (regcomp (&reg, search_regex, 0) != 0)
+  if (regcomp (&reg, search_regex, REG_EXTENDED) != 0)
     {
       return;
     }

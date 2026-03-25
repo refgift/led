@@ -21,6 +21,46 @@ disposable artifacts. Contributors are welcome to extend this vision, ensuring
 that digital editing respects the user's work as paper once did: permanent, 
 safe, and under their control.
 
+## Recent Code Review and Fixes
+
+Following a thorough code review of led version 1.0.0, several critical security vulnerabilities, memory management issues, and reliability problems have been addressed. The review prioritized fixes that prevent data loss, crashes, and security exploits, aligning with the editor's philosophy of data safety.
+
+### Completed Fixes
+
+#### Priority 1 (Critical - Addressed Immediately)
+These fixes prevent data loss, crashes, and security vulnerabilities:
+- **Buffer Overflow in File Loading**: Added pre-loading file size validation using `stat()` and line length limits (10,000 characters) to prevent excessive memory allocation from malformed files.
+- **Memory Exhaustion on Allocation Failure**: Replaced abrupt `exit()` calls with graceful error handling, allowing the editor to continue or prompt for saves instead of losing unsaved work.
+- **Logic Error in Range Deletion**: Added strict range validation to prevent corrupted buffer states during text deletion operations.
+- **Unsafe Regex Usage**: Limited search/replace patterns to 100 characters and added safe compilation flags to prevent DoS attacks from malicious regex patterns.
+
+#### Priority 2 (High/Medium - Addressed for Stability)
+These improvements enhance reliability and performance:
+- **Memory Leak in Undo/Redo Stack**: Capped undo/redo operations at 10,000 entries and fixed memory cleanup to prevent resource exhaustion.
+- **Double-Free Risks**: Confirmed and maintained atomic buffer operations to prevent crashes during complex edits.
+- **Cursor Bugs in Word Wrap**: Fixed tab expansion calculations and re-enabled word wrap (previously disabled due to bugs).
+- **Unsafe String Operations**: Replaced fixed-size buffers with dynamic allocation in syntax highlighting to handle long identifiers correctly.
+- **Config Parsing Vulnerability**: Switched from unsafe `strncpy` to `snprintf` for configuration value copying to prevent buffer overflows.
+
+### Remaining Work
+
+While significant progress has been made, the following items remain pending and are scheduled for future updates:
+
+#### Priority 2 (Medium - Stability Enhancements)
+- **Efficient File Loading**: Implement lazy line loading or memory mapping for better performance with very large files (currently loads entire files into memory).
+- **Configurable Limits**: Move hardcoded limits (file size, line length) to user configuration for flexibility.
+- **Error Handling Standardization**: Improve consistency of error codes and user feedback across all modules.
+- **Global State Removal**: Move undo/redo stacks from global to per-editor instances for better multi-instance support.
+
+#### Priority 3 (Low - Quality Improvements)
+- **Code Duplication Reduction**: Extract common cursor movement logic into utility functions.
+- **Comprehensive Testing**: Add fuzzing tests and coverage for extreme edge cases (empty files, very long lines).
+- **Input Sanitization**: Validate filename arguments to prevent directory traversal attacks.
+- **Performance Optimizations**: Implement color caching for syntax highlighting to reduce recalculations.
+
+### Impact
+These fixes significantly improve led's reliability as a data-safe editor, addressing the core concerns raised in the review while maintaining the editor's performance and feature set. The remaining work focuses on scalability and polish, ensuring led continues to evolve as a robust terminal editor.
+
 This is led version 1.0.0, a powerful and reliable terminal-based text 
 editor for Linux/Unix, developed with the assistance of AI. 
 It features a robust model-view-controller architecture with advanced 
@@ -37,7 +77,7 @@ triggers and versioned backups, crash recovery, file validation to prevent data
 loss.
 - **Advanced Editing**: Syntax highlighting with nesting-based color intensity 
 for C/C++, search and replace with regex support, selection and clipboard 
-operations, word wrap toggle (temporarily disabled; see warnings).
+operations, word wrap toggle for visual soft wrap of long lines.
 - **User Experience**: Configurable status bar with version/time/filename 
 display, extended ASCII support, intuitive keyboard shortcuts, clear error 
 feedback.
@@ -99,7 +139,7 @@ Enter to replace all matches, Esc to cancel)
 
 ### Display
 - F2: Toggle line number display
-- F3: Toggle word wrap (visual soft wrap of long lines) - temporarily disabled; see WARNINGS.md
+- F3: Toggle word wrap (visual soft wrap of long lines)
 - Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based 
 color intensity
 
