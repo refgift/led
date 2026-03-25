@@ -15,6 +15,7 @@ The map is the source code we write; the territory is the executing program
 that shapes our digital reality. Led embodies this duality by prioritizing 
 constraints that govern the territory of editing: safety, reliability, and user 
 sovereignty.
+
 Led invites developers who see software as a craft of reliable tools, not 
 disposable artifacts. Contributors are welcome to extend this vision, ensuring 
 that digital editing respects the user's work as paper once did: permanent, 

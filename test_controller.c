@@ -107,12 +107,14 @@ test_buffer_load_save ()
       load_result = buffer_load_from_file (&buf, temp_file);
       test_assert (load_result == 0,
                    "buffer_load_from_file succeeds for valid file");
-      test_assert (buffer_num_lines (&buf) == 2,
+      test_assert (buffer_num_lines (&buf) == 3,
                    "buffer has correct number of lines after load");
       test_assert (strcmp (buffer_get_line (&buf, 0), "line1") == 0,
                    "first line loaded correctly");
       test_assert (strcmp (buffer_get_line (&buf, 1), "line2") == 0,
                    "second line loaded correctly");
+      test_assert (strcmp (buffer_get_line (&buf, 2), "") == 0,
+                   "empty line at end loaded correctly");
 
       // Save to another temp file
       char save_file[] = "/tmp/led_save.txt";

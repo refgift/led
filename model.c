@@ -98,24 +98,21 @@ buffer_load_from_file (Buffer *buf, const char *filename)
       if (temp[i] == '\n' || temp[i] == '\0')
         {
           int len = i - start;
-          if (len > 0)
+          char *line = malloc (len + 1);
+          if (!line)
             {
-              char *line = malloc (len + 1);
-              if (!line)
-                {
-                  free (temp);
-                  return -1;
-                }
-              memcpy (line, &temp[start], len);
-              line[len] = '\0';
-              if (buffer_insert_line (buf, buf->num_lines, line) != 0)
-                {
-                  free (line);
-                  free (temp);
-                  return -1;
-                }
-              free (line);
+              free (temp);
+              return -1;
             }
+          memcpy (line, &temp[start], len);
+          line[len] = '\0';
+          if (buffer_insert_line (buf, buf->num_lines, line) != 0)
+            {
+              free (line);
+              free (temp);
+              return -1;
+            }
+          free (line);
           start = i + 1;
         }
     }
