@@ -69,8 +69,8 @@ set_default_config (EditorConfig *config)
           "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void");
   strcpy (config->syntax.paired_keywords, "if-then,begin-end,(,)");
   // Auto-save
-  config->autosave.timeout = 8000000;
-  config->autosave.keystrokes = 50;
+  config->autosave.timeout = 80000000;
+  config->autosave.keystrokes = 500;
   // Status bar
   config->statusbar.enabled = 1;
   config->statusbar.show_version = 1;
@@ -80,7 +80,7 @@ set_default_config (EditorConfig *config)
   // Display
   config->display.show_line_numbers = 0;
   config->display.syntax_highlight = 0;
-  config->display.word_wrap = 1;
+  config->display.word_wrap = 0;
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 1;
   // Performance
@@ -164,7 +164,7 @@ load_editor_config (EditorConfig *config)
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
     }
-  config->display.word_wrap = 1;
+  config->display.word_wrap = 0;
   fclose (file);
   return CONFIG_SUCCESS;
 }

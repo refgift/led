@@ -8,6 +8,7 @@
 #include <ctype.h>
 UndoStack undo_stack = { NULL, 0, 0 };
 UndoStack redo_stack = { NULL, 0, 0 };
+
 static char *
 my_strdup (const char *s)
 {
@@ -19,11 +20,13 @@ my_strdup (const char *s)
     memcpy (d, s, len + 1);
   return d;
 }
+
 void
 init_undo (void)
 {
   // Already initialized statically
 }
+
 void
 push_undo (bool is_insert, int line, int col, char ch)
 {
@@ -46,6 +49,7 @@ push_undo (bool is_insert, int line, int col, char ch)
   undo_stack.changes[undo_stack.count].ch = ch;
   undo_stack.count++;
 }
+
 void
 push_redo (bool is_insert, int line, int col, char ch)
 {
@@ -68,6 +72,7 @@ push_redo (bool is_insert, int line, int col, char ch)
   redo_stack.changes[redo_stack.count].ch = ch;
   redo_stack.count++;
 }
+
 void
 undo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
 {
@@ -81,17 +86,47 @@ undo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
       if (c.is_insert)
         {
           buffer_delete_char (buf, c.line, c.col);
-          if (*cursor_line == c.line && *cursor_col > c.col)
-            (*cursor_col)--;
+          if (c.ch == '\n')
+            {
+              // Merging lines, adjust cursor if it was on the deleted line
+              if (*cursor_line > c.line)
+                {
+                  (*cursor_line)--;
+                  *cursor_col += c.col;
+                }
+              else if (*cursor_line == c.line && *cursor_col > c.col)
+                (*cursor_col)--;
+            }
+          else
+            {
+              if (*cursor_line == c.line && *cursor_col > c.col)
+                (*cursor_col)--;
+            }
         }
       else
         {
           buffer_insert_char (buf, c.line, c.col, c.ch);
-          if (*cursor_line == c.line && *cursor_col >= c.col)
-            (*cursor_col)++;
+          if (c.ch == '\n')
+            {
+              // Splitting lines, move cursor to new line if after insert
+              if (*cursor_line == c.line && *cursor_col > c.col)
+                {
+                  (*cursor_line)++;
+                  *cursor_col -= c.col;
+                }
+            }
+          else
+            {
+              if (*cursor_line == c.line && *cursor_col >= c.col)
+                (*cursor_col)++;
+            }
         }
+      int len = buffer_get_line_length (buf, *cursor_line);
+      if (*cursor_col > len)
+        *cursor_col = len;
     }
 }
+
 void
 redo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
 {
@@ -105,22 +140,53 @@ redo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
       if (c.is_insert)
         {
           buffer_insert_char (buf, c.line, c.col, c.ch);
-          if (*cursor_line == c.line && *cursor_col >= c.col)
-            (*cursor_col)++;
+          if (c.ch == '\n')
+            {
+              // Splitting lines, move cursor to new line if after insert
+              if (*cursor_line == c.line && *cursor_col > c.col)
+                {
+                  (*cursor_line)++;
+                  *cursor_col -= c.col;
+                }
+            }
+          else
+            {
+              if (*cursor_line == c.line && *cursor_col >= c.col)
+                (*cursor_col)++;
+            }
         }
       else
         {
           buffer_delete_char (buf, c.line, c.col);
-          if (*cursor_line == c.line && *cursor_col > c.col)
-            (*cursor_col)--;
+          if (c.ch == '\n')
+            {
+              // Merging lines, adjust cursor if it was on the deleted line
+              if (*cursor_line > c.line)
+                {
+                  (*cursor_line)--;
+                  *cursor_col += c.col;
+                }
+              else if (*cursor_line == c.line && *cursor_col > c.col)
+                (*cursor_col)--;
+            }
+          else
+            {
+              if (*cursor_line == c.line && *cursor_col > c.col)
+                (*cursor_col)--;
+            }
         }
+      int len = buffer_get_line_length (buf, *cursor_line);
+      if (*cursor_col > len)
+        *cursor_col = len;
     }
 }
+
 void
 clear_redo (void)
 {
   redo_stack.count = 0;
 }
+
 void
 free_undo (void)
 {
@@ -133,30 +199,33 @@ free_undo (void)
   redo_stack.count = 0;
   redo_stack.capacity = 0;
 }
+
 void
 search_next (Buffer *buf, int *cursor_line, int *cursor_col,
              const char *pattern)
 {
   if (strlen (pattern) > 100)
     {
-      return;                     // Pattern too long
+      return;                   // Pattern too long
     }
   regex_t regex;
   if (regcomp (&regex, pattern, REG_EXTENDED) != 0)
     return;
   int found = 0;
   int clamped = 0;
-  for (int l = *cursor_line; l < buffer_num_lines (buf) && !found && (!clamped || l == *cursor_line); l++)
+  for (int l = *cursor_line;
+       l < buffer_num_lines (buf) && !found && (!clamped
+                                                || l == *cursor_line); l++)
     {
-       const char *line = buffer_get_line (buf, l);
-       int len = strlen (line);
-       if (l == *cursor_line && *cursor_col > len)
-         {
-           *cursor_col = len;
-           clamped = 1;
-         }
-       regmatch_t match;
-       int pos = (l == *cursor_line) ? *cursor_col : 0;
+      const char *line = buffer_get_line (buf, l);
+      int len = strlen (line);
+      if (l == *cursor_line && *cursor_col > len)
+        {
+          *cursor_col = len;
+          clamped = 1;
+        }
+      regmatch_t match;
+      int pos = (l == *cursor_line) ? *cursor_col : 0;
       int line_flags = (pos > 0) ? REG_NOTBOL : 0;
       while (regexec (&regex, line + pos, 1, &match, line_flags) == 0)
         {
@@ -174,6 +243,7 @@ search_next (Buffer *buf, int *cursor_line, int *cursor_col,
     }
   regfree (&regex);
 }
+
 int
 handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int *cursor_line, int *cursor_col, int *show_line_numbers,
@@ -183,8 +253,6 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int *selection_end_col, int *selection_active, Editor *ed)
 {
   int error_occurred = 0;
-  if (show_line_numbers==NULL) {}
-  if (ed==NULL) {}
   if (*search_mode)
     {
       if (ch == '\n' || ch == 13 || ch == KEY_ENTER)
@@ -232,103 +300,37 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             }
           break;
         case KEY_RIGHT:
-          if (ed->config.display.word_wrap) {
-            const char* line = buffer_get_line(buf, *cursor_line);
-            int num_digits = calculate_digits(buffer_num_lines(buf));
-            int num_width = *show_line_numbers ? num_digits + 1 : 0;
-            int available_width = COLS - 2 - num_width;
-            int vis_rows = visual_rows_for_line(line, available_width, ed->config.display.tab_width);
-            int current_vis_row = get_visual_row_for_column(line, *cursor_col, available_width, ed->config.display.tab_width);
-            int vis_cols_in_row = visual_column(line, strlen(line), *cursor_col, ed->config.display.tab_width) -
-                                  (current_vis_row > 0 ? visual_column(line, strlen(line),
-                                     get_start_column_for_visual_row(line, current_vis_row, available_width, ed->config.display.tab_width),
-                                     ed->config.display.tab_width) : 0);
-            if (vis_cols_in_row < available_width && *cursor_col < buffer_get_line_length(buf, *cursor_line)) {
-              // Move right within the visual row
+          int len = buffer_get_line_length (buf, *cursor_line);
+          if (*cursor_col < len)
+            {
               (*cursor_col)++;
-            } else if (current_vis_row < vis_rows - 1) {
-              // Move to next visual row
-              int next_start_col = get_start_column_for_visual_row(line, current_vis_row + 1, available_width, ed->config.display.tab_width);
-              *cursor_col = next_start_col;
-            } else if (*cursor_line < buffer_num_lines(buf) - 1) {
-              // Move to next logical line
+            }
+          else if (*cursor_line < buffer_num_lines (buf) - 1)
+            {
               (*cursor_line)++;
               *cursor_col = 0;
             }
-          } else {
-            if (*cursor_col < buffer_get_line_length (buf, *cursor_line))
-              {
-                (*cursor_col)++;
-              }
-            else if (*cursor_line < buffer_num_lines (buf) - 1)
-              {
-                (*cursor_line)++;
-                *cursor_col = 0;
-              }
-          }
           break;
-case KEY_UP:
-  if (ed->config.display.word_wrap) {
-    int num_digits = calculate_digits(buffer_num_lines(buf));
-    int num_width = *show_line_numbers ? num_digits + 1 : 0;
-    int available_width = COLS - 2 - num_width;
-    const char* current_line = buffer_get_line(buf, *cursor_line);
-    int current_vis_row = get_visual_row_for_column(current_line, *cursor_col, available_width, ed->config.display.tab_width);
-    if (current_vis_row > 0) {
-      // Move to previous visual row in same logical line
-      int prev_start_col = get_start_column_for_visual_row(current_line, current_vis_row - 1, available_width, ed->config.display.tab_width);
-      *cursor_col = prev_start_col;
-    } else {
-      // Move to previous logical line, to its last visual row
-      if (*cursor_line > 0) {
-        (*cursor_line)--;
-        const char* prev_line = buffer_get_line(buf, *cursor_line);
-        int prev_vis_rows = visual_rows_for_line(prev_line, available_width, ed->config.display.tab_width);
-        int last_start_col = get_start_column_for_visual_row(prev_line, prev_vis_rows - 1, available_width, ed->config.display.tab_width);
-        *cursor_col = last_start_col;
-      }
-    }
-  } else {
-    if (*cursor_line > 0)
-      {
-        (*cursor_line)--;
-        if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
-          {
-            *cursor_col = buffer_get_line_length (buf, *cursor_line);
-          }
-      }
-  }
-  break;
-case KEY_DOWN:
-  if (ed->config.display.word_wrap) {
-    const char* current_line = buffer_get_line(buf, *cursor_line);
-    int num_digits = calculate_digits(buffer_num_lines(buf));
-    int num_width = *show_line_numbers ? num_digits + 1 : 0;
-    int available_width = COLS - 2 - num_width;
-    int vis_rows = visual_rows_for_line(current_line, available_width, ed->config.display.tab_width);
-    int current_vis_row = get_visual_row_for_column(current_line, *cursor_col, available_width, ed->config.display.tab_width);
-    if (current_vis_row < vis_rows - 1) {
-      // Move to next visual row in same logical line
-      int next_start_col = get_start_column_for_visual_row(current_line, current_vis_row + 1, available_width, ed->config.display.tab_width);
-      *cursor_col = next_start_col;
-    } else {
-      // Move to next logical line
-      if (*cursor_line < buffer_num_lines(buf) - 1) {
-        (*cursor_line)++;
-        *cursor_col = 0;
-      }
-    }
-  } else {
-    if (*cursor_line < buffer_num_lines (buf) - 1)
-      {
-        (*cursor_line)++;
-        if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
-          {
-            *cursor_col = buffer_get_line_length (buf, *cursor_line);
-          }
-      }
-  }
-  break;
+        case KEY_UP:
+          if (*cursor_line > 0)
+            {
+              (*cursor_line)--;
+              if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
+                {
+                  *cursor_col = buffer_get_line_length (buf, *cursor_line);
+                }
+            }
+          break;
+        case KEY_DOWN:
+          if (*cursor_line < buffer_num_lines (buf) - 1)
+            {
+              (*cursor_line)++;
+              if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
+                {
+                  *cursor_col = buffer_get_line_length (buf, *cursor_line);
+                }
+            }
+          break;
         case KEY_HOME:
           if (*cursor_col == 0)
             {
@@ -381,7 +383,8 @@ case KEY_DOWN:
                   clear_redo ();
                   (*cursor_col)--;
                   int new_len = buffer_get_line_length (buf, *cursor_line);
-                  if (*cursor_col > new_len) *cursor_col = new_len;
+                  if (*cursor_col > new_len)
+                    *cursor_col = new_len;
                 }
               else
                 {
@@ -390,8 +393,7 @@ case KEY_DOWN:
             }
           else if (*cursor_line > 0)
             {
-              int prev_len =
-                buffer_get_line_length (buf, *cursor_line - 1);
+              int prev_len = buffer_get_line_length (buf, *cursor_line - 1);
               if (buffer_delete_char (buf, *cursor_line - 1, prev_len) == 0)
                 {
                   push_undo (false, *cursor_line - 1, prev_len, '\n');
@@ -399,7 +401,8 @@ case KEY_DOWN:
                   (*cursor_line)--;
                   *cursor_col = prev_len;
                   int new_len = buffer_get_line_length (buf, *cursor_line);
-                  if (*cursor_col > new_len) *cursor_col = new_len;
+                  if (*cursor_col > new_len)
+                    *cursor_col = new_len;
                 }
               else
                 {
@@ -416,7 +419,8 @@ case KEY_DOWN:
                   push_undo (false, *cursor_line, *cursor_col, deleted);
                   clear_redo ();
                   int new_len = buffer_get_line_length (buf, *cursor_line);
-                  if (*cursor_col > new_len) *cursor_col = new_len;
+                  if (*cursor_col > new_len)
+                    *cursor_col = new_len;
                 }
               else
                 {
@@ -432,7 +436,8 @@ case KEY_DOWN:
                              '\n');
                   clear_redo ();
                   int new_len = buffer_get_line_length (buf, *cursor_line);
-                  if (*cursor_col > new_len) *cursor_col = new_len;
+                  if (*cursor_col > new_len)
+                    *cursor_col = new_len;
                 }
               else
                 {
@@ -582,7 +587,8 @@ case KEY_DOWN:
                         {
                           *cursor_line = buffer_num_lines (buf) - 1;
                         }
-                      *cursor_col = buffer_get_line_length (buf, *cursor_line);
+                      *cursor_col =
+                        buffer_get_line_length (buf, *cursor_line);
                     }
                 }
             }
@@ -630,7 +636,8 @@ case KEY_DOWN:
           *selection_active = 1;
           break;
         default:
-          if (ch == '\n' || ch == KEY_ENTER ||  ch == '\t' || (ch >= 32 && ch <= 126))
+          if (ch == '\n' || ch == KEY_ENTER || ch == '\t'
+              || (ch >= 32 && ch <= 126))
             {                   // Printable chars or newline
               if (ch == '\n')
                 {
@@ -678,24 +685,26 @@ case KEY_DOWN:
             }
           break;
         }
+
+      if (*selection_active)
+        {
+          *selection_end_line = *cursor_line;
+          *selection_end_col = *cursor_col;
+        }
+      // Adjust scroll
+      if (*cursor_line < *scroll_row)
+        *scroll_row = *cursor_line;
+      else if (*cursor_line >= *scroll_row + (int) LINES - 2)
+        *scroll_row = *cursor_line - (LINES - 3);
+      if (*cursor_col < *scroll_col)
+        *scroll_col = *cursor_col;
+      else if (*cursor_col >= *scroll_col + (int) COLS - 2)
+        *scroll_col = *cursor_col - (COLS - 3);
+      if (*scroll_row > buffer_num_lines (buf) - ((int) LINES - 2))
+        *scroll_row =
+          buffer_num_lines (buf) >
+          (int) LINES - 2 ? buffer_num_lines (buf) - (LINES - 2) : 0;
+      return error_occurred ? -1 : 0;
     }
-  if (*selection_active)
-    {
-      *selection_end_line = *cursor_line;
-      *selection_end_col = *cursor_col;
-    }
-  // Adjust scroll
-  if (*cursor_line < *scroll_row)
-    *scroll_row = *cursor_line;
-  else if (*cursor_line >= *scroll_row + (int) LINES - 2)
-    *scroll_row = *cursor_line - (LINES - 3);
-  if (*cursor_col < *scroll_col)
-    *scroll_col = *cursor_col;
-  else if (*cursor_col >= *scroll_col + (int) COLS - 2)
-    *scroll_col = *cursor_col - (COLS - 3);
-  if (*scroll_row > buffer_num_lines (buf) - ((int) LINES - 2))
-    *scroll_row =
-      buffer_num_lines (buf) >
-      (int) LINES - 2 ? buffer_num_lines (buf) - (LINES - 2) : 0;
-  return error_occurred ? -1 : 0;
+    return true;
 }

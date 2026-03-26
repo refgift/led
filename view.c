@@ -199,7 +199,7 @@ int get_start_column_for_visual_row(const char* line, int target_vis_row, int av
         current_vis_col++;
       }
       if (current_vis_col >= available_width) {
-        pos += i + 1;
+        pos += i;
         vis_row++;
         current_vis_col = 0;
         break;

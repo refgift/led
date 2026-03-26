@@ -662,6 +662,77 @@ test_enter_key_newline_insertion (void)
 }
 
 void
+test_cursor_newline_undo_redo_bug (void)
+{
+  fprintf (stderr, "Running cursor newline undo/redo bug test\n");
+  Buffer buf;
+  buffer_init (&buf);
+  Editor ed = {0}; // Dummy
+  ed.config.display.word_wrap = 1;  // Enable word wrap
+  ed.config.display.tab_width = 8;
+  COLS = 80; // Set terminal width for test
+  init_undo ();
+
+  // Insert test line
+  buffer_insert_line (&buf, 0, "hello world");
+  int cursor_line = 0, cursor_col = 11;  // Cursor at end
+  int scroll_row = 0, scroll_col = 0, show_line_numbers = 0;
+  char search_buffer[SEARCH_BUFFER_SIZE] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+  int selection_start_line = 0, selection_start_col = 0;
+  int selection_end_line = 0, selection_end_col = 0, selection_active = 0;
+
+  // Step 1: Initial newline
+  handle_input ('\n', &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &selection_start_line, &selection_start_col,
+                &selection_end_line, &selection_end_col, &selection_active, &ed);
+  test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0,
+               "Initial newline splits line and positions cursor correctly");
+
+  // Step 2: Undo
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (buffer_num_lines (&buf) == 1 && strcmp (buffer_get_line (&buf, 0), "hello world") == 0
+               && cursor_line == 0 && cursor_col == 11,
+               "Undo reverts newline and cursor position");
+
+  // Step 3: Redo
+  redo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0,
+               "Redo reapplies newline and cursor position");
+
+    // Step 4: Subsequent newline (potential bug point)
+    handle_input ('\n', &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                 filename, &selection_start_line, &selection_start_col,
+                 &selection_end_line, &selection_end_col, &selection_active, &ed);
+    test_assert (buffer_num_lines (&buf) == 3 && cursor_line == 2 && cursor_col == 0
+                && strcmp (buffer_get_line (&buf, 2), "") == 0,
+               "Subsequent newline after redo positions cursor correctly");
+
+    // Step 5: Backspace to merge lines
+    handle_input (KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                 filename, &selection_start_line, &selection_start_col,
+                 &selection_end_line, &selection_end_col, &selection_active, &ed);
+    test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0
+                && strcmp (buffer_get_line (&buf, 1), "") == 0,
+               "Backspace at start of line merges lines correctly");
+
+    // Step 6: Undo the backspace
+    undo_operation (&buf, &cursor_line, &cursor_col);
+    test_assert (buffer_num_lines (&buf) == 3 && cursor_line == 2 && cursor_col == 0
+                && strcmp (buffer_get_line (&buf, 2), "") == 0,
+               "Undo of backspace positions cursor correctly");
+
+    free_undo ();
+    buffer_free (&buf);
+    fprintf (stderr, "Cursor newline undo/redo bug test completed\n");
+}
+
+void
 test_right_arrow_repeat_navigation (void)
 {
   fprintf (stderr, "Running right arrow repeat navigation test\n");
