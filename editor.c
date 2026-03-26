@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sched.h>
 void
 editor_init (Editor *ed, int argc, char *argv[])
 {
@@ -73,6 +74,7 @@ editor_init (Editor *ed, int argc, char *argv[])
                   break;
                 }
               token = strtok (NULL, ",");
+              sched_yield();
             }
           free (list);
         }

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <locale.h>
+#include <sched.h>
 #include "editor.h"
 #include "view.h"
 #include "config.h"
@@ -82,6 +83,7 @@ main (int argc, char *argv[])
             break;              // Ctrl+Q
           editor_handle_input (&ed, ch);
           editor_draw (stdscr, &ed);
+          sched_yield();
         }
     }
   editor_cleanup (&ed);

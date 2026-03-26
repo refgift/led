@@ -6,6 +6,7 @@
 #include <string.h>
 #include <regex.h>
 #include <ctype.h>
+#include <sched.h>
 UndoStack undo_stack = { NULL, 0, 0 };
 UndoStack redo_stack = { NULL, 0, 0 };
 

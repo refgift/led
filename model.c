@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <regex.h>
 #include <sys/stat.h>
+#include <sched.h>
 #define MAX_FILE_SIZE (10 * 1024 * 1024)       // 10MB
 #define MAX_LINE_LENGTH 10000
 static void *
@@ -91,6 +92,7 @@ buffer_load_from_file (Buffer *buf, const char *filename)
           temp = new_temp;
         }
       temp[pos++] = c;
+      sched_yield();
     }
   fclose (fp);
   temp[pos] = '\0';
@@ -594,6 +596,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
             memcpy (new_line + used, replace_str, replace_len);
             used += replace_len;
             pos += match.rm_eo;
+            sched_yield();
         }
       // Append rest
       int rest_len = len - pos;
