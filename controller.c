@@ -230,6 +230,8 @@ search_next (Buffer *buf, int *cursor_line, int *cursor_col,
       int line_flags = (pos > 0) ? REG_NOTBOL : 0;
       while (regexec (&regex, line + pos, 1, &match, line_flags) == 0)
         {
+		sched_yield();
+
           if (match.rm_so == 0 && pos == *cursor_col && l == *cursor_line)
             {
               pos += match.rm_eo;
@@ -478,6 +480,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int total = 0;
               for (int l = sl; l <= el; l++)
                 {
+		sched_yield();
+
                   const char *line = buffer_get_line (buf, l);
                   int len = strlen (line);
                   int s = (l == sl) ? sc : 0;
@@ -490,6 +494,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   char *p = *clipboard;
                   for (int l = sl; l <= el; l++)
                     {
+		sched_yield();
+
                       const char *line = buffer_get_line (buf, l);
                       int len = strlen (line);
                       int s = (l == sl) ? sc : 0;
@@ -529,6 +535,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int total = 0;
               for (int l = sl; l <= el; l++)
                 {
+		sched_yield();
+
                   const char *line = buffer_get_line (buf, l);
                   int len = strlen (line);
                   int s = (l == sl) ? sc : 0;
@@ -541,6 +549,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   char *p = *clipboard;
                   for (int l = sl; l <= el; l++)
                     {
+		sched_yield();
+
                       const char *line = buffer_get_line (buf, l);
                       int len = strlen (line);
                       int s = (l == sl) ? sc : 0;
@@ -605,6 +615,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   const char *p = *clipboard;
                   while (*p)
                     {
+		sched_yield();
+
                       if (*p == '\n')
                         {
                           (*cursor_line)++;
