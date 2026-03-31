@@ -2,6 +2,7 @@
 
 #include <ncurses.h>
 #include <time.h>
+#include <sched.h>
 #include "model.h"
 #include "config.h"
 

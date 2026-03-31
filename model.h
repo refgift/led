@@ -5,10 +5,22 @@
 
 #define INITIAL_LINES_CAPACITY 10
 
+// Cache for nesting levels (syntax highlighting state per line)
+typedef struct {
+    int valid;          // Is this cache entry valid?
+    int brace_level;
+    int brace_top;
+    int brace_stack[256];
+    int kw_level;
+    int kw_top;
+    int kw_stack[100];
+} NestingCache;
+
 typedef struct {
     char** lines;
     int num_lines;
     int capacity;
+    NestingCache* nesting_cache;  // Cache of nesting levels per line
 } Buffer;
 
 void buffer_init(Buffer* buf);

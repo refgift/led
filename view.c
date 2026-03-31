@@ -535,8 +535,20 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
     free(word);
   }
 }
-// Compute starting nesting state for a line
+// Compute starting nesting state for a line (with caching)
 void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[], int *kw_level, int *kw_top, int kw_stack[], EditorConfig *config) {
+  // Check if cache is available and valid for previous line
+  if (buf->nesting_cache && start_line > 0 && buf->nesting_cache[start_line - 1].valid) {
+    // Use cached state from previous line
+    *brace_level = buf->nesting_cache[start_line - 1].brace_level;
+    *brace_top = buf->nesting_cache[start_line - 1].brace_top;
+    memcpy(brace_stack, buf->nesting_cache[start_line - 1].brace_stack, sizeof(int) * 256);
+    *kw_level = buf->nesting_cache[start_line - 1].kw_level;
+    *kw_top = buf->nesting_cache[start_line - 1].kw_top;
+    memcpy(kw_stack, buf->nesting_cache[start_line - 1].kw_stack, sizeof(int) * 100);
+    return;
+  }
+
   *brace_level = 1;
   *brace_top = 0;
   *kw_level = 1;
@@ -589,6 +601,18 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   memset(kw_stack, 0, sizeof(kw_stack));
   get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
   int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack);
+
+  // Cache the nesting state after processing this line (for next line's use)
+  if (buf->nesting_cache && logical_line < buf->capacity) {
+    buf->nesting_cache[logical_line].valid = 1;
+    buf->nesting_cache[logical_line].brace_level = brace_level;
+    buf->nesting_cache[logical_line].brace_top = brace_top;
+    memcpy(buf->nesting_cache[logical_line].brace_stack, brace_stack, sizeof(int) * 256);
+    buf->nesting_cache[logical_line].kw_level = kw_level;
+    buf->nesting_cache[logical_line].kw_top = kw_top;
+    memcpy(buf->nesting_cache[logical_line].kw_stack, kw_stack, sizeof(int) * 100);
+  }
+
   // Compute expanded length
   int expanded_len = 0;
   int current_vis = 0;

@@ -37,6 +37,7 @@ buffer_init (Buffer *buf)
   buf->lines = NULL;
   buf->num_lines = 0;
   buf->capacity = 0;
+  buf->nesting_cache = NULL;
 }
 void
 buffer_free (Buffer *buf)
@@ -46,10 +47,49 @@ buffer_free (Buffer *buf)
       free (buf->lines[i]);
     }
   free (buf->lines);
+  free (buf->nesting_cache);
   buf->lines = NULL;
+  buf->nesting_cache = NULL;
   buf->num_lines = 0;
   buf->capacity = 0;
 }
+
+// Ensure nesting cache is sized for current capacity
+static void
+_ensure_cache_capacity (Buffer *buf)
+{
+  if (buf->capacity == 0)
+    return;
+  NestingCache *new_cache =
+    realloc (buf->nesting_cache, buf->capacity * sizeof (NestingCache));
+  if (!new_cache)
+    {
+      // If realloc fails, invalidate all existing cache
+      if (buf->nesting_cache)
+        free (buf->nesting_cache);
+      buf->nesting_cache = NULL;
+      return;
+    }
+  buf->nesting_cache = new_cache;
+  // Mark all entries as invalid (safe approach)
+  for (int i = 0; i < buf->capacity; i++)
+    {
+      buf->nesting_cache[i].valid = 0;
+    }
+}
+
+// Invalidate cache entries from line onwards
+static void
+_invalidate_cache_from (Buffer *buf, int line)
+{
+  if (!buf->nesting_cache)
+    return;
+  for (int i = line; i < buf->num_lines; i++)
+    {
+      buf->nesting_cache[i].valid = 0;
+    }
+}
+
 int
 buffer_load_from_file (Buffer *buf, const char *filename)
 {
@@ -164,6 +204,8 @@ buffer_delete_char (Buffer *buf, int line, int col)
       new_str[len - 1] = '\0';
       free (buf->lines[line]);
       buf->lines[line] = new_str;
+      // Invalidate cache for this line
+      _invalidate_cache_from (buf, line);
     }
   else if (line < buf->num_lines - 1)
     {
@@ -190,6 +232,8 @@ buffer_delete_char (Buffer *buf, int line, int col)
           buf->lines[i] = buf->lines[i + 1];
         }
       buf->num_lines--;
+      // Invalidate cache for this line and onwards
+      _invalidate_cache_from (buf, line);
     }
   return 0;
 }
@@ -237,6 +281,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       memcpy (&new_str[start_col], &current[end_col], len - end_col + 1);
       free (buf->lines[start_line]);
       buf->lines[start_line] = new_str;
+      // Invalidate cache from this line onwards
+      _invalidate_cache_from (buf, start_line);
     }
   else
     {
@@ -299,6 +345,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
           buf->lines[i] = buf->lines[i + 1];
         }
       buf->num_lines--;
+      // Invalidate cache from this line onwards
+      _invalidate_cache_from (buf, start_line);
     }
   return 0;
 }
@@ -360,6 +408,7 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
           return -1;
         }
       buf->lines = new_lines;
+      _ensure_cache_capacity (buf);
     }
   // Shift lines down
   for (int i = buf->num_lines; i > line; i--)
@@ -377,6 +426,8 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
       return -1;
     }
   buf->num_lines++;
+  // Invalidate cache from inserted line onwards
+  _invalidate_cache_from (buf, line);
   return 0;
 }
 int
@@ -393,6 +444,8 @@ buffer_delete_line (Buffer *buf, int line)
       buf->lines[i] = buf->lines[i + 1];
     }
   buf->num_lines--;
+  // Invalidate cache from deleted line onwards
+  _invalidate_cache_from (buf, line);
   return 0;
 }
 int
@@ -451,6 +504,8 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
       memcpy (&new_ln[col + 1], ln + col, len - col + 1);
       free (buf->lines[line]);
       buf->lines[line] = new_ln;
+      // Invalidate cache for this line
+      _invalidate_cache_from (buf, line);
     }
   return 0;
 }
@@ -619,5 +674,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
       free (buf->lines[i]);
       buf->lines[i] = new_line;
     }
+  // Invalidate entire cache since multiple lines changed
+  _invalidate_cache_from (buf, 0);
   regfree (&reg);
 }
