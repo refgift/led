@@ -7,7 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sched.h>
+#include <time.h>
+#include <sys/time.h>
 void
 editor_init (Editor *ed, int argc, char *argv[])
 {
@@ -68,7 +69,7 @@ editor_init (Editor *ed, int argc, char *argv[])
           char *token = strtok (list, ",");
           while (token)
             {
-		sched_yield();
+
 
               if (strcmp (ext, token) == 0)
                 {
@@ -76,7 +77,6 @@ editor_init (Editor *ed, int argc, char *argv[])
                   break;
                 }
               token = strtok (NULL, ",");
-              sched_yield();
             }
           free (list);
         }
@@ -103,6 +103,7 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->status_message[0] = '\0';
   ed->status_message_time = 0;
   ed->file_modified = 0;
+  ed->last_key_ms = 0;
 }
 void
 set_status_message (Editor *ed, const char *message)
@@ -145,18 +146,21 @@ editor_draw (WINDOW *win, Editor *ed)
 void
 editor_handle_input (Editor *ed, int ch)
 {
+  struct timeval start_time;
+  gettimeofday(&start_time, NULL);
+
   // Handle config toggles
   if (ch == KEY_F (2))
     {
       ed->show_line_numbers = !ed->show_line_numbers;
       return;
     }
-   else if (ch == KEY_F (3))
-     {
-       ed->config.display.word_wrap = !ed->config.display.word_wrap;
-       set_status_message (ed, ed->config.display.word_wrap ? "Word wrap enabled" : "Word wrap disabled");
-       return;
-     }
+    else if (ch == KEY_F (3))
+      {
+        ed->config.display.word_wrap = !ed->config.display.word_wrap;
+        set_status_message (ed, ed->config.display.word_wrap ? "Word wrap enabled" : "Word wrap disabled");
+        return;
+      }
   if (ch == 18)
     {                           // Ctrl+R replace
       if (ed->replace_step == 0)
@@ -240,6 +244,12 @@ editor_handle_input (Editor *ed, int ch)
           set_status_message (ed, "Redid operation");
         }
     }
+
+  // Measure key response time
+  struct timeval end_time;
+  gettimeofday(&end_time, NULL);
+  ed->last_key_ms = (end_time.tv_sec - start_time.tv_sec) * 1000 +
+                    (end_time.tv_usec - start_time.tv_usec) / 1000;
 }
 void
 editor_cleanup (Editor *ed)

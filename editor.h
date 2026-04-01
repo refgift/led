@@ -2,7 +2,6 @@
 
 #include <ncurses.h>
 #include <time.h>
-#include <sched.h>
 #include "model.h"
 #include "config.h"
 
@@ -42,6 +41,9 @@ typedef struct {
     
     // Visual rendering state (for word wrap support)
     int total_visual_lines;  // Total visual lines when word_wrap ON
+
+    // Performance monitoring
+    int last_key_ms;
 } Editor;
 
 void editor_init(Editor* ed, int argc, char* argv[]);

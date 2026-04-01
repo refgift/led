@@ -1,5 +1,6 @@
 #pragma once
 #include <ncurses.h>
+#include <sched.h>
 #include "model.h"
 #include "config.h"
 #include "editor.h"

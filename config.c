@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <sched.h>
 int
 string_to_color (const char *str)
 {
@@ -103,9 +102,8 @@ load_editor_config (EditorConfig *config)
   char line[256];
   while (fgets (line, (int) sizeof (line), file))
     {
-		sched_yield();
 
-		sched_yield();
+
 
       // Remove newline
       line[strcspn (line, "\n")] = 0;
@@ -168,7 +166,6 @@ load_editor_config (EditorConfig *config)
       // Display
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
-      sched_yield();
     }
   config->display.word_wrap = 0;
   fclose (file);

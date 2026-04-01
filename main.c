@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <locale.h>
-#include <sched.h>
 #include "editor.h"
 #include "view.h"
 #include "config.h"
@@ -11,7 +10,7 @@ extern void run_tests (Editor * ed);
 extern void run_all_tests ();
 
 
-#include <sched.h>
+
 int
 main (int argc, char *argv[])
 {
@@ -81,14 +80,13 @@ main (int argc, char *argv[])
     {
       while (1)
         {
-		sched_yield();
+
 
           int ch = getch ();
           if (ch == 17)
             break;              // Ctrl+Q
           editor_handle_input (&ed, ch);
           editor_draw (stdscr, &ed);
-          sched_yield();
         }
     }
   editor_cleanup (&ed);

@@ -16,6 +16,10 @@ lint:
 sanitize: CFLAGS += -fsanitize=address -fsanitize=undefined
 sanitize: $(TARGET)
 
+install:
+	mkdir ~/bin || true
+	cp led ~/bin
+
 doc:
 	sudo cp led.1 /usr/share/man/man1
 

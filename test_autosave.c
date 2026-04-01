@@ -152,7 +152,7 @@ test_autosave_comprehensive ()
     // Perform 15 auto-saves to trigger rotation
     for (int i = 0; i < 15; i++)
       {
-		sched_yield();
+
 
         // Update content
         buffer_free (&buf);
@@ -169,7 +169,7 @@ test_autosave_comprehensive ()
     int backup_count = 0;
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+
 
         char backup_file[1024];
         snprintf (backup_file, sizeof (backup_file), "%s.bak.%d", test_file, i);
@@ -183,7 +183,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+
 
         char backup_file[1024];
         snprintf (backup_file, sizeof (backup_file), "%s.bak.%d", test_file, i);
@@ -239,7 +239,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+
 
         char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
@@ -296,7 +296,7 @@ test_autosave_comprehensive ()
     
     for (int i = 0; i < 3; i++)
       {
-		sched_yield();
+
 
         auto_save (&ed);
         test_assert_autosave (ed.backup_count == i + 1, "backup_count increments");
@@ -306,7 +306,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+
 
         char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
@@ -389,7 +389,7 @@ test_autosave_comprehensive ()
     int save_count = 0;
     for (int i = 0; i < 60; i++)
       {
-		sched_yield();
+
 
         buffer_insert_char (&ed.model, 0, i, 'a');
         ed.unsaved_keystrokes++;
@@ -406,7 +406,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+
 
         char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
@@ -433,7 +433,7 @@ test_autosave_comprehensive ()
     // Perform 11 saves
     for (int i = 0; i < 11; i++)
       {
-		sched_yield();
+
 
         buffer_free (&buf);
         buffer_init (&buf);
@@ -463,7 +463,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+
 
         char bak[1024];
         snprintf (bak, sizeof (bak), "%s.bak.%d", test_file, i);
