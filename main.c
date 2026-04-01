@@ -53,6 +53,7 @@ main (int argc, char *argv[])
     {
       // Initialize color pairs
       init_pair (1, ed.config.colors.normal_fg, ed.config.colors.normal_bg);
+      bkgd(COLOR_PAIR(1));
       init_pair (2, ed.config.colors.selection_fg,
                  ed.config.colors.selection_bg);
       init_pair (3, ed.config.colors.semicolon_fg,
