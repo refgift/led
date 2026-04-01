@@ -132,8 +132,9 @@ calculate_total_visual_lines (Buffer *buf, EditorConfig *config, int num_width)
     {
 		sched_yield();
 
-      const char *line = buffer_get_line (buf, i);
+      char *line = buffer_get_line (buf, i);
       total += visual_rows_for_line (line, available_width, config->display.tab_width);
+      free(line);
     }
   return total;
 }
@@ -246,8 +247,9 @@ int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config
   for (int i = 0; i < target_logical; i++) {
 		sched_yield();
 
-    const char* line = buffer_get_line(buf, i);
+    char* line = buffer_get_line(buf, i);
     visual += visual_rows_for_line(line, available_width, config->display.tab_width);
+    free(line);
   }
   return visual;
 }
@@ -257,10 +259,12 @@ int get_visual_cursor_row(Buffer *buf, int cursor_line, int cursor_col, EditorCo
     return cursor_line;
   }
   int visual = get_visual_line_number(buf, cursor_line, config, num_width);
-  const char* line = buffer_get_line(buf, cursor_line);
+  char* line = buffer_get_line(buf, cursor_line);
+  int line_len = strlen (line);
   int available_width = COLS - 2 - num_width;
   if (available_width <= 0) available_width = 80;
   visual += get_visual_row_for_column(line, cursor_col, available_width, config->display.tab_width);
+  free(line);
   return visual;
 }
 // Compute the visual column for a given logical position in a line
@@ -628,9 +632,10 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
   for (int l = 0; l < start_line; l++) {
 		sched_yield();
 
-    const char *line = buffer_get_line(buf, l);
+    char *line = buffer_get_line(buf, l);
     int len = strlen(line);
     update_nesting(line, len, brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack, pairs, num_pairs);
+    free(line);
   }
 }
 // Print a highlighted substring of a line
@@ -789,7 +794,7 @@ handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
   if (config->display.spaces_for_tab)
     {
       // Insert spaces to reach the next tab stop
-      const char *line = buffer_get_line (buf, cursor_line);
+      char *line = buffer_get_line (buf, cursor_line);
       int line_len = strlen (line);
       int current_vis =
         visual_column (line, line_len, cursor_col, config->display.tab_width);
@@ -797,12 +802,13 @@ handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
         config->display.tab_width - (current_vis % config->display.tab_width);
       for (int i = 0; i < spaces_to_insert; i++)
         {
-		sched_yield();
+ 		sched_yield();
 
           // Assuming buffer_insert_char exists; if not, replace with appropriate buffer function
           buffer_insert_char (buf, cursor_line, cursor_col + i, ' ');
         }
       // Update cursor_col += spaces_to_insert;
+      free(line);
     }
   else
     {
@@ -836,7 +842,7 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
         {
           mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
         }
-      const char *line = buffer_get_line (buf, line_idx);
+      char *line = buffer_get_line (buf, line_idx);
       int line_len = strlen (line);
       int start_col = *scroll_col;
       if (start_col < line_len)
@@ -848,17 +854,19 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
           print_highlighted (1 + i, 1 + num_width, line, line_len, start_col,
                              print_len, syntax_highlight ? 4 : 1, config, buf, line_idx);
         }
+      free(line);
     }
   // Calculate cursor screen position
   int y_diff =
     (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
   int screen_y = 1 + (int) y_diff;
-  const char *line = buffer_get_line (buf, cursor_line);
+  char *line = buffer_get_line (buf, cursor_line);
   int line_len = strlen (line);
   int vis_scroll =
     visual_column (line, line_len, *scroll_col, config->display.tab_width);
   int vis_cursor =
     visual_column (line, line_len, cursor_col, config->display.tab_width);
+  free(line);
   int x_diff =
     (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   int screen_x = 1 + num_width + (int) x_diff;
@@ -926,7 +934,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
     {
 		sched_yield();
 
-      const char *line = buffer_get_line (buf, logical_line);
+      char *line = buffer_get_line (buf, logical_line);
       int len = strlen (line);
       int pos = (*scroll_col && !config->display.word_wrap) ? *scroll_col : 0;
       
@@ -1075,8 +1083,9 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           
           visual_row++;
         }
-      
+
       logical_line++;
+      free(line);
     }
   // Status bar
   char status_line[COLS + 1];
@@ -1196,7 +1205,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   // Cursor position
   int visual_screen_y = visual_cursor - visual_scroll;
   int screen_y = 1 + visual_screen_y;
-  const char *line = buffer_get_line (buf, cursor_line);
+  char *line = buffer_get_line (buf, cursor_line);
   int line_len = strlen (line);
   int x_diff;
   if (config->display.word_wrap) {
@@ -1213,6 +1222,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
     int vis_cursor = visual_column (line, line_len, cursor_col, config->display.tab_width);
     x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   }
+  free(line);
   int screen_x = 1 + num_width + (int) x_diff;
   // Clamp cursor
   if (screen_y < 1)

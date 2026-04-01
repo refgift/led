@@ -5,6 +5,15 @@
 
 #define INITIAL_LINES_CAPACITY 10
 
+// Gap buffer for efficient text editing
+typedef struct {
+    char* buffer;
+    int buffer_size;
+    int gap_start;
+    int gap_end;
+    int text_len;
+} GapBuffer;
+
 // Cache for nesting levels (syntax highlighting state per line)
 typedef struct {
     int valid;          // Is this cache entry valid?
@@ -17,17 +26,27 @@ typedef struct {
 } NestingCache;
 
 typedef struct {
-    char** lines;
+    GapBuffer** lines;
     int num_lines;
     int capacity;
     NestingCache* nesting_cache;  // Cache of nesting levels per line
 } Buffer;
 
+// GapBuffer operations
+GapBuffer* gap_buffer_create();
+void gap_buffer_free(GapBuffer* gb);
+void gap_buffer_insert(GapBuffer* gb, int pos, char c);
+void gap_buffer_delete(GapBuffer* gb, int pos);
+char gap_buffer_get_char(const GapBuffer* gb, int pos);
+const char* gap_buffer_get_text(const GapBuffer* gb);
+int gap_buffer_length(const GapBuffer* gb);
+void gap_buffer_move_gap(GapBuffer* gb, int pos);
+
 void buffer_init(Buffer* buf);
 void buffer_free(Buffer* buf);
 int buffer_load_from_file(Buffer* buf, const char* filename);
 int buffer_save_to_file(const Buffer* buf, const char* filename);
-const char* buffer_get_line(const Buffer* buf, int line);
+char* buffer_get_line(const Buffer* buf, int line); // caller must free
 int buffer_get_line_length(const Buffer* buf, int line);
 int buffer_num_lines(const Buffer* buf);
 char buffer_get_char(const Buffer* buf, int line, int col);
