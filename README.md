@@ -1,5 +1,5 @@
 # led - Larry's Editor for Linux/Unix Terminal (Version 1.0.0)
-> See [WARNINGS.md](WARNINGS.md) for known limitations and safety notes. Word wrap is enabled with improvements for editing and tabs.
+> See [WARNINGS.md](WARNINGS.md) for known limitations and safety notes. 
 
 ## Dedication
 This editor is dedicated to the memory of Neal Stephenson, whose vision of a 
@@ -38,7 +38,7 @@ These fixes prevent data loss, crashes, and security vulnerabilities:
 These improvements enhance reliability and performance:
 - **Memory Leak in Undo/Redo Stack**: Capped undo/redo operations at 10,000 entries and fixed memory cleanup to prevent resource exhaustion.
 - **Double-Free Risks**: Confirmed and maintained atomic buffer operations to prevent crashes during complex edits.
-- **Cursor Bugs in Word Wrap**: Fixed tab expansion calculations and re-enabled word wrap (previously disabled due to bugs).
+- **Cursor and editing stability**: Improved tab expansion and cursor positioning.
 - **Unsafe String Operations**: Replaced fixed-size buffers with dynamic allocation in syntax highlighting to handle long identifiers correctly.
 - **Config Parsing Vulnerability**: Switched from unsafe `strncpy` to `snprintf` for configuration value copying to prevent buffer overflows.
 
@@ -77,7 +77,7 @@ triggers and versioned backups, crash recovery, file validation to prevent data
 loss.
 - **Advanced Editing**: Syntax highlighting with nesting-based color intensity 
 for C/C++, search and replace with regex support, selection and clipboard 
-operations, word wrap toggle for visual soft wrap of long lines.
+operations.
 - **User Experience**: Configurable status bar with version/time/filename 
 display, extended ASCII support, intuitive keyboard shortcuts, clear error 
 feedback.
@@ -139,7 +139,6 @@ Enter to replace all matches, Esc to cancel)
 
 ### Display
 - F2: Toggle line number display
-- F3: Toggle word wrap (visual soft wrap of long lines)
 - Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based 
 color intensity
 

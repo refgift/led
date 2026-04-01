@@ -30,7 +30,7 @@ void test_config_themes ();
 void test_performance_stress ();
 void test_search_functionality ();
 void test_buffer_replace_all ();
-void test_word_wrap_toggle ();
+
 void test_undo_redo_comprehensive ();
 void test_clipboard_comprehensive ();
 void test_enter_key_newline_insertion ();
@@ -249,78 +249,7 @@ test_buffer_replace_all ()
   fprintf (stderr, "Buffer replace test completed\n");
 }
 
-void
-test_word_wrap_toggle ()
-{
-  fprintf (stderr, "Running word wrap toggle test\n");
-  Buffer buf;
-  EditorConfig config;
-  (void) load_editor_config (&config);
-  
-  buffer_init (&buf);
-  
-  // Create a line longer than typical screen width (80+ chars)
-  const char *long_line = "This is a very long line that definitely exceeds the normal terminal width of eighty columns and should wrap when word wrap is enabled.";
-  buffer_insert_line (&buf, 0, long_line);
-  
-  // Record initial state
-  int initial_lines = buffer_num_lines (&buf);
-  const char *initial_content = buffer_get_line (&buf, 0);
-  int initial_length = strlen (initial_content);
-  
-  test_assert (initial_lines == 1, 
-               "word_wrap: buffer has 1 logical line before toggle");
-  test_assert (initial_length == (int) strlen(long_line),
-               "word_wrap: line length unchanged before toggle");
-  
-  // Toggle word wrap OFF (default)
-  config.display.word_wrap = 0;
-  test_assert (config.display.word_wrap == 0,
-               "word_wrap: can toggle OFF");
-  
-  // Verify model unchanged after OFF toggle
-  test_assert (buffer_num_lines (&buf) == initial_lines,
-               "word_wrap OFF: buffer line count unchanged");
-  test_assert (strcmp(buffer_get_line (&buf, 0), long_line) == 0,
-               "word_wrap OFF: buffer content unchanged");
-  
-  // Toggle word wrap ON
-  config.display.word_wrap = 1;
-  test_assert (config.display.word_wrap == 1,
-               "word_wrap: can toggle ON");
-  
-  // Verify model still unchanged after ON toggle
-  test_assert (buffer_num_lines (&buf) == initial_lines,
-               "word_wrap ON: buffer line count unchanged");
-  test_assert (strcmp(buffer_get_line (&buf, 0), long_line) == 0,
-               "word_wrap ON: buffer content unchanged");
-  test_assert ((int)strlen(buffer_get_line (&buf, 0)) == initial_length,
-               "word_wrap ON: buffer line length unchanged");
-  
-  // Toggle back to OFF
-  config.display.word_wrap = 0;
-  test_assert (config.display.word_wrap == 0,
-               "word_wrap: can toggle back to OFF");
-  test_assert (buffer_num_lines (&buf) == initial_lines,
-               "word_wrap OFF again: buffer line count still unchanged");
-  
-  // Test editing in word wrap mode
-  config.display.word_wrap = 1;
-  buffer_insert_line (&buf, 0, "This is a long line that should wrap");
-  int cursor_line = 0, cursor_col = 10;
-  // Simulate insert
-  buffer_insert_char (&buf, cursor_line, cursor_col, 'X');
-  test_assert (strcmp (buffer_get_line (&buf, 0), "This is a Xlong line that should wrap") == 0,
-               "Insert in wrapped line updates buffer correctly");
-  
-  // Simulate delete
-  buffer_delete_char (&buf, cursor_line, cursor_col);
-  test_assert (strcmp (buffer_get_line (&buf, 0), "This is a long line that should wrap") == 0,
-               "Delete in wrapped line updates buffer correctly");
-  
-  buffer_free (&buf);
-  fprintf (stderr, "Word wrap toggle and editing test completed\n");
-}
+/* Word wrap test removed - feature disabled to ensure reliable editing */
 
 void test_undo_redo_comprehensive ()
 {
@@ -684,7 +613,6 @@ test_cursor_newline_undo_redo_bug (void)
   Buffer buf;
   buffer_init (&buf);
   Editor ed = {0}; // Dummy
-  ed.config.display.word_wrap = 1;  // Enable word wrap
   ed.config.display.tab_width = 8;
   COLS = 80; // Set terminal width for test
   init_undo ();
@@ -772,7 +700,6 @@ test_right_arrow_repeat_navigation (void)
   int selection_end_line = 0, selection_end_col = 0;
   int selection_active = 0;
   Editor ed = {0}; // Dummy
-  ed.config.display.word_wrap = 1; // Test with word wrap ON
   ed.config.display.tab_width = 8;
   COLS = 80; // Set terminal width for test
 
@@ -857,9 +784,7 @@ run_all_tests ()
   fprintf (stderr, "Test %d: buffer_replace_all - Buffer replace operations\n",
            ++test_number);
   test_buffer_replace_all ();
-  fprintf (stderr, "Test %d: word_wrap_toggle - View-only word wrap feature\n",
-           ++test_number);
-  test_word_wrap_toggle ();
+  // word wrap test removed (feature disabled)
   fprintf (stderr, "Test %d: undo_redo_comprehensive - Undo/redo functionality\n",
            ++test_number);
   test_undo_redo_comprehensive ();

@@ -80,7 +80,6 @@ set_default_config (EditorConfig *config)
   // Display
   config->display.show_line_numbers = 0;
   config->display.syntax_highlight = 0;
-  config->display.word_wrap = 0;
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 1;
   // Performance
@@ -169,7 +168,6 @@ load_editor_config (EditorConfig *config)
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
     }
-  config->display.word_wrap = 0;
   fclose (file);
   return CONFIG_SUCCESS;
 }

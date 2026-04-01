@@ -157,12 +157,6 @@ editor_handle_input (Editor *ed, int ch)
       ed->show_line_numbers = !ed->show_line_numbers;
       return;
     }
-    else if (ch == KEY_F (3))
-      {
-        ed->config.display.word_wrap = !ed->config.display.word_wrap;
-        set_status_message (ed, ed->config.display.word_wrap ? "Word wrap enabled" : "Word wrap disabled");
-        return;
-      }
   if (ch == 18)
     {                           // Ctrl+R replace
       if (ed->replace_step == 0)

@@ -33,7 +33,6 @@ typedef struct {
 typedef struct {
     int show_line_numbers;
     int syntax_highlight;
-    int word_wrap;
     int tab_width;
     int spaces_for_tab;
 } DisplayConfig;

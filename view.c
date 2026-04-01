@@ -60,237 +60,6 @@ calculate_digits (int n)
   while (n > 0);
   return digits;
 }
-// Calculate how many visual rows a logical line uses when word wrapping
-int
-visual_rows_for_line (const char *line, int available_width, int tab_width)
-{
-  if (!line || available_width <= 0)
-    return 1;
-  int len = strlen (line);
-  if (len == 0)
-    return 1;
-  int rows = 0;
-  int pos = 0;
-  while (pos < len)
-    {
-		sched_yield();
-
-
-
-      int segment_len = available_width;
-      int break_at = segment_len;
-      if (pos + segment_len < len)
-        {
-          for (int i = segment_len; i > 0; i--)
-            {
-		sched_yield();
-
-
-
-              if (line[pos + i] == ' ')
-                {
-                  break_at = i;
-                  break;
-                }
-            }
-          if (break_at == segment_len)
-            {
-              break_at = segment_len;
-            }
-        }
-      else
-        {
-          break_at = len - pos;
-        }
-      // Process char by char to handle tabs
-      int i = 0;
-      int actual_vis = 0;
-      while (i < break_at)
-        {
-		sched_yield();
-
-
-
-          int char_vis = (line[pos + i] == '\t') ? tab_width - (actual_vis % tab_width) : 1;
-          if (actual_vis + char_vis > available_width)
-            break;
-          actual_vis += char_vis;
-          i++;
-        }
-      if (i == 0 && break_at > 0)
-        {
-          // Advance at least one char to prevent infinite loop
-          i = 1;
-        }
-      pos += i;
-      rows++;
-    }
-  return rows;
-}
-// Calculate total visual lines in buffer (accounting for word wrap)
-static int
-calculate_total_visual_lines (Buffer *buf, EditorConfig *config, int num_width)
-{
-  if (!config->display.word_wrap)
-    return buffer_num_lines (buf);
-  int available_width = COLS - 2 - num_width;
-  if (available_width <= 0)
-    available_width = 40;  // Fallback
-  int total = 0;
-  for (int i = 0; i < buffer_num_lines (buf); i++)
-    {
-		sched_yield();
-
-
-
-      char *line = buffer_get_line (buf, i);
-      total += visual_rows_for_line (line, available_width, config->display.tab_width);
-      free(line);
-    }
-  return total;
-}
-// Get the 0-based visual row for a given logical column
-int get_visual_row_for_column(const char* line, int col, int available_width, int tab_width) {
-  if (!line || available_width <= 0) return 0;
-  int len = strlen(line);
-  int pos = 0;
-  int vis_row = 0;
-  int current_vis_col = 0;
-  while (pos < len && pos < col) {
-		sched_yield();
-
-
-
-    int segment_len = available_width - current_vis_col;
-    if (segment_len <= 0) {
-      vis_row++;
-      current_vis_col = 0;
-      segment_len = available_width;
-    }
-    int break_at = segment_len;
-    for (int i = segment_len; i > 0; i--) {
-		sched_yield();
-
-
-
-      if (pos + i >= len) break;
-      if (line[pos + i] == ' ') {
-        break_at = i;
-        break;
-      }
-    }
-    if (break_at == 0) break_at = segment_len;
-    int actual_len = (pos + break_at > col) ? (col - pos) : break_at;
-    for (int i = 0; i < actual_len; i++) {
-		sched_yield();
-
-
-
-      if (line[pos + i] == '\t') {
-        int spaces = tab_width - (current_vis_col % tab_width);
-        current_vis_col += spaces;
-      } else {
-        current_vis_col++;
-      }
-    }
-    pos += actual_len;
-    if (current_vis_col >= available_width) {
-      vis_row++;
-      current_vis_col = 0;
-    }
-  }
-  return vis_row;
-}
-// Get the starting logical column for a given visual row
-int get_start_column_for_visual_row(const char* line, int target_vis_row, int available_width, int tab_width) {
-  if (!line || available_width <= 0 || target_vis_row < 0) return 0;
-  int len = strlen(line);
-  int pos = 0;
-  int vis_row = 0;
-  int current_vis_col = 0;
-  while (pos < len && vis_row < target_vis_row) {
-		sched_yield();
-
-
-
-    int segment_len = available_width - current_vis_col;
-    if (segment_len <= 0) {
-      vis_row++;
-      current_vis_col = 0;
-      segment_len = available_width;
-      continue;
-    }
-    int break_at = segment_len;
-    for (int i = segment_len; i > 0; i--) {
-		sched_yield();
-
-
-
-      if (pos + i >= len) break;
-      if (line[pos + i] == ' ') {
-        break_at = i;
-        break;
-      }
-    }
-    if (break_at == 0) break_at = segment_len;
-    int actual_move = break_at;
-    for (int i = 0; i < actual_move; i++) {
-		sched_yield();
-
-
-
-      if (pos + i >= len) break;
-      if (line[pos + i] == '\t') {
-        int spaces = tab_width - (current_vis_col % tab_width);
-        current_vis_col += spaces;
-      } else {
-        current_vis_col++;
-      }
-      if (current_vis_col >= available_width) {
-        pos += i;
-        vis_row++;
-        current_vis_col = 0;
-        break;
-      }
-    }
-    if (current_vis_col < available_width) {
-      pos += actual_move;
-    }
-  }
-  return pos;
-}
-// New function: Get the global visual line number for a logical line (sum of visual rows before it)
-int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config, int num_width) {
-  if (!config->display.word_wrap) {
-    return target_logical;
-  }
-  int available_width = COLS - 2 - num_width;
-  if (available_width <= 0) available_width = 80; // fallback
-  int visual = 0;
-  for (int i = 0; i < target_logical; i++) {
-		sched_yield();
-
-
-
-    char* line = buffer_get_line(buf, i);
-    visual += visual_rows_for_line(line, available_width, config->display.tab_width);
-    free(line);
-  }
-  return visual;
-}
-// New function: Get the global visual row for the cursor (visual line + intra-line visual row)
-int get_visual_cursor_row(Buffer *buf, int cursor_line, int cursor_col, EditorConfig *config, int num_width) {
-  if (!config->display.word_wrap) {
-    return cursor_line;
-  }
-  int visual = get_visual_line_number(buf, cursor_line, config, num_width);
-  char* line = buffer_get_line(buf, cursor_line);
-  int available_width = COLS - 2 - num_width;
-  if (available_width <= 0) available_width = 80;
-  visual += get_visual_row_for_column(line, cursor_col, available_width, config->display.tab_width);
-  free(line);
-  return visual;
-}
 // Compute the visual column for a given logical position in a line
 int
 visual_column (const char *line, int len, int logical_pos,
@@ -953,42 +722,20 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
              int *cursor_screen_x, int replace_step, char *replace_buffer,
              EditorConfig *config, Editor *ed)
 {
-  // Adjust scroll to keep cursor visible
+  // Adjust scroll to keep cursor visible (no word wrap)
   int max_lines = (LINES > 2) ? LINES - 2 : 0;
   int num_digits = calculate_digits (buffer_num_lines (buf));
   int num_width = show_line_numbers ? num_digits + 1 : 0;
   int available_width = COLS - 2 - num_width;
 
-  // Visual-aware scroll adjustment
-  int visual_cursor = get_visual_cursor_row(buf, cursor_line, cursor_col, config, num_width);
-  int visual_scroll = get_visual_line_number(buf, *scroll_row, config, num_width);
-
-  if (visual_cursor < visual_scroll) {
-    // Scroll up
-    int new_scroll = cursor_line;
-    while (new_scroll > 0 && get_visual_line_number(buf, new_scroll, config, num_width) > visual_cursor) {
-		sched_yield();
-
-
-
-      new_scroll--;
-    }
-    *scroll_row = new_scroll;
-  } else if (visual_cursor >= visual_scroll + max_lines) {
-    // Scroll down
-    int new_scroll = *scroll_row;
-    while (new_scroll < buffer_num_lines(buf) - 1 && get_visual_line_number(buf, new_scroll, config, num_width) + max_lines <= visual_cursor) {
-		sched_yield();
-
-
-
-      new_scroll++;
-    }
-    *scroll_row = new_scroll;
+  // Simple scroll adjustment (no word wrap)
+  if (cursor_line < *scroll_row) {
+    *scroll_row = cursor_line;
+  } else if (cursor_line >= *scroll_row + max_lines) {
+    *scroll_row = cursor_line - max_lines + 1;
   }
-
-  // Recalculate visual_scroll after adjustment
-  visual_scroll = get_visual_line_number(buf, *scroll_row, config, num_width);
+  if (*scroll_row < 0) *scroll_row = 0;
+  if (*scroll_row >= buffer_num_lines(buf)) *scroll_row = buffer_num_lines(buf) > 0 ? buffer_num_lines(buf) - 1 : 0;
 
   clear ();
   box (win, 0, 0);
@@ -1004,7 +751,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
 
       char *line = buffer_get_line (buf, logical_line);
       int len = strlen (line);
-      int pos = (*scroll_col && !config->display.word_wrap) ? *scroll_col : 0;
+      int pos = *scroll_col ? *scroll_col : 0;
       
       // Handle selection
       int sel_start = len;
@@ -1018,10 +765,10 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
             (logical_line == selection_end_line) ? selection_end_col : len;
         }
       
-      // Render line with word wrap handling
-      if (config->display.word_wrap)
+      // Render line (no word wrap - truncate only)
+      if (0) // word wrap feature removed
         {
-          // Word wrap enabled: split across multiple visual rows
+          // (disabled)
           while (pos < len && visual_row < max_lines)
             {
 		sched_yield();
@@ -1029,7 +776,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
 
 
               // Show line number only on first visual row of this logical line
-              if (show_line_numbers && pos == ((*scroll_col && !config->display.word_wrap) ? *scroll_col : 0))
+              if (show_line_numbers && pos == 0)
                 {
                   mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
                 }
@@ -1207,10 +954,10 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
         {
           snprintf (version_str, 32, "%s ", VERSION);
         }
-        char pos_str[64];
-        int total_lines = calculate_total_visual_lines (buf, config, num_width);
-        snprintf (pos_str, 64, "Line %d/%d Col %d",
-                  cursor_line + 1, total_lines, cursor_col + 1);
+         char pos_str[64];
+         int total_lines = buffer_num_lines (buf);
+         snprintf (pos_str, 64, "Line %d/%d Col %d",
+                   cursor_line + 1, total_lines, cursor_col + 1);
         char meter_str[16] = "";
         if (ed && ed->last_key_ms > 0) {
           snprintf (meter_str, 16, " | %dms", ed->last_key_ms);
@@ -1278,26 +1025,13 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
     }
   // Prepend message
   mvprintw (LINES - 1, 1, "%s", status_line);
-  // Cursor position
-  int visual_screen_y = visual_cursor - visual_scroll;
-  int screen_y = 1 + visual_screen_y;
+  // Cursor position (no word wrap)
+  int screen_y = 1 + (cursor_line - *scroll_row);
   char *line = buffer_get_line (buf, cursor_line);
   int line_len = strlen (line);
-  int x_diff;
-  if (config->display.word_wrap) {
-    // Calculate intra-row visual column for word wrap
-    int target_vis_row = get_visual_row_for_column(line, cursor_col, available_width, config->display.tab_width);
-    int start_col = get_start_column_for_visual_row(line, target_vis_row, available_width, config->display.tab_width);
-    int vis_total = visual_column(line, line_len, cursor_col, config->display.tab_width);
-    int vis_start = visual_column(line, line_len, start_col, config->display.tab_width);
-    int vis_col_in_row = vis_total - vis_start;
-    x_diff = vis_col_in_row;
-  } else {
-    // Existing logic for no word wrap
-    int vis_scroll = visual_column (line, line_len, *scroll_col, config->display.tab_width);
-    int vis_cursor = visual_column (line, line_len, cursor_col, config->display.tab_width);
-    x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
-  }
+  int vis_scroll = visual_column (line, line_len, *scroll_col, config->display.tab_width);
+  int vis_cursor = visual_column (line, line_len, cursor_col, config->display.tab_width);
+  int x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   free(line);
   int screen_x = 1 + num_width + (int) x_diff;
   // Clamp cursor

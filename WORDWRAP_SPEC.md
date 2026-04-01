@@ -1,7 +1,8 @@
 # Word Wrap Feature Specification
 
 ## Current Status
-❌ **Broken** — Toggle exists but has no visual effect
+**REMOVED** — Feature disabled to ensure reliable editing functionality.
+Toggle (F3) and all word wrap code removed. Editor always uses truncate for long lines.
 
 ## Problem
 - `config->display.word_wrap` exists and toggles via F3
