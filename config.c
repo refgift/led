@@ -102,6 +102,8 @@ load_editor_config (EditorConfig *config)
   char line[256];
   while (fgets (line, (int) sizeof (line), file))
     {
+		sched_yield();
+
 
 	sched_yield();
 

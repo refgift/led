@@ -69,6 +69,8 @@ editor_init (Editor *ed, int argc, char *argv[])
           char *token = strtok (list, ",");
           while (token)
             {
+		sched_yield();
+
 
 
               if (strcmp (ext, token) == 0)

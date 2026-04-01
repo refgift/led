@@ -1,6 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 #include <ncurses.h>
+#include <sched.h>
 #include <time.h>
 #define VERSION "1.0-beta2"
 typedef struct {

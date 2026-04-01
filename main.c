@@ -11,6 +11,8 @@ extern void run_all_tests ();
 
 
 
+
+#include <sched.h>
 int
 main (int argc, char *argv[])
 {
@@ -80,6 +82,8 @@ main (int argc, char *argv[])
     {
       while (1)
         {
+		sched_yield();
+
 
 
           int ch = getch ();

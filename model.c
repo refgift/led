@@ -51,6 +51,8 @@ _gap_buffer_expand(GapBuffer* gb, int min_size)
 {
   int new_size = gb->buffer_size;
   while (new_size - (gb->gap_end - gb->gap_start) < min_size) {
+		sched_yield();
+
 
     new_size *= 2;
   }
@@ -150,6 +152,8 @@ buffer_free (Buffer *buf)
 {
   for (int i = 0; i < buf->num_lines; i++)
     {
+		sched_yield();
+
 
 
       gap_buffer_free (buf->lines[i]);
@@ -182,6 +186,8 @@ _ensure_cache_capacity (Buffer *buf)
   // Mark all entries as invalid (safe approach)
   for (int i = 0; i < buf->capacity; i++)
     {
+		sched_yield();
+
 
 
       buf->nesting_cache[i].valid = 0;
@@ -196,6 +202,8 @@ _invalidate_cache_from (Buffer *buf, int line)
     return;
   for (int i = line; i < buf->num_lines; i++)
     {
+		sched_yield();
+
 
 
       buf->nesting_cache[i].valid = 0;
@@ -231,6 +239,8 @@ buffer_load_from_file (Buffer *buf, const char *filename)
   int c;
   while ((c = fgetc (fp)) != EOF)
     {
+		sched_yield();
+
 
 
       if (pos >= temp_cap)
@@ -265,6 +275,8 @@ buffer_load_from_file (Buffer *buf, const char *filename)
   int start = 0;
   for (int i = 0; i <= pos; i++)
     {
+		sched_yield();
+
 
 
       if (temp[i] == '\n' || temp[i] == '\0')
@@ -319,6 +331,8 @@ buffer_delete_char (Buffer *buf, int line, int col)
       // Append next line's content to current
       for (int i = 0; i < next_len; i++)
         {
+		sched_yield();
+
 
           char ch = gap_buffer_get_char(next_gb, i);
           gap_buffer_insert(gb, len + i, ch);
@@ -327,6 +341,8 @@ buffer_delete_char (Buffer *buf, int line, int col)
       // Shift remaining lines
       for (int i = line + 1; i < buf->num_lines - 1; i++)
         {
+		sched_yield();
+
 
 
           buf->lines[i] = buf->lines[i + 1];
@@ -371,6 +387,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
         }
       for (int i = start_col; i < end_col; i++)
         {
+		sched_yield();
+
 
           gap_buffer_delete(gb, start_col);
         }
@@ -384,6 +402,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       int len_start = gap_buffer_length(gb_start);
       for (int i = start_col; i < len_start; i++)
         {
+		sched_yield();
+
 
           gap_buffer_delete(gb_start, start_col);
         }
@@ -391,6 +411,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       GapBuffer *gb_end = buf->lines[end_line];
       for (int i = 0; i < end_col; i++)
         {
+		sched_yield();
+
 
           gap_buffer_delete(gb_end, 0);
         }
@@ -398,6 +420,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       int len_end = gap_buffer_length(gb_end);
       for (int i = 0; i < len_end; i++)
         {
+		sched_yield();
+
 
           char ch = gap_buffer_get_char(gb_end, i);
           gap_buffer_insert(gb_start, gap_buffer_length(gb_start), ch);
@@ -405,6 +429,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       // Delete lines from start_line + 1 to end_line
       for (int i = start_line + 1; i <= end_line; i++)
         {
+		sched_yield();
+
 
 
           gap_buffer_free (buf->lines[i]);
@@ -413,6 +439,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       int lines_deleted = end_line - start_line;
       for (int i = start_line + 1; i < buf->num_lines - lines_deleted; i++)
         {
+		sched_yield();
+
 
 
           buf->lines[i] = buf->lines[i + lines_deleted];
@@ -480,6 +508,8 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
   // Shift lines down
   for (int i = buf->num_lines; i > line; i--)
     {
+		sched_yield();
+
 
 
       buf->lines[i] = buf->lines[i - 1];
@@ -490,6 +520,8 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
       // Shift back on failure
       for (int i = line; i < buf->num_lines; i++)
         {
+		sched_yield();
+
 
 
           buf->lines[i] = buf->lines[i + 1];
@@ -499,6 +531,8 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
   // Insert content into gap buffer
   for (const char *p = content; *p; p++)
     {
+		sched_yield();
+
 
       gap_buffer_insert(buf->lines[line], gap_buffer_length(buf->lines[line]), *p);
     }
@@ -518,6 +552,8 @@ buffer_delete_line (Buffer *buf, int line)
   // Shift lines up
   for (int i = line; i < buf->num_lines - 1; i++)
     {
+		sched_yield();
+
 
 
       buf->lines[i] = buf->lines[i + 1];
@@ -551,6 +587,8 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
       // Move text after col to new_gb
       for (int i = col; i < len; i++)
         {
+		sched_yield();
+
 
           char ch = gap_buffer_get_char(gb, i);
           gap_buffer_insert(new_gb, gap_buffer_length(new_gb), ch);
@@ -558,6 +596,8 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
       // Delete from col to end in gb
       for (int i = len - 1; i >= col; i--)
         {
+		sched_yield();
+
 
           gap_buffer_delete(gb, i);
         }
@@ -591,6 +631,8 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
   int current_col = col;
   while (*p)
     {
+		sched_yield();
+
 
 
       if (*p == '\n')
@@ -610,6 +652,8 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
           const char *end = p;
           while (*end && *end != '\n')
             {
+		sched_yield();
+
 
 
               end++;
@@ -623,6 +667,8 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
           // Insert each char
           for (const char *q = p; q < end; q++)
             {
+		sched_yield();
+
 
               gap_buffer_insert(gb, current_col++, *q);
             }
@@ -641,6 +687,8 @@ buffer_save_to_file (const Buffer *buf, const char *filename)
     }
   for (int i = 0; i < buf->num_lines; i++)
     {
+		sched_yield();
+
 
 
       char *text = (char*)gap_buffer_get_text(buf->lines[i]);
@@ -674,6 +722,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
   int replace_len = strlen (replace_str);
   for (int i = 0; i < buf->num_lines; i++)
     {
+		sched_yield();
+
 
 
       char *original_line = (char*)gap_buffer_get_text(buf->lines[i]);
@@ -688,6 +738,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
        int changed = 0;
        while (regexec (&reg, original_line + pos, 1, &match, 0) == 0)
          {
+		sched_yield();
+
 
 
            // Append before match
@@ -697,6 +749,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
                while (used + before_len >= new_cap)
                  {
+		sched_yield();
+
 
 
                    new_cap *= 2;
@@ -719,6 +773,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
                while (used + replace_len >= new_cap)
                  {
+		sched_yield();
+
 
 
                    new_cap *= 2;
@@ -747,6 +803,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                new_cap = (new_cap == 0) ? 128 : new_cap * 2;
                while (used + rest_len >= new_cap)
                  {
+		sched_yield();
+
 
 
                    new_cap *= 2;
@@ -779,6 +837,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
              }
            for (char *p = new_line; *p; p++)
              {
+		sched_yield();
+
 
                gap_buffer_insert(buf->lines[i], gap_buffer_length(buf->lines[i]), *p);
              }

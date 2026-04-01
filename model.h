@@ -2,6 +2,7 @@
 #define BUFFER_H
 
 #include <stddef.h>
+#include <sched.h>
 
 #define INITIAL_LINES_CAPACITY 10
 

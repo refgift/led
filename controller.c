@@ -229,6 +229,8 @@ search_next (Buffer *buf, int *cursor_line, int *cursor_col,
       int line_flags = (pos > 0) ? REG_NOTBOL : 0;
        while (regexec (&regex, line + pos, 1, &match, line_flags) == 0)
          {
+		sched_yield();
+
 
 
 
@@ -480,6 +482,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int total = 0;
               for (int l = sl; l <= el; l++)
                 {
+		sched_yield();
+
 
 
 
@@ -495,6 +499,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   char *p = *clipboard;
                   for (int l = sl; l <= el; l++)
                     {
+		sched_yield();
+
 
 
 
@@ -534,6 +540,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int total = 0;
               for (int l = sl; l <= el; l++)
                 {
+		sched_yield();
+
 
 
 
@@ -549,6 +557,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   char *p = *clipboard;
                   for (int l = sl; l <= el; l++)
                     {
+		sched_yield();
+
 
 
 
@@ -616,6 +626,8 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   const char *p = *clipboard;
                   while (*p)
                     {
+		sched_yield();
+
 
 
 

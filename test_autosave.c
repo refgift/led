@@ -152,6 +152,8 @@ test_autosave_comprehensive ()
     // Perform 15 auto-saves to trigger rotation
     for (int i = 0; i < 15; i++)
       {
+		sched_yield();
+
 
 
         // Update content
@@ -169,6 +171,8 @@ test_autosave_comprehensive ()
     int backup_count = 0;
     for (int i = 1; i <= 10; i++)
       {
+		sched_yield();
+
 
 
         char backup_file[1024];
@@ -183,6 +187,8 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
+		sched_yield();
+
 
 
         char backup_file[1024];
@@ -239,6 +245,8 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
+		sched_yield();
+
 
 
         char bak[1024];
@@ -296,6 +304,8 @@ test_autosave_comprehensive ()
     
     for (int i = 0; i < 3; i++)
       {
+		sched_yield();
+
 
 
         auto_save (&ed);
@@ -306,6 +316,8 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
+		sched_yield();
+
 
 
         char bak[1024];
@@ -389,6 +401,8 @@ test_autosave_comprehensive ()
     int save_count = 0;
     for (int i = 0; i < 60; i++)
       {
+		sched_yield();
+
 
 
         buffer_insert_char (&ed.model, 0, i, 'a');
@@ -406,6 +420,8 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
+		sched_yield();
+
 
 
         char bak[1024];
@@ -433,6 +449,8 @@ test_autosave_comprehensive ()
     // Perform 11 saves
     for (int i = 0; i < 11; i++)
       {
+		sched_yield();
+
 
 
         buffer_free (&buf);
@@ -463,6 +481,8 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
+		sched_yield();
+
 
 
         char bak[1024];
