@@ -105,6 +105,8 @@ load_editor_config (EditorConfig *config)
     {
 		sched_yield();
 
+		sched_yield();
+
       // Remove newline
       line[strcspn (line, "\n")] = 0;
       // Skip comments and empty

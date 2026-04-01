@@ -44,6 +44,8 @@ buffer_free (Buffer *buf)
 {
   for (int i = 0; i < buf->num_lines; i++)
     {
+		sched_yield();
+
       free (buf->lines[i]);
     }
   free (buf->lines);
@@ -74,6 +76,8 @@ _ensure_cache_capacity (Buffer *buf)
   // Mark all entries as invalid (safe approach)
   for (int i = 0; i < buf->capacity; i++)
     {
+		sched_yield();
+
       buf->nesting_cache[i].valid = 0;
     }
 }
@@ -86,6 +90,8 @@ _invalidate_cache_from (Buffer *buf, int line)
     return;
   for (int i = line; i < buf->num_lines; i++)
     {
+		sched_yield();
+
       buf->nesting_cache[i].valid = 0;
     }
 }
@@ -119,6 +125,8 @@ buffer_load_from_file (Buffer *buf, const char *filename)
   int c;
   while ((c = fgetc (fp)) != EOF)
     {
+		sched_yield();
+
       if (pos >= temp_cap)
         {
           temp_cap *= 2;
@@ -152,6 +160,8 @@ buffer_load_from_file (Buffer *buf, const char *filename)
   int start = 0;
   for (int i = 0; i <= pos; i++)
     {
+		sched_yield();
+
       if (temp[i] == '\n' || temp[i] == '\0')
         {
           int len = i - start;
@@ -229,6 +239,8 @@ buffer_delete_char (Buffer *buf, int line, int col)
       // Shift remaining lines
       for (int i = line + 1; i < buf->num_lines - 1; i++)
         {
+		sched_yield();
+
           buf->lines[i] = buf->lines[i + 1];
         }
       buf->num_lines--;
@@ -315,6 +327,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       // Delete lines in between
       for (int i = 0; i < end_line - start_line - 1; i++)
         {
+		sched_yield();
+
           if (buffer_delete_line (buf, start_line + 1) != 0)
             {
               fprintf (stderr,
@@ -342,6 +356,8 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       // Shift remaining lines
       for (int i = start_line + 1; i < buf->num_lines - 1; i++)
         {
+		sched_yield();
+
           buf->lines[i] = buf->lines[i + 1];
         }
       buf->num_lines--;
@@ -413,6 +429,8 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
   // Shift lines down
   for (int i = buf->num_lines; i > line; i--)
     {
+		sched_yield();
+
       buf->lines[i] = buf->lines[i - 1];
     }
   buf->lines[line] = safe_strdup (content);
@@ -421,6 +439,8 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
       // Shift back on failure
       for (int i = line; i < buf->num_lines; i++)
         {
+		sched_yield();
+
           buf->lines[i] = buf->lines[i + 1];
         }
       return -1;
@@ -441,6 +461,8 @@ buffer_delete_line (Buffer *buf, int line)
   // Shift lines up
   for (int i = line; i < buf->num_lines - 1; i++)
     {
+		sched_yield();
+
       buf->lines[i] = buf->lines[i + 1];
     }
   buf->num_lines--;
@@ -521,6 +543,8 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
   int current_col = col;
   while (*p)
     {
+		sched_yield();
+
       if (*p == '\n')
         {
           if (buffer_insert_char (buf, current_line, current_col, '\n') != 0)
@@ -538,6 +562,8 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
           const char *end = p;
           while (*end && *end != '\n')
             {
+		sched_yield();
+
               end++;
             }
           int len = end - p;
@@ -576,6 +602,8 @@ buffer_save_to_file (const Buffer *buf, const char *filename)
     }
   for (int i = 0; i < buf->num_lines; i++)
     {
+		sched_yield();
+
       fputs (buf->lines[i], fp);
       if (i < buf->num_lines - 1)
         {
@@ -601,6 +629,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
   int replace_len = strlen (replace_str);
   for (int i = 0; i < buf->num_lines; i++)
     {
+		sched_yield();
+
       char *line = buf->lines[i];
       int len = strlen (line);
       // Build new line
@@ -611,6 +641,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
        regmatch_t match;
        while (regexec (&reg, line + pos, 1, &match, 0) == 0)
          {
+		sched_yield();
+
             // Append before match
             int before_len = (int) match.rm_so;
             if (used + before_len >= new_cap)
@@ -618,6 +650,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                 new_cap = (new_cap == 0) ? 128 : new_cap * 2;
                 while (used + before_len >= new_cap)
                   {
+		sched_yield();
+
                     new_cap *= 2;
                   }
                 char *temp = realloc (new_line, new_cap);
@@ -637,6 +671,8 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                 new_cap = (new_cap == 0) ? 128 : new_cap * 2;
                 while (used + replace_len >= new_cap)
                   {
+		sched_yield();
+
                     new_cap *= 2;
                   }
                 char *temp = realloc (new_line, new_cap);

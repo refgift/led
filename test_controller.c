@@ -391,6 +391,8 @@ void test_undo_redo_comprehensive ()
   buffer_insert_line (&buf, 0, "");
   for (int i = 0; i < 32; i++)
     {
+		sched_yield();
+
       buffer_insert_char (&buf, 0, i, 'a');
       push_undo (true, 0, i, 'a');
     }
@@ -431,11 +433,15 @@ void test_undo_redo_comprehensive ()
   buffer_insert_line (&buf, 0, "initial");
   for (int i = 0; i < 5; i++)
     {
+		sched_yield();
+
       buffer_insert_char (&buf, 0, 7 + i, 'x');
       push_undo (true, 0, 7 + i, 'x');
     }
   for (int i = 0; i < 5; i++)
     {
+		sched_yield();
+
       cursor_line = 0; cursor_col = 12 - i;
       undo_operation (&buf, &cursor_line, &cursor_col);
     }
@@ -444,6 +450,8 @@ void test_undo_redo_comprehensive ()
   // Test 10: redo with multiple operations
   for (int i = 0; i < 3; i++)
     {
+		sched_yield();
+
       cursor_line = 0; cursor_col = 7 + i;
       redo_operation (&buf, &cursor_line, &cursor_col);
     }
@@ -768,11 +776,15 @@ test_right_arrow_repeat_navigation (void)
   int total_chars = 0;
   for (int l = 0; l < buffer_num_lines (&buf); l++)
     {
+		sched_yield();
+
       total_chars += buffer_get_line_length (&buf, l) + 1; // +1 for newline
     }
   // Move right until we can't anymore
   while (1)
     {
+		sched_yield();
+
       int prev_line = cursor_line;
       int prev_col = cursor_col;
       handle_input (KEY_RIGHT, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,

@@ -28,6 +28,8 @@ is_reserved_word (const char *word, const char *list)
   char *token = strtok (dup, ",");
   while (token)
     {
+		sched_yield();
+
       if (strcmp (word, token) == 0)
         {
           free (dup);
@@ -47,6 +49,8 @@ calculate_digits (int n)
   int digits = 0;
   do
     {
+		sched_yield();
+
       digits++;
       n /= 10;
     }
@@ -66,12 +70,16 @@ visual_rows_for_line (const char *line, int available_width, int tab_width)
   int pos = 0;
   while (pos < len)
     {
+		sched_yield();
+
       int segment_len = available_width;
       int break_at = segment_len;
       if (pos + segment_len < len)
         {
           for (int i = segment_len; i > 0; i--)
             {
+		sched_yield();
+
               if (line[pos + i] == ' ')
                 {
                   break_at = i;
@@ -92,6 +100,8 @@ visual_rows_for_line (const char *line, int available_width, int tab_width)
       int actual_vis = 0;
       while (i < break_at)
         {
+		sched_yield();
+
           int char_vis = (line[pos + i] == '\t') ? tab_width - (actual_vis % tab_width) : 1;
           if (actual_vis + char_vis > available_width)
             break;
@@ -120,6 +130,8 @@ calculate_total_visual_lines (Buffer *buf, EditorConfig *config, int num_width)
   int total = 0;
   for (int i = 0; i < buffer_num_lines (buf); i++)
     {
+		sched_yield();
+
       const char *line = buffer_get_line (buf, i);
       total += visual_rows_for_line (line, available_width, config->display.tab_width);
     }
@@ -133,6 +145,8 @@ int get_visual_row_for_column(const char* line, int col, int available_width, in
   int vis_row = 0;
   int current_vis_col = 0;
   while (pos < len && pos < col) {
+		sched_yield();
+
     int segment_len = available_width - current_vis_col;
     if (segment_len <= 0) {
       vis_row++;
@@ -141,6 +155,8 @@ int get_visual_row_for_column(const char* line, int col, int available_width, in
     }
     int break_at = segment_len;
     for (int i = segment_len; i > 0; i--) {
+		sched_yield();
+
       if (pos + i >= len) break;
       if (line[pos + i] == ' ') {
         break_at = i;
@@ -150,6 +166,8 @@ int get_visual_row_for_column(const char* line, int col, int available_width, in
     if (break_at == 0) break_at = segment_len;
     int actual_len = (pos + break_at > col) ? (col - pos) : break_at;
     for (int i = 0; i < actual_len; i++) {
+		sched_yield();
+
       if (line[pos + i] == '\t') {
         int spaces = tab_width - (current_vis_col % tab_width);
         current_vis_col += spaces;
@@ -173,6 +191,8 @@ int get_start_column_for_visual_row(const char* line, int target_vis_row, int av
   int vis_row = 0;
   int current_vis_col = 0;
   while (pos < len && vis_row < target_vis_row) {
+		sched_yield();
+
     int segment_len = available_width - current_vis_col;
     if (segment_len <= 0) {
       vis_row++;
@@ -182,6 +202,8 @@ int get_start_column_for_visual_row(const char* line, int target_vis_row, int av
     }
     int break_at = segment_len;
     for (int i = segment_len; i > 0; i--) {
+		sched_yield();
+
       if (pos + i >= len) break;
       if (line[pos + i] == ' ') {
         break_at = i;
@@ -191,6 +213,8 @@ int get_start_column_for_visual_row(const char* line, int target_vis_row, int av
     if (break_at == 0) break_at = segment_len;
     int actual_move = break_at;
     for (int i = 0; i < actual_move; i++) {
+		sched_yield();
+
       if (pos + i >= len) break;
       if (line[pos + i] == '\t') {
         int spaces = tab_width - (current_vis_col % tab_width);
@@ -220,6 +244,8 @@ int get_visual_line_number(Buffer *buf, int target_logical, EditorConfig *config
   if (available_width <= 0) available_width = 80; // fallback
   int visual = 0;
   for (int i = 0; i < target_logical; i++) {
+		sched_yield();
+
     const char* line = buffer_get_line(buf, i);
     visual += visual_rows_for_line(line, available_width, config->display.tab_width);
   }
@@ -245,6 +271,8 @@ visual_column (const char *line, int len, int logical_pos,
   int vis = 0;
   for (int i = 0; i < logical_pos && i < len; i++)
     {
+		sched_yield();
+
       if (line[i] == '\t')
         {
           vis += tab_width - (vis % tab_width);
@@ -274,6 +302,8 @@ compute_line_colors (const char *full_line, int line_len,
   // Initialize all to normal color (1)
   for (int i = 0; i < line_len; i++)
     {
+		sched_yield();
+
       colors[i] = 1;
     }
   if (!config)
@@ -291,6 +321,8 @@ compute_line_colors (const char *full_line, int line_len,
           char *token = strtok (dup_pk, ",");
           while (token && num_pairs < 10)
             {
+		sched_yield();
+
               char *dash = strchr (token, '-');
               if (dash)
                 {
@@ -315,6 +347,8 @@ compute_line_colors (const char *full_line, int line_len,
   int word_count = 0;
   for (int i = 0; i < line_len; i++)
     {
+		sched_yield();
+
       char c = full_line[i];
       // Handle meta symbols (braces, etc.)
       if (strchr (meta_symbols, c))
@@ -382,6 +416,8 @@ compute_line_colors (const char *full_line, int line_len,
                   // Check for paired keywords
                   for (int p = 0; p < num_pairs && !colored; p++)
                     {
+		sched_yield();
+
                       if (strcmp (word, pairs[p].open) == 0)
                         {
                           if (*kw_top < 100)
@@ -434,6 +470,8 @@ compute_line_colors (const char *full_line, int line_len,
               int colored = 0;
               for (int p = 0; p < num_pairs && !colored; p++)
                 {
+		sched_yield();
+
                   if (strcmp (word, pairs[p].open) == 0)
                     {
                       if (*kw_top < 100)
@@ -475,6 +513,8 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
   int word_start = 0;
   int in_word = 0;
   for (int i = 0; i < line_len; i++) {
+		sched_yield();
+
     char c = full_line[i];
     // Handle braces
     if (strchr(";,{}()[]", c)) {
@@ -501,6 +541,8 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
         memcpy(word, full_line + word_start, wlen);
         word[wlen] = '\0';
         for (int p = 0; p < num_pairs; p++) {
+		sched_yield();
+
           if (strcmp(word, pairs[p].open) == 0) {
             if (*kw_top < 100) kw_stack[(*kw_top)++] = *kw_level;
             (*kw_level)++;
@@ -524,6 +566,8 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
     memcpy(word, full_line + word_start, wlen);
     word[wlen] = '\0';
     for (int p = 0; p < num_pairs; p++) {
+		sched_yield();
+
       if (strcmp(word, pairs[p].open) == 0) {
         if (*kw_top < 100) kw_stack[(*kw_top)++] = *kw_level;
         (*kw_level)++;
@@ -564,6 +608,8 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
       strcpy(dup_pk, config->syntax.paired_keywords);
       char *token = strtok(dup_pk, ",");
       while (token && num_pairs < 10) {
+		sched_yield();
+
         char *dash = strchr(token, '-');
         if (dash) {
           *dash = '\0';
@@ -580,6 +626,8 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
   }
   // Update state for each previous line
   for (int l = 0; l < start_line; l++) {
+		sched_yield();
+
     const char *line = buffer_get_line(buf, l);
     int len = strlen(line);
     update_nesting(line, len, brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack, pairs, num_pairs);
@@ -618,6 +666,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   int current_vis = 0;
   for (int i = start; i < start + len && i < line_len; i++)
     {
+		sched_yield();
+
       if (full_line[i] == '\t')
         {
           int spaces =
@@ -646,6 +696,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   current_vis = 0;
   for (int i = start; i < start + len && i < line_len; i++)
     {
+		sched_yield();
+
       if (full_line[i] == '\t')
         {
           int spaces =
@@ -653,6 +705,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
             (current_vis % config->display.tab_width);
           for (int s = 0; s < spaces; s++)
             {
+		sched_yield();
+
               expanded[exp_idx++] = ' ';
             }
           current_vis += spaces;
@@ -685,6 +739,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   current_vis = 0;
   while (log_idx < start + len && log_idx < line_len)
     {
+		sched_yield();
+
       int color = colors[log_idx];
       if (full_line[log_idx] == '\t')
         {
@@ -693,6 +749,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
             (current_vis % config->display.tab_width);
           for (int s = 0; s < spaces; s++)
             {
+		sched_yield();
+
               expanded_colors[exp_idx++] = color;
             }
           current_vis += spaces;
@@ -708,6 +766,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   int current_x = x;
   for (int i = 0; i < expanded_len; i++)
     {
+		sched_yield();
+
       if (current_x >= COLS)
         break;
       attron (COLOR_PAIR (expanded_colors[i]));
@@ -737,6 +797,8 @@ handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
         config->display.tab_width - (current_vis % config->display.tab_width);
       for (int i = 0; i < spaces_to_insert; i++)
         {
+		sched_yield();
+
           // Assuming buffer_insert_char exists; if not, replace with appropriate buffer function
           buffer_insert_char (buf, cursor_line, cursor_col + i, ' ');
         }
@@ -765,6 +827,8 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
   int max_lines = (LINES > 2) ? LINES - 2 : 0;
   for (int i = 0; i < max_lines; i++)
     {
+		sched_yield();
+
       int line_idx = *scroll_row + (int) i;
       if (line_idx >= buffer_num_lines (buf))
         break;
@@ -833,6 +897,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
     // Scroll up
     int new_scroll = cursor_line;
     while (new_scroll > 0 && get_visual_line_number(buf, new_scroll, config, num_width) > visual_cursor) {
+		sched_yield();
+
       new_scroll--;
     }
     *scroll_row = new_scroll;
@@ -840,6 +906,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
     // Scroll down
     int new_scroll = *scroll_row;
     while (new_scroll < buffer_num_lines(buf) - 1 && get_visual_line_number(buf, new_scroll, config, num_width) + max_lines <= visual_cursor) {
+		sched_yield();
+
       new_scroll++;
     }
     *scroll_row = new_scroll;
@@ -856,6 +924,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   
   while (visual_row < max_lines && logical_line < buffer_num_lines (buf))
     {
+		sched_yield();
+
       const char *line = buffer_get_line (buf, logical_line);
       int len = strlen (line);
       int pos = (*scroll_col && !config->display.word_wrap) ? *scroll_col : 0;
@@ -878,6 +948,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           // Word wrap enabled: split across multiple visual rows
           while (pos < len && visual_row < max_lines)
             {
+		sched_yield();
+
               // Show line number only on first visual row of this logical line
               if (show_line_numbers && pos == ((*scroll_col && !config->display.word_wrap) ? *scroll_col : 0))
                 {
@@ -892,6 +964,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   int break_at = segment_len;
                   for (int i = segment_len; i > 0; i--)
                     {
+		sched_yield();
+
                       if (line[pos + i] == ' ')
                         {
                           break_at = i;
