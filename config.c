@@ -103,7 +103,7 @@ load_editor_config (EditorConfig *config)
   while (fgets (line, (int) sizeof (line), file))
     {
 
-
+	sched_yield();
 
       // Remove newline
       line[strcspn (line, "\n")] = 0;
