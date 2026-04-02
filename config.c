@@ -75,6 +75,7 @@ set_default_config (EditorConfig *config)
   config->statusbar.enabled = 1;
   config->statusbar.show_version = 1;
   config->statusbar.show_time = 0;
+  config->statusbar.show_key_meter = 1;
   config->statusbar.time_format = 24;
   config->statusbar.style = 1;  // balanced
   // Display
@@ -164,9 +165,11 @@ load_editor_config (EditorConfig *config)
         config->autosave.timeout = atoi (value);
       else if (strcmp (key, "auto_save_keystrokes") == 0)
         config->autosave.keystrokes = atoi (value);
-      // Display
+      // Display / Status
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
+      else if (strcmp (key, "show_key_meter") == 0)
+        config->statusbar.show_key_meter = atoi (value);
     }
   fclose (file);
   return CONFIG_SUCCESS;

@@ -78,9 +78,7 @@ loss.
 - **Advanced Editing**: Syntax highlighting with nesting-based color intensity 
 for C/C++, search and replace with regex support, selection and clipboard 
 operations.
-- **User Experience**: Configurable status bar with version/time/filename 
-display, extended ASCII support, intuitive keyboard shortcuts, clear error 
-feedback.
+- **User Experience**: Configurable status bar with version/time/key-response-meter/filename display, extended ASCII support, intuitive keyboard shortcuts, clear error feedback.
 - **Reliability**: Memory error handling with user notifications, graceful 
 degradation under low-memory conditions, robust buffer operations.
 - **Performance**: Efficient rendering for large files (up to 10MB), modular 
@@ -139,6 +137,7 @@ Enter to replace all matches, Esc to cancel)
 
 ### Display
 - F2: Toggle line number display
+- Key response meter (μs) in status bar (configurable via show_key_meter)
 - Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based 
 color intensity
 
@@ -197,7 +196,8 @@ ntinue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatil
 e,const,signed,unsigned,short,long,double,float,void
 paired_keywords=if-then,begin-end,(,)
 syntax_extensions=.c,.h,.cpp
-word_wrap=false
+show_key_meter=1
 ```
+(Note: show_key_meter controls the | Xus response time meter in status bar.)
 Changes take effect the next time you start the editor. The configuration 
 directory `~/.config/led/` is created automatically if it doesn't exist.

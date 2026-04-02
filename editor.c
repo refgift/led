@@ -105,7 +105,7 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->status_message[0] = '\0';
   ed->status_message_time = 0;
   ed->file_modified = 0;
-  ed->last_key_ms = 0;
+  ed->last_key_us = 0;
 }
 void
 set_status_message (Editor *ed, const char *message)
@@ -241,11 +241,10 @@ editor_handle_input (Editor *ed, int ch)
         }
     }
 
-  // Measure key response time
   struct timeval end_time;
   gettimeofday(&end_time, NULL);
-  ed->last_key_ms = (end_time.tv_sec - start_time.tv_sec) * 1000 +
-                    (end_time.tv_usec - start_time.tv_usec) / 1000;
+  ed->last_key_us = (end_time.tv_sec - start_time.tv_sec) * 1000000 +
+                    (end_time.tv_usec - start_time.tv_usec);
 }
 void
 editor_cleanup (Editor *ed)

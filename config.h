@@ -27,6 +27,7 @@ typedef struct {
     int enabled;
     int show_version;
     int show_time;
+    int show_key_meter;
     int time_format;  // 12 or 24
     int style;  // 0=balanced, 1=centered, 2=compact
 } StatusBarConfig;

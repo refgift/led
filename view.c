@@ -958,10 +958,10 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
          int total_lines = buffer_num_lines (buf);
          snprintf (pos_str, 64, "Line %d/%d Col %d",
                    cursor_line + 1, total_lines, cursor_col + 1);
-        char meter_str[16] = "";
-        if (ed && ed->last_key_ms > 0) {
-          snprintf (meter_str, 16, " | %dms", ed->last_key_ms);
-        }
+          char meter_str[16] = "";
+          if (ed && config && config->statusbar.show_key_meter) {
+            snprintf (meter_str, 16, " | %dus", ed->last_key_us);
+          }
       char filename_display[256] = "";
       if (ed && ed->filename)
         {
@@ -987,7 +987,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
         {                       // Balanced
           int remaining =
             COLS - 2 - (int) (strlen (pos_str) + strlen (filename_display) +
-                              1);
+                              strlen (meter_str) + 1);
           int left_space = remaining / 2;
           int right_space = remaining - left_space;
           char left[COLS / 2 + 1];
