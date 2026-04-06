@@ -123,7 +123,7 @@ The editor is controlled via keyboard shortcuts and arrow keys.
 - Ctrl+Q: Quit editor
 
 ### Selection and Clipboard
-- Ctrl+A: Toggle selection mode (drag to select text)
+- Ctrl+A: Select all text
 - Ctrl+C: Copy selected text (or current line if no selection)
 - Ctrl+X: Cut selected text (or current line if no selection)
 - Ctrl+V: Paste clipboard content

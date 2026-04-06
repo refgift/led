@@ -465,7 +465,6 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             free (*clipboard);
           if (*selection_active)
             {
-              // normalize
               int sl = *selection_start_line, sc =
                 *selection_start_col, el = *selection_end_line, ec =
                 *selection_end_col;
@@ -478,12 +477,10 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                   sc = ec;
                   ec = t;
                 }
-              // build string
               int total = 0;
               for (int l = sl; l <= el; l++)
                 {
 		sched_yield();
-
 
 
 
@@ -503,12 +500,14 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
 
 
 
-
-                  const char *line = buffer_get_line (buf, l);
-                  int len = strlen (line);
-                  int s = (l == sl) ? sc : 0;
-                  int e = (l == el) ? ec : len;
-                  total += e - s + (l < el ? 1 : 0);
+                      const char *line = buffer_get_line (buf, l);
+                      int len = strlen (line);
+                      int s = (l == sl) ? sc : 0;
+                      int e = (l == el) ? ec : len;
+                      memcpy (p, &line[s], e - s);
+                      p += e - s;
+                      if (l < el)
+                        *p++ = '\n';
                     }
                   *p = 0;
                 }
@@ -655,12 +654,14 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
           search_buffer[0] = 0;
           break;
         case 1:                // Ctrl+A to select all
-          *selection_start_line = 0;
-          *selection_start_col = 0;
-          *selection_end_line = buffer_num_lines (buf) - 1;
-          *selection_end_col =
-            buffer_get_line_length (buf, *selection_end_line);
-          *selection_active = 1;
+          {
+            int nl = buffer_num_lines (buf);
+            *selection_start_line = 0;
+            *selection_start_col = 0;
+            *selection_end_line = nl > 0 ? nl - 1 : 0;
+            *selection_end_col = nl > 0 ? buffer_get_line_length (buf, *selection_end_line) : 0;
+            *selection_active = nl > 0;
+          }
           break;
         default:
           if (ch == '\n' || ch == KEY_ENTER || ch == '\t'
@@ -713,7 +714,7 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
           break;
         }
 
-      if (*selection_active)
+      if (*selection_active && ch != 1)
         {
           *selection_end_line = *cursor_line;
           *selection_end_col = *cursor_col;
