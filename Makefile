@@ -21,6 +21,6 @@ install:
 	cp led ~/bin
 
 doc:
-	sudo cp led.1 /usr/share/man/man1
+	cp led.1 /usr/share/man/man1
 
 .PHONY: clean lint doc
