@@ -83,6 +83,7 @@ set_default_config (EditorConfig *config)
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 1;
+  config->display.word_wrap = 0;  /* default off for stability */
   // Performance
   config->performance.max_file_size_mb = 10;
   config->performance.memory_limit_mb = 50;

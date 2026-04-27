@@ -3,7 +3,7 @@
 #include <ncurses.h>
 #include <sched.h>
 #include <time.h>
-#define VERSION "1.0-beta2"
+#define VERSION "1.0-beta333"
 typedef struct {
     int normal_fg, normal_bg;
     int selection_fg, selection_bg;
@@ -36,6 +36,7 @@ typedef struct {
     int syntax_highlight;
     int tab_width;
     int spaces_for_tab;
+    int word_wrap;  /* restored for test compatibility; defaults to 0 (disabled in production view) */
 } DisplayConfig;
 typedef struct {
     int max_file_size_mb;

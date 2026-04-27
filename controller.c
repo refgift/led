@@ -6,20 +6,11 @@
 #include <string.h>
 #include <regex.h>
 #include <ctype.h>
+#include <stdio.h>
 UndoStack undo_stack = { NULL, 0, 0 };
 UndoStack redo_stack = { NULL, 0, 0 };
 
-static char *
-my_strdup (const char *s)
-{
-  if (!s)
-    return NULL;
-  int len = strlen (s);
-  char *d = malloc (len + 1);
-  if (d)
-    memcpy (d, s, len + 1);
-  return d;
-}
+static char lineclip[400];
 
 void
 init_undo (void)
@@ -252,10 +243,8 @@ search_next (Buffer *buf, int *cursor_line, int *cursor_col,
 int
 handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               int *cursor_line, int *cursor_col, int *show_line_numbers,
-              char *search_buffer, int *search_mode, char **clipboard,
-              const char *filename, int *selection_start_line,
-              int *selection_start_col, int *selection_end_line,
-              int *selection_end_col, int *selection_active, Editor *ed)
+               char *search_buffer, int *search_mode, char *clipboard,
+               const char *filename, Editor *ed)
 {
   int error_occurred = 0;
   if (*search_mode)
@@ -457,216 +446,58 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
         case 25:               // Ctrl+Y to redo
           redo_operation (buf, cursor_line, cursor_col);
           break;
-        case 26:               // Ctrl+Z to undo
+        case 26:
           undo_operation (buf, cursor_line, cursor_col);
           break;
-        case 3:                // Ctrl+C to copy
-          if (*clipboard)
-            free (*clipboard);
-          if (*selection_active)
-            {
-              int sl = *selection_start_line, sc =
-                *selection_start_col, el = *selection_end_line, ec =
-                *selection_end_col;
-              if (sl > el || (sl == el && sc > ec))
-                {
-                  int t = sl;
-                  sl = el;
-                  el = t;
-                  t = sc;
-                  sc = ec;
-                  ec = t;
-                }
-              int total = 0;
-              for (int l = sl; l <= el; l++)
-                {
-		sched_yield();
-
-
-
-                  const char *line = buffer_get_line (buf, l);
-                  int len = strlen (line);
-                  int s = (l == sl) ? sc : 0;
-                  int e = (l == el) ? ec : len;
-                  total += e - s + (l < el ? 1 : 0);
-                }
-              *clipboard = malloc (total + 1);
-              if (*clipboard)
-                {
-                  char *p = *clipboard;
-                  for (int l = sl; l <= el; l++)
-                    {
-		sched_yield();
-
-
-
-                      const char *line = buffer_get_line (buf, l);
-                      int len = strlen (line);
-                      int s = (l == sl) ? sc : 0;
-                      int e = (l == el) ? ec : len;
-                      memcpy (p, &line[s], e - s);
-                      p += e - s;
-                      if (l < el)
-                        *p++ = '\n';
-                    }
-                  *p = 0;
-                }
-            }
-          else
-            {
-              *clipboard = my_strdup (buffer_get_line (buf, *cursor_line));
-            }
+        case 3:
+          strcpy (lineclip, buffer_get_line (buf, *cursor_line));
           break;
-        case 24:               // Ctrl+X to cut
-          if (*clipboard)
-            free (*clipboard);
-          if (*selection_active)
-            {
-              // normalize
-              int sl = *selection_start_line, sc =
-                *selection_start_col, el = *selection_end_line, ec =
-                *selection_end_col;
-              if (sl > el || (sl == el && sc > ec))
-                {
-                  int t = sl;
-                  sl = el;
-                  el = t;
-                  t = sc;
-                  sc = ec;
-                  ec = t;
-                }
-              // build string
-              int total = 0;
-              for (int l = sl; l <= el; l++)
-                {
-		sched_yield();
-
-
-
-
-                  const char *line = buffer_get_line (buf, l);
-                  int len = strlen (line);
-                  int s = (l == sl) ? sc : 0;
-                  int e = (l == el) ? ec : len;
-                  total += e - s + (l < el ? 1 : 0);
-                }
-              *clipboard = malloc (total + 1);
-              if (*clipboard)
-                {
-                  char *p = *clipboard;
-                  for (int l = sl; l <= el; l++)
-                    {
-		sched_yield();
-
-
-
-
-                      const char *line = buffer_get_line (buf, l);
-                      int len = strlen (line);
-                      int s = (l == sl) ? sc : 0;
-                      int e = (l == el) ? ec : len;
-                      memcpy (p, &line[s], e - s);
-                      p += e - s;
-                      if (l < el)
-                        *p++ = '\n';
-                    }
-                  *p = 0;
-                  // delete range
-                  if (buffer_delete_range (buf, sl, sc, el, ec) == 0)
-                    {
-                      // adjust cursor
-                      *cursor_line = sl;
-                      *cursor_col = sc;
-                      *selection_active = 0;
-                      clear_redo ();
-                      // Note: Undo for multi-char delete not fully implemented in this simple system
-                    }
-                  else
-                    {
-                      error_occurred = 1;
-                    }
-                }
+        case 24:
+          if (buffer_num_lines (buf) == 0) {
+            buffer_insert_line (buf, 0, "");
+            *cursor_line = 0;
+            *cursor_col = 0;
+            strcpy(lineclip,""); 
+          } else {
+            if (*cursor_line >= buffer_num_lines (buf)) {
+              *cursor_line = buffer_num_lines (buf) - 1;
             }
-            else
-              {
-                *clipboard = my_strdup (buffer_get_line (buf, *cursor_line));
-                if (buffer_delete_line (buf, *cursor_line) != 0)
-                {
-                  error_occurred = 1;
-                }
-              else
-                {
-                  if (buffer_num_lines (buf) == 0)
-                    {
-                      buffer_insert_line (buf, 0, "");
-                      *cursor_line = 0;
-                      *cursor_col = 0;
-                    }
-                  else
-                    {
-                      if (*cursor_line >= buffer_num_lines (buf))
-                        {
-                          *cursor_line = buffer_num_lines (buf) - 1;
-                        }
-                      *cursor_col =
-                        buffer_get_line_length (buf, *cursor_line);
-                    }
-                }
+            strcpy (lineclip,buffer_get_line (buf, *cursor_line));
+            int len = buffer_get_line_length (buf, *cursor_line);
+            if (len > 0) {
+              buffer_delete_range (buf, *cursor_line, 0, *cursor_line, len);
             }
+            *cursor_col = 0;
+          }
+          clear_redo ();
           break;
-        case 22:               // Ctrl+V to paste
-          if (*clipboard)
-            {
-              if (buffer_insert_text
-                  (buf, *cursor_line, *cursor_col, *clipboard) == 0)
-                {
-                  clear_redo ();
-                  // move cursor to end
-                  const char *p = *clipboard;
-                  while (*p)
-                    {
-		sched_yield();
-
-
-
-
-                      if (*p == '\n')
-                        {
-                          (*cursor_line)++;
-                          *cursor_col = 0;
-                        }
-                      else
-                        {
-                          (*cursor_col)++;
-                        }
-                      p++;
-                    }
-                  // Note: Undo for multi-char insert not fully implemented in this simple system
+        case 22:
+	  if (strlen(lineclip)>0) {
+            if (buffer_insert_text (buf, *cursor_line, *cursor_col, lineclip ) == 0) {
+              clear_redo ();
+              const char *p = lineclip;
+              while (*p) {
+                if (*p == '\n') {
+                  (*cursor_line)++;
+                  *cursor_col = 0;
+                } else {
+                  (*cursor_col)++;
                 }
-              else
-                {
-                  error_occurred = 1;
-                }
+                p++;
+              }
+            } else {
+              error_occurred = 1;
             }
+	  }
           break;
-        case 31:               // Ctrl+/
+        case 31:
           *search_mode = 1;
           search_buffer[0] = 0;
-          break;
-        case 1:                // Ctrl+A to select all
-          {
-            int nl = buffer_num_lines (buf);
-            *selection_start_line = 0;
-            *selection_start_col = 0;
-            *selection_end_line = nl > 0 ? nl - 1 : 0;
-            *selection_end_col = nl > 0 ? buffer_get_line_length (buf, *selection_end_line) : 0;
-            *selection_active = nl > 0;
-          }
           break;
         default:
           if (ch == '\n' || ch == KEY_ENTER || ch == '\t'
               || (ch >= 32 && ch <= 126))
-            {                   // Printable chars or newline
+            {
               if (ch == '\n')
                 {
                   if (buffer_insert_char
@@ -711,15 +542,10 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                     }
                 }
             }
-          break;
-        }
+           break;
+         }
 
-      if (*selection_active && ch != 1)
-        {
-          *selection_end_line = *cursor_line;
-          *selection_end_col = *cursor_col;
-        }
-      // Adjust scroll
+       // Adjust scroll
       if (*cursor_line < *scroll_row)
         *scroll_row = *cursor_line;
       else if (*cursor_line >= *scroll_row + (int) LINES - 2)

@@ -201,17 +201,14 @@ editor_handle_input (Editor *ed, int ch)
       if (handle_input
           (ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line,
            &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer,
-           &ed->search_mode, &ed->clipboard, ed->filename,
-           &ed->selection_start_line, &ed->selection_start_col,
-           &ed->selection_end_line, &ed->selection_end_col,
-           &ed->selection_active, ed) != 0)
+            &ed->search_mode, ed->clipboard, ed->filename, ed) != 0)
         {
           set_status_message (ed,
                               "Error: Operation failed (insufficient memory?)");
         }
       // Increment unsaved keystrokes for editing operations
       if ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
-          || ch == KEY_BACKSPACE || ch == KEY_DC)
+          || ch == KEY_BACKSPACE || ch == KEY_DC || ch == 3 || ch == 22 || ch == 24)
         {
           ed->unsaved_keystrokes++;
           ed->file_modified = 1;
@@ -238,6 +235,18 @@ editor_handle_input (Editor *ed, int ch)
       else if (ch == 25)
         {                       // Ctrl+Y redo
           set_status_message (ed, "Redid operation");
+        }
+      else if (ch == 3)
+        {                       // Ctrl+C Copy
+          set_status_message (ed, "Copied");
+        }
+      else if (ch == 22)
+        {                       // Ctrl+V Paste
+          set_status_message (ed, "Pasted");
+        }
+      else if (ch == 24)
+        {                       // Ctrl+X Cut
+          set_status_message (ed, "Cut");
         }
     }
 

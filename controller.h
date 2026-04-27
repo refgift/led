@@ -28,4 +28,4 @@ void redo_operation(Buffer* buf, int* cursor_line, int* cursor_col);
 void clear_redo(void);
 void free_undo(void);
 void search_next(Buffer* buf, int* cursor_line, int* cursor_col, const char* pattern);
-int handle_input(int ch, Buffer* buf, int* scroll_row, int* scroll_col, int* cursor_line, int* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char** clipboard, const char* filename, int* selection_start_line, int* selection_start_col, int* selection_end_line, int* selection_end_col, int* selection_active, Editor *ed);
+int handle_input(int ch, Buffer* buf, int* scroll_row, int* scroll_col, int* cursor_line, int* cursor_col, int* show_line_numbers, char* search_buffer, int* search_mode, char* clipboard, const char* filename, Editor *ed);

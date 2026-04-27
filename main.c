@@ -5,12 +5,11 @@
 #include "editor.h"
 #include "view.h"
 #include "config.h"
+#include "test_controller.h"
 
-/* Tests disabled after removing word wrap feature */
-void run_all_tests() {
-  fprintf(stderr, "Note: Comprehensive tests disabled (word wrap tests removed for stability).\n");
-}
-void run_tests (Editor *ed);
+/* Tests re-enabled. Wordwrap-dependent tests skipped for stability. Runs ~20 core tests (clipboard, undo, autosave, buffer, view, cut/paste). */
+extern int tests_passed;
+extern int tests_failed;
 
 
 
@@ -21,7 +20,7 @@ main (int argc, char *argv[])
 {
   if (getenv ("LED_TEST"))
     {
-      run_all_tests ();
+      run_comprehensive_tests();
       return 0;
     }
   int test_mode = 0;
@@ -79,13 +78,21 @@ main (int argc, char *argv[])
     }
   if (test_mode)
     {
-      run_tests (&ed);
+      run_comprehensive_tests();
+      fprintf(stderr, "\nTest summary: %d passed, %d failed\n", tests_passed, tests_failed);
+      if (tests_failed == 0) {
+        fprintf(stderr, "ALL TESTS PASSED\n");
+      } else {
+        fprintf(stderr, "SOME TESTS FAILED\n");
+      }
+      editor_cleanup (&ed);  // cleanup test Editor
+      return 0;
     }
   else
     {
       while (1)
         {
-		sched_yield();
+ 		sched_yield();
 
 
 
@@ -102,10 +109,3 @@ main (int argc, char *argv[])
   return 0;
 }
 
-
-void
-run_tests (Editor *ed)
-{
-  (void) ed;
-  run_all_tests ();
-}

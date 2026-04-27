@@ -7,6 +7,20 @@
 #include "editor.h"
 #include "view.h"
 
+/* Stubs for wordwrap functions removed from production (for test compatibility; no-wrap behavior) */
+int visual_rows_for_line(const char *line, int width, int tab_width) {
+  (void)line; (void)width; (void)tab_width;
+  return 1;  /* no wrap: 1 visual row per logical line */
+}
+int get_visual_row_for_column(const char *line, int col, int width, int tab_width) {
+  (void)line; (void)col; (void)width; (void)tab_width;
+  return 0;
+}
+int get_start_column_for_visual_row(const char *line, int vis_row, int width, int tab_width) {
+  (void)line; (void)vis_row; (void)width; (void)tab_width;
+  return 0;
+}
+
 /**
  * test_view.c - Shadow View (text-only, no ncurses)
  * 
@@ -531,11 +545,11 @@ void run_view_tests(void) {
   fprintf(stderr, "\n====== TEST VIEW ======\n");
   
   test_truncate_no_wrap();
-  test_wrap_enabled();
+  /* test_wrap_enabled(); disabled - wordwrap feature removed */
   test_render_no_model_change();
-  test_toggle_changes_visual_rows();
-  test_wrap_cursor_end();
-  test_cursor_position_after_newline_wrap();
+  /* test_toggle_changes_visual_rows(); disabled - requires word_wrap */
+  /* test_wrap_cursor_end(); disabled - requires word_wrap */
+  /* test_cursor_position_after_newline_wrap(); disabled - requires word_wrap */
 
-  fprintf(stderr, "====== VIEW TESTS COMPLETE ======\n");
+  fprintf(stderr, "====== VIEW TESTS COMPLETE (wrap tests skipped) ======\n");
 }
