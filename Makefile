@@ -1,9 +1,9 @@
 # Dependencies: ncurses (for terminal UI), rx (regex library for search functionality)
 CC = gcc
-CFLAGS = -D_POSIX_C_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 -O2
+CFLAGS = -D_POSIX_C_SOURCE -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 -O2
 LDFLAGS = -lncurses
 TARGET = led
-SRCS = main.c model.c view.c controller.c editor.c config.c
+SRCS = main.c model.c view.c controller.c editor.c config.c test_controller.c test_view.c test_autosave.c
 OBJS = $(SRCS:.c=.o)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
@@ -16,11 +16,12 @@ lint:
 sanitize: CFLAGS += -fsanitize=address -fsanitize=undefined
 sanitize: $(TARGET)
 
+# Useful on Linux and Unix 
 install:
-	mkdir ~/bin || true
-	cp led ~/bin
+	mkdir /usr/local/bin || true
+	cp led /usr/local/bin
 
 doc:
 	cp led.1 /usr/share/man/man1
 
-.PHONY: clean lint doc
+.PHONY: clean lint doc install

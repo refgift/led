@@ -35,7 +35,7 @@ Integrate cleaning into scripts or hooks:
 - Release: Tag versions in Git, update VERSION in code.
 
 ## Tools and Conventions
-- Coding Style: Follow existing patterns (e.g., no comments unless asked).
+- Coding Style: Adhere to standards.
 - Security: Avoid secrets in repo.
 - Feedback: Report issues at https://github.com/anomalyco/opencode/issues.
 
