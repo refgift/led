@@ -365,6 +365,19 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             *cursor_line = *scroll_row;
           break;
         case KEY_BACKSPACE:
+          if (*cursor_col > 0)
+            {
+              (*cursor_col)--;
+            }
+          else if (*cursor_line > 0)
+            {
+              (*cursor_line)--;
+              *cursor_col = buffer_get_line_length (buf, *cursor_line);
+            }
+	    char backspaced = buffer_delete_char(buf,*cursor_line,*cursor_col);
+	    push_undo(false, *cursor_line, *cursor_col, backspaced);
+	    clear_redo();
+	    break;
         case 127:              // Delete key
           if (*cursor_col > 0)
             {
