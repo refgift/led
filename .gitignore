@@ -2,3 +2,4 @@ led
 *.bak.c
 *.bak.txt
 *.o
+AGENTS.md

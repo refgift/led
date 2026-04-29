@@ -1,3 +1,0 @@
-Sample text for testing the editor. {
-
-}
