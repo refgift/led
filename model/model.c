@@ -49,20 +49,22 @@ gap_buffer_free(GapBuffer* gb)
 static void
 _gap_buffer_expand(GapBuffer* gb, int min_size)
 {
-  int new_size = gb->buffer_size;
-  while (new_size - (gb->gap_end - gb->gap_start) < min_size) {
-		sched_yield();
+  int current_gap = gb->gap_end - gb->gap_start;
+  if (current_gap >= min_size) return;
 
-
+  int needed_growth = min_size - current_gap;
+  int new_size = gb->buffer_size * 2;
+  while (new_size - gb->buffer_size < needed_growth)
     new_size *= 2;
-  }
+
   char* new_buffer = safe_malloc(new_size);
   if (!new_buffer) return;
-  // Copy text before gap
+
   memcpy(new_buffer, gb->buffer, gb->gap_start);
-  // Copy text after gap
-  memcpy(new_buffer + new_size - (gb->buffer_size - gb->gap_end), gb->buffer + gb->gap_end, gb->buffer_size - gb->gap_end);
-  gb->gap_end = new_size - (gb->buffer_size - gb->gap_end);
+  int tail_len = gb->buffer_size - gb->gap_end;
+  memcpy(new_buffer + new_size - tail_len, gb->buffer + gb->gap_end, tail_len);
+
+  gb->gap_end = new_size - tail_len;
   free(gb->buffer);
   gb->buffer = new_buffer;
   gb->buffer_size = new_size;
@@ -96,6 +98,21 @@ gap_buffer_insert(GapBuffer* gb, int pos, char c)
   if (gb->gap_start < gb->gap_end) {
     gb->buffer[gb->gap_start++] = c;
     gb->text_len++;
+  }
+}
+
+void
+gap_buffer_insert_many(GapBuffer* gb, int pos, const char* s, int n)
+{
+  if (n <= 0) return;
+  gap_buffer_move_gap(gb, pos);
+  if (gb->gap_end - gb->gap_start < n) {
+    _gap_buffer_expand(gb, n);
+  }
+  if (gb->gap_start + n <= gb->gap_end) {
+    memcpy(gb->buffer + gb->gap_start, s, n);
+    gb->gap_start += n;
+    gb->text_len += n;
   }
 }
 
@@ -666,14 +683,10 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
             {
               current_col = ln_len;
             }
-          // Insert each char
-          for (const char *q = p; q < end; q++)
-            {
-		sched_yield();
-
-
-              gap_buffer_insert(gb, current_col++, *q);
-            }
+          // Bulk insert the run
+          int run_len = end - p;
+          gap_buffer_insert_many(gb, current_col, p, run_len);
+          current_col += run_len;
           p = end;
         }
     }

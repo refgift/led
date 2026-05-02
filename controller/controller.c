@@ -462,51 +462,60 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
         case 26:
           undo_operation (buf, cursor_line, cursor_col);
           break;
-        case 3:
-          strcpy (lineclip, buffer_get_line (buf, *cursor_line));
-          break;
-        case 24:
-          if (buffer_num_lines (buf) == 0) {
-            buffer_insert_line (buf, 0, "");
-            *cursor_line = 0;
-            *cursor_col = 0;
-            strcpy(lineclip,""); 
-          } else {
-            if (*cursor_line >= buffer_num_lines (buf)) {
-              *cursor_line = buffer_num_lines (buf) - 1;
-            }
-            strcpy (lineclip,buffer_get_line (buf, *cursor_line));
-            int len = buffer_get_line_length (buf, *cursor_line);
-            if (len > 0) {
-              buffer_delete_range (buf, *cursor_line, 0, *cursor_line, len);
-            }
-            *cursor_col = 0;
-          }
-          clear_redo ();
-          break;
-        case 22:
-	  if (strlen(lineclip)>0) {
-            if (buffer_insert_text (buf, *cursor_line, *cursor_col, lineclip ) == 0) {
-              clear_redo ();
-              const char *p = lineclip;
-              while (*p) {
-                if (*p == '\n') {
-                  (*cursor_line)++;
-                  *cursor_col = 0;
-                } else {
-                  (*cursor_col)++;
-                }
-                p++;
-              }
-            } else {
-              error_occurred = 1;
-            }
-	  }
-          break;
-        case 31:
-          *search_mode = 1;
-          search_buffer[0] = 0;
-          break;
+         case 3:
+           strcpy (lineclip, buffer_get_line (buf, *cursor_line));
+           if (clipboard) strcpy (clipboard, lineclip);
+           break;
+         case 24:
+           if (buffer_num_lines (buf) == 0) {
+             buffer_insert_line (buf, 0, "");
+             *cursor_line = 0;
+             *cursor_col = 0;
+             strcpy(lineclip,""); 
+             if (clipboard) strcpy(clipboard, "");
+           } else {
+             if (*cursor_line >= buffer_num_lines (buf)) {
+               *cursor_line = buffer_num_lines (buf) - 1;
+             }
+             strcpy (lineclip,buffer_get_line (buf, *cursor_line));
+             if (clipboard) strcpy (clipboard, lineclip);
+             int len = buffer_get_line_length (buf, *cursor_line);
+             if (len > 0) {
+               buffer_delete_range (buf, *cursor_line, 0, *cursor_line, len);
+             }
+             *cursor_col = 0;
+           }
+           clear_redo ();
+           break;
+         case 22:
+           {
+             char *clip = (clipboard && strlen(clipboard) > 0) ? clipboard : lineclip;
+             if (strlen(clip) > 0) {
+               if (buffer_insert_text (buf, *cursor_line, *cursor_col, clip) == 0) {
+                 clear_redo ();
+                 const char *p = clip;
+                 while (*p) {
+                   if (*p == '\n') {
+                     (*cursor_line)++;
+                     *cursor_col = 0;
+                   } else {
+                     (*cursor_col)++;
+                   }
+                   p++;
+                 }
+               } else {
+                 error_occurred = 1;
+               }
+             }
+           }
+           break;
+         case 31:
+           if (ed && ed->config.search.enabled)
+             {
+               *search_mode = 1;
+               search_buffer[0] = 0;
+             }
+           break;
         default:
           if (ch == '\n' || ch == KEY_ENTER || ch == '\t'
               || (ch >= 32 && ch <= 126))

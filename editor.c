@@ -157,8 +157,8 @@ editor_handle_input (Editor *ed, int ch)
       ed->show_line_numbers = !ed->show_line_numbers;
       return;
     }
-  if (ch == 18)
-    {                           // Ctrl+R replace
+  if (ch == 18 && ed->config.search.enabled)
+    {
       if (ed->replace_step == 0)
         {
           ed->replace_step = 1;

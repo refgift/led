@@ -44,6 +44,7 @@ char gap_buffer_get_char(const GapBuffer* gb, int pos);
 const char* gap_buffer_get_text(const GapBuffer* gb);
 int gap_buffer_length(const GapBuffer* gb);
 void gap_buffer_move_gap(GapBuffer* gb, int pos);
+void gap_buffer_insert_many(GapBuffer* gb, int pos, const char* s, int n);
 
 void buffer_init(Buffer* buf);
 void buffer_free(Buffer* buf);

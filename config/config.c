@@ -87,6 +87,8 @@ set_default_config (EditorConfig *config)
   // Performance
   config->performance.max_file_size_mb = 10;
   config->performance.memory_limit_mb = 50;
+  config->search.enabled = 1;
+  config->search.max_pattern_length = 100;
 }
 ConfigError
 load_editor_config (EditorConfig *config)
@@ -166,7 +168,10 @@ load_editor_config (EditorConfig *config)
         config->autosave.timeout = atoi (value);
       else if (strcmp (key, "auto_save_keystrokes") == 0)
         config->autosave.keystrokes = atoi (value);
-      // Display / Status
+      else if (strcmp (key, "search_enabled") == 0)
+        config->search.enabled = atoi (value);
+      else if (strcmp (key, "search_max_pattern_length") == 0)
+        config->search.max_pattern_length = atoi (value);
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
       else if (strcmp (key, "show_key_meter") == 0)
