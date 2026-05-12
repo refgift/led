@@ -2,12 +2,31 @@
 
 #include <ncurses.h>
 #include <time.h>
-#include <sched.h>
 #include "model.h"
 #include "config.h"
 
-typedef struct {
+typedef struct UndoStack UndoStack;
+typedef struct Change Change;
+
+struct Change {
+    bool is_insert;
+    int line;
+    int col;
+    char ch;
+};
+
+struct UndoStack {
+    Change* changes;
+    int count;
+    int capacity;
+};
+
+typedef struct Editor Editor;
+
+struct Editor {
     Buffer model;
+    UndoStack undo_stack;
+    UndoStack redo_stack;
     int scroll_row;
     int scroll_col;
     int show_line_numbers;
@@ -32,19 +51,20 @@ typedef struct {
     int auto_save_timeout;    // seconds before time-based auto-save
     time_t last_save_time;
     int backup_count;
-
+ 
     // Status bar
     char status_message[256];
     time_t status_message_time;
-
+ 
     // File status
     int file_modified;
     
     // Visual rendering state (for word wrap support)
     int total_visual_lines;  // Total visual lines when word_wrap ON
-
+ 
     int last_key_us;
-} Editor;
+    int prev_key;  /* for double Home/End detection */
+};
 
 void editor_init(Editor* ed, int argc, char* argv[]);
 void editor_draw(WINDOW* win, Editor* ed);

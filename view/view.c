@@ -20,16 +20,16 @@ is_reserved_word (const char *word, const char *list)
 {
   if (!list || !word)
     return 0;
-  char *dup = malloc (strlen (list) + 1);
+  char *dup = xmalloc (strlen (list) + 1);
   if (!dup)
     return 0;
   strcpy (dup, list);
   char *token = strtok (dup, ",");
   while (token)
     {
-		sched_yield();
+		
 
-      sched_yield();
+      
       
       if (strcmp (word, token) == 0)
         {
@@ -50,7 +50,7 @@ calculate_digits (int n)
   int digits = 0;
   do
     {
-		sched_yield();
+		
 
 
 
@@ -66,21 +66,13 @@ visual_column (const char *line, int len, int logical_pos,
                int tab_width)
 {
   int vis = 0;
-  for (int i = 0; i < logical_pos && i < len; i++)
-    {
-		sched_yield();
-
-
-
-      if (line[i] == '\t')
-        {
-          vis += tab_width - (vis % tab_width);
-        }
-      else
-        {
-          vis++;
-        }
+  for (int i = 0; i < logical_pos && i < len; i++) {
+    if (line[i] == '\t') {
+      vis += tab_width - (vis % tab_width);
+    } else {
+      vis++;
     }
+  }
   return vis;
 }
 // Compute color array for a line based on syntax highlighting
@@ -95,13 +87,13 @@ compute_line_colors (const char *full_line, int line_len,
     {
       return NULL;              // No colors if disabled or line too long
     }
-  int *colors = malloc (line_len * sizeof (int));
+  int *colors = xmalloc (line_len * sizeof (int));
   if (!colors)
     return NULL;
   // Initialize all to normal color (1)
   for (int i = 0; i < line_len; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -115,14 +107,14 @@ compute_line_colors (const char *full_line, int line_len,
   int num_pairs = 0;
   if (strlen(config->syntax.paired_keywords) >0 )
     {
-      char *dup_pk = malloc (strlen (config->syntax.paired_keywords) + 1);
+      char *dup_pk = xmalloc (strlen (config->syntax.paired_keywords) + 1);
       if (dup_pk)
         {
           strcpy (dup_pk, config->syntax.paired_keywords);
           char *token = strtok (dup_pk, ",");
           while (token && num_pairs < 10)
             {
-		sched_yield();
+		
 
 
 
@@ -150,7 +142,7 @@ compute_line_colors (const char *full_line, int line_len,
   int word_count = 0;
   for (int i = 0; i < line_len; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -212,7 +204,7 @@ compute_line_colors (const char *full_line, int line_len,
                   continue;     // Skip if too many words
                 }
               int wlen = i - word_start;
-              char *word = malloc (wlen + 1);
+              char *word = xmalloc (wlen + 1);
               if (word)
                 {
                   memcpy (word, &full_line[word_start], wlen);
@@ -221,7 +213,7 @@ compute_line_colors (const char *full_line, int line_len,
                   // Check for paired keywords
                   for (int p = 0; p < num_pairs && !colored; p++)
                     {
-		sched_yield();
+		
 
 
 
@@ -269,7 +261,7 @@ compute_line_colors (const char *full_line, int line_len,
       if (word_count++ <= 100)
         {
           int wlen = line_len - word_start;
-          char *word = malloc (wlen + 1);
+          char *word = xmalloc (wlen + 1);
           if (word)
             {
               memcpy (word, &full_line[word_start], wlen);
@@ -277,7 +269,7 @@ compute_line_colors (const char *full_line, int line_len,
               int colored = 0;
               for (int p = 0; p < num_pairs && !colored; p++)
                 {
-		sched_yield();
+		
 
 
 
@@ -322,7 +314,7 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
   int word_start = 0;
   int in_word = 0;
   for (int i = 0; i < line_len; i++) {
-		sched_yield();
+		
 
 
 
@@ -352,7 +344,7 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
         memcpy(word, full_line + word_start, wlen);
         word[wlen] = '\0';
         for (int p = 0; p < num_pairs; p++) {
-		sched_yield();
+		
 
 
 
@@ -379,7 +371,7 @@ static void update_nesting(const char *full_line, int line_len, int *brace_level
     memcpy(word, full_line + word_start, wlen);
     word[wlen] = '\0';
     for (int p = 0; p < num_pairs; p++) {
-		sched_yield();
+		
 
 
 
@@ -423,7 +415,7 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
       strcpy(dup_pk, config->syntax.paired_keywords);
       char *token = strtok(dup_pk, ",");
       while (token && num_pairs < 10) {
-		sched_yield();
+		
 
 
 
@@ -443,7 +435,7 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
   }
   // Update state for each previous line
   for (int l = 0; l < start_line; l++) {
-		sched_yield();
+		
 
 
 
@@ -486,7 +478,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   int current_vis = 0;
   for (int i = start; i < start + len && i < line_len; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -505,7 +497,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
         }
     }
   // Build expanded string
-  char *expanded = malloc (expanded_len + 1);
+  char *expanded = xmalloc (expanded_len + 1);
   if (!expanded)
     {
       if (colors)
@@ -518,7 +510,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   current_vis = 0;
   for (int i = start; i < start + len && i < line_len; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -529,7 +521,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
             (current_vis % config->display.tab_width);
           for (int s = 0; s < spaces; s++)
             {
-		sched_yield();
+		
 
 
 
@@ -552,7 +544,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
       return;
     }
   // Build expanded colors
-  int *expanded_colors = malloc (expanded_len * sizeof (int));
+  int *expanded_colors = xmalloc (expanded_len * sizeof (int));
   if (!expanded_colors)
     {
       free (colors);
@@ -565,7 +557,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   current_vis = 0;
   while (log_idx < start + len && log_idx < line_len)
     {
-		sched_yield();
+		
 
 
 
@@ -577,7 +569,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
             (current_vis % config->display.tab_width);
           for (int s = 0; s < spaces; s++)
             {
-		sched_yield();
+		
 
 
 
@@ -596,7 +588,7 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   int current_x = x;
   for (int i = 0; i < expanded_len; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -629,7 +621,7 @@ handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
         config->display.tab_width - (current_vis % config->display.tab_width);
       for (int i = 0; i < spaces_to_insert; i++)
         {
-		sched_yield();
+		
 
 
 
@@ -662,7 +654,7 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
   int max_lines = (LINES > 2) ? LINES - 2 : 0;
   for (int i = 0; i < max_lines; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -745,7 +737,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   
   while (visual_row < max_lines && logical_line < buffer_num_lines (buf))
     {
-		sched_yield();
+		
 
 
 
@@ -771,7 +763,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
           // (disabled)
           while (pos < len && visual_row < max_lines)
             {
-		sched_yield();
+		
 
 
 
@@ -789,7 +781,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   int break_at = segment_len;
                   for (int i = segment_len; i > 0; i--)
                     {
-		sched_yield();
+		
 
 
 

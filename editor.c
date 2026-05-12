@@ -62,14 +62,14 @@ editor_init (Editor *ed, int argc, char *argv[])
   if (ext)
     {
       int len = strlen (ed->config.syntax.extensions);
-      char *list = malloc (len + 1);
+      char *list = xmalloc (len + 1);
       if (list)
         {
           strcpy (list, ed->config.syntax.extensions);
           char *token = strtok (list, ",");
           while (token)
             {
-		sched_yield();
+		
 
 
 
@@ -106,6 +106,7 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->status_message_time = 0;
   ed->file_modified = 0;
   ed->last_key_us = 0;
+  ed->prev_key = 0;
 }
 void
 set_status_message (Editor *ed, const char *message)
@@ -157,6 +158,14 @@ editor_handle_input (Editor *ed, int ch)
       ed->show_line_numbers = !ed->show_line_numbers;
       return;
     }
+  if ((ch == 31 || ch == '/') && ed->config.search.enabled) /* Ctrl+/ or / */
+    {
+      ed->search_mode = 1;
+      ed->replace_step = 0;
+      memset (ed->search_buffer, 0, sizeof (ed->search_buffer));
+      set_status_message (ed, "Search (Esc to cancel):");
+      return;
+    }
   if (ch == 18 && ed->config.search.enabled)
     {
       if (ed->replace_step == 0)
@@ -201,14 +210,16 @@ editor_handle_input (Editor *ed, int ch)
       if (handle_input
           (ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line,
            &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer,
-            &ed->search_mode, ed->clipboard, ed->filename, ed) != 0)
+            &ed->search_mode, &ed->clipboard, ed->filename, ed) != 0)
         {
           set_status_message (ed,
                               "Error: Operation failed (insufficient memory?)");
         }
-      // Increment unsaved keystrokes for editing operations
-      if ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
-          || ch == KEY_BACKSPACE || ch == KEY_DC || ch == 3 || ch == 22 || ch == 24)
+      ed->prev_key = ch;
+      // Increment unsaved keystrokes for editing operations (exclude search/replace)
+      if (!ed->search_mode && !ed->replace_step &&
+          ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
+           || ch == KEY_BACKSPACE || ch == KEY_DC || ch == 3 || ch == 22 || ch == 24))
         {
           ed->unsaved_keystrokes++;
           ed->file_modified = 1;
@@ -247,6 +258,10 @@ editor_handle_input (Editor *ed, int ch)
       else if (ch == 24)
         {                       // Ctrl+X Cut
           set_status_message (ed, "Cut");
+        }
+      else if (ed->search_mode)
+        {
+          set_status_message (ed, "Search (type regex, Enter to find, Esc cancel)");
         }
     }
 

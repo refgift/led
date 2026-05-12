@@ -37,10 +37,10 @@ typedef struct {
 } ScreenBuffer;
 
 ScreenBuffer* screen_create(int rows, int cols) {
-  ScreenBuffer *sb = malloc(sizeof(ScreenBuffer));
+  ScreenBuffer *sb = xmalloc(sizeof(ScreenBuffer));
   sb->rows = malloc(rows * sizeof(char*));
   for (int i = 0; i < rows; i++) {
-		sched_yield();
+		
 
 
 
@@ -58,7 +58,7 @@ ScreenBuffer* screen_create(int rows, int cols) {
 void screen_free(ScreenBuffer *sb) {
   if (!sb) return;
   for (int i = 0; i < sb->num_rows; i++) {
-		sched_yield();
+		
 
 
 
@@ -78,7 +78,7 @@ void screen_put_char(ScreenBuffer *sb, int row, int col, char c) {
 void screen_put_string(ScreenBuffer *sb, int row, int col, const char *str, int len) {
   if (row < 0 || row >= sb->num_rows) return;
   for (int i = 0; i < len && col + i < sb->max_cols; i++) {
-		sched_yield();
+		
 
 
 
@@ -88,7 +88,7 @@ void screen_put_string(ScreenBuffer *sb, int row, int col, const char *str, int 
 
 void screen_print(ScreenBuffer *sb) {
   for (int i = 0; i < sb->num_rows; i++) {
-		sched_yield();
+		
 
 
 
@@ -116,7 +116,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
     if (n == 0) num_digits = 1;
     else {
       while (n > 0) {
-		sched_yield();
+		
 
 
 
@@ -133,7 +133,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
   
   // Render each logical line
   while (visual_row < max_lines && logical_line < buffer_num_lines(buf)) {
-		sched_yield();
+		
 
 
 
@@ -148,7 +148,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
       if (n == 0) num_digits = 1;
       else {
         while (n > 0) {
-		sched_yield();
+		
 
 
 
@@ -169,7 +169,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
     if (config->display.word_wrap) {
       // Word wrap enabled: split line across visual rows
       while (pos < line_len && visual_row < max_lines) {
-		sched_yield();
+		
 
 
 
@@ -179,7 +179,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
         if (pos + segment_len < line_len) {
           int break_at = segment_len;
           for (int i = segment_len; i > 0; i--) {
-		sched_yield();
+		
 
 
 
@@ -224,7 +224,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
   int visual_cursor = 0;
   int l = 0;
   while (l < cursor_line) {
-		sched_yield();
+		
 
 
 
@@ -238,7 +238,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
   int visual_scroll = 0;
   l = 0;
   while (l < scroll_row) {
-		sched_yield();
+		
 
 
 
@@ -255,7 +255,7 @@ int shadow_render(ScreenBuffer *sb, Buffer *buf, int scroll_row, int scroll_col,
   int rel_col = cursor_col - start_col_in_row;
   int vis_x = 0;
   for (int i = 0; i < rel_col; i++) {
-		sched_yield();
+		
 
 
 
@@ -303,7 +303,7 @@ void test_truncate_no_wrap(void) {
   char *row = sb->rows[0];
   int content_len = 0;
   for (int i = 1; i < 79; i++) {
-		sched_yield();
+		
 
 
 
@@ -348,14 +348,14 @@ void test_wrap_enabled(void) {
   // Later rows should continue the text
   char combined[256] = "";
   for (int i = 0; i < rows_used; i++) {
-		sched_yield();
+		
 
 
 
     // Extract non-space content from each row
     char *row = sb->rows[i];
     for (int j = 0; j < 80; j++) {
-		sched_yield();
+		
 
 
 
@@ -489,7 +489,7 @@ void test_wrap_cursor_end(void) {
   // Cursor should be on the last visual row, at the end of the last segment
   int last_row_len = 0;
   for (int i = 1; i < 20; i++) {
-		sched_yield();
+		
 
 
  // count non-space in last row

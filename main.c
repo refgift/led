@@ -78,6 +78,8 @@ main (int argc, char *argv[])
     }
   if (test_mode)
     {
+      COLS = 80;
+      LINES = 24;
       run_comprehensive_tests();
       fprintf(stderr, "\nTest summary: %d passed, %d failed\n", tests_passed, tests_failed);
       if (tests_failed == 0) {
@@ -92,10 +94,6 @@ main (int argc, char *argv[])
     {
       while (1)
         {
- 		sched_yield();
-
-
-
           int ch = getch ();
           if (ch == 17)
             break;              // Ctrl+Q

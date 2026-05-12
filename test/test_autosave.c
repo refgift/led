@@ -52,7 +52,7 @@ read_file_content (const char *path)
   long size = ftell (fp);
   fseek (fp, 0, SEEK_SET);
   
-  char *buf = malloc (size + 1);
+  char *buf = xmalloc (size + 1);
   if (buf)
     {
       (void) fread (buf, 1, size, fp);
@@ -152,7 +152,7 @@ test_autosave_comprehensive ()
     // Perform 15 auto-saves to trigger rotation
     for (int i = 0; i < 15; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -171,7 +171,7 @@ test_autosave_comprehensive ()
     int backup_count = 0;
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -187,7 +187,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -245,7 +245,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -304,7 +304,7 @@ test_autosave_comprehensive ()
     
     for (int i = 0; i < 3; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -316,7 +316,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -401,7 +401,7 @@ test_autosave_comprehensive ()
     int save_count = 0;
     for (int i = 0; i < 60; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -420,7 +420,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -449,7 +449,7 @@ test_autosave_comprehensive ()
     // Perform 11 saves
     for (int i = 0; i < 11; i++)
       {
-		sched_yield();
+		
 
 
 
@@ -481,7 +481,7 @@ test_autosave_comprehensive ()
     unlink (test_file);
     for (int i = 1; i <= 10; i++)
       {
-		sched_yield();
+		
 
 
 
