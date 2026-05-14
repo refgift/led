@@ -1,6 +1,6 @@
 # Dependencies: ncurses (for terminal UI)
 CC = gcc
-CFLAGS = -I. -Iview -Itest -Imodel -Icontroller -Iconfig -D_POSIX_C_SOURCE -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 -O2
+CFLAGS = -I. -Iview -Itest -Imodel -Icontroller -Iconfig -D_POSIX_C_SOURCE -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 
 LDFLAGS = -lncurses
 TARGET = led
 SRCS = main.c model/model.c view/view.c controller/controller.c editor.c config/config.c test/test_controller.c test/test_view.c test/test_autosave.c

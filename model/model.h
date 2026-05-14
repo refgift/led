@@ -2,10 +2,38 @@
 #define BUFFER_H
 
 #include <stddef.h>
-#include <sched.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #define INITIAL_LINES_CAPACITY 10
+
+static inline void* xmalloc(size_t n) {
+  void *p = malloc(n);
+  if (!p) {
+    perror("xmalloc");
+    exit(EXIT_FAILURE);
+  }
+  return p;
+}
+
+static inline void* xrealloc(void *p, size_t n) {
+  void *np = realloc(p, n);
+  if (!np) {
+    perror("xrealloc");
+    exit(EXIT_FAILURE);
+  }
+  return np;
+}
+
+static inline void* xcalloc(size_t nmemb, size_t size) {
+  void *p = calloc(nmemb, size);
+  if (!p) {
+    perror("xcalloc");
+    exit(EXIT_FAILURE);
+  }
+  return p;
+}
 
 // Gap buffer for efficient text editing
 typedef struct {
@@ -44,6 +72,7 @@ char gap_buffer_get_char(const GapBuffer* gb, int pos);
 const char* gap_buffer_get_text(const GapBuffer* gb);
 int gap_buffer_length(const GapBuffer* gb);
 void gap_buffer_move_gap(GapBuffer* gb, int pos);
+void gap_buffer_insert_many(GapBuffer* gb, int pos, const char* s, int n);
 
 void buffer_init(Buffer* buf);
 void buffer_free(Buffer* buf);

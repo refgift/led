@@ -7,6 +7,7 @@
 #include "controller.h"
 #include "view.h"
 #include "config.h"
+#include "editor.h"
 
 void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
                      int *cursor_line, int *cursor_col,
@@ -65,6 +66,7 @@ void
 test_buffer_init_free ()
 {
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   test_assert (buf.lines == NULL, "buffer_init sets lines to NULL");
   test_assert (buf.num_lines == 0, "buffer_init sets num_lines to 0");
@@ -77,6 +79,7 @@ void
 test_buffer_load_save ()
 {
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   // Load non-existent file (should fail gracefully)
   int load_result = buffer_load_from_file (&buf, "/nonexistent");
@@ -121,6 +124,7 @@ void
 test_buffer_manipulation ()
 {
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
 
   // Test insert_line
@@ -155,6 +159,7 @@ test_search_functionality ()
 {
   fprintf (stderr, "Running search functionality test\n");
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world hello");
   buffer_insert_line (&buf, 1, "goodbye world hello");
@@ -203,6 +208,7 @@ test_buffer_replace_all ()
 {
   fprintf (stderr, "Running buffer replace test\n");
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world");
   buffer_insert_line (&buf, 1, "hello again");
@@ -216,6 +222,8 @@ test_buffer_replace_all ()
 
   // Test multiple replacements in one line
   buffer_free (&buf);
+  free_undo ();
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "foo foo foo");
   buffer_replace_all (&buf, "foo", "bar");
@@ -224,6 +232,8 @@ test_buffer_replace_all ()
 
   // Test empty replacement
   buffer_free (&buf);
+  free_undo ();
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "abcdef");
   buffer_replace_all (&buf, "cd", "");
@@ -244,10 +254,11 @@ void test_undo_redo_comprehensive ()
 {
   fprintf (stderr, "Running undo/redo comprehensive tests\n");
   Buffer buf;
-  buffer_init (&buf);
-  init_undo ();
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
+
   
   // Test 1: initialization
   test_assert (undo_stack.count == 0, "undo_stack initializes with count=0");
@@ -265,9 +276,10 @@ void test_undo_redo_comprehensive ()
   
   // Test 3: delete and undo
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "hello");
   char ch = buffer_get_char (&buf, 0, 0);
   buffer_delete_char (&buf, 0, 0);
@@ -279,9 +291,10 @@ void test_undo_redo_comprehensive ()
   
   // Test 4: undo with empty stack
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "test");
   cursor_line = 0; cursor_col = 0;
   undo_operation (&buf, &cursor_line, &cursor_col);
@@ -289,9 +302,10 @@ void test_undo_redo_comprehensive ()
   
   // Test 5: redo after undo
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "");
   buffer_insert_char (&buf, 0, 0, 'x');
   push_undo (true, 0, 0, 'x');
@@ -303,13 +317,14 @@ void test_undo_redo_comprehensive ()
   
   // Test 6: stack growth
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "");
   for (int i = 0; i < 32; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -320,9 +335,10 @@ void test_undo_redo_comprehensive ()
   
   // Test 7: multiline undo
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "hello");
   buffer_insert_line (&buf, 1, "world");
   buffer_insert_char (&buf, 1, 3, 'X');
@@ -333,9 +349,10 @@ void test_undo_redo_comprehensive ()
   
   // Test 8: redo clears on new edit
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "");
   buffer_insert_char (&buf, 0, 0, 'a');
   push_undo (true, 0, 0, 'a');
@@ -347,13 +364,14 @@ void test_undo_redo_comprehensive ()
   
   // Test 9: multiple undos
   buffer_free (&buf);
-  buffer_init (&buf);
   free_undo ();
-  init_undo ();
+  buffer_init (&buf);
+
+
   buffer_insert_line (&buf, 0, "initial");
   for (int i = 0; i < 5; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -362,7 +380,7 @@ void test_undo_redo_comprehensive ()
     }
   for (int i = 0; i < 5; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -374,7 +392,7 @@ void test_undo_redo_comprehensive ()
   // Test 10: redo with multiple operations
   for (int i = 0; i < 3; i++)
     {
-		sched_yield();
+		
 
 
 
@@ -384,7 +402,7 @@ void test_undo_redo_comprehensive ()
   test_assert (strcmp (buffer_get_line (&buf, 0), "initialxxx") == 0, "partial redo");
   
   buffer_free (&buf);
-  free_undo ();
+
   fprintf (stderr, "Undo/redo comprehensive tests completed\n");
 }
 
@@ -393,6 +411,7 @@ void test_clipboard_comprehensive ()
   fprintf (stderr, "Running clipboard comprehensive tests\n");
   Buffer buf;
   char *clipboard = NULL;
+  free_undo ();
   buffer_init (&buf);
   
   // Test 1: select all empty
@@ -405,6 +424,7 @@ void test_clipboard_comprehensive ()
   
   // Test 2: select all single line
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello");
   sel_start_line = 0;
@@ -414,6 +434,7 @@ void test_clipboard_comprehensive ()
   
   // Test 3: select all multiline
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "line1");
   buffer_insert_line (&buf, 1, "line2");
@@ -424,6 +445,7 @@ void test_clipboard_comprehensive ()
   
   // Test 4: copy current line
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "foo");
   buffer_insert_line (&buf, 1, "bar");
@@ -434,11 +456,12 @@ void test_clipboard_comprehensive ()
   
   // Test 5: copy selection
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world");
   if (clipboard) free (clipboard);
   const char *line = buffer_get_line (&buf, 0);
-  clipboard = malloc (6);
+  clipboard = xmalloc (6);
   if (clipboard)
     {
       memcpy (clipboard, line, 5);
@@ -448,19 +471,20 @@ void test_clipboard_comprehensive ()
   
   // Test 6: clipboard overwrite
   if (clipboard) free (clipboard);
-  clipboard = malloc (6);
+  clipboard = xmalloc (6);
   strcpy (clipboard, "first");
   if (clipboard) free (clipboard);
-  clipboard = malloc (7);
+  clipboard = xmalloc (7);
   strcpy (clipboard, "second");
   test_assert (strcmp (clipboard, "second") == 0, "clipboard overwrite");
   
   // Test 7: cut and clipboard
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world");
   if (clipboard) free (clipboard);
-  clipboard = malloc (6);
+  clipboard = xmalloc (6);
   line = buffer_get_line (&buf, 0);
   memcpy (clipboard, line, 5);
   clipboard[5] = 0;
@@ -469,20 +493,22 @@ void test_clipboard_comprehensive ()
   
   // Test 8: paste
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello");
   if (clipboard) free (clipboard);
-  clipboard = malloc (6);
+  clipboard = xmalloc (6);
   strcpy (clipboard, "hello");
   buffer_insert_text (&buf, 0, 5, clipboard);
   test_assert (strcmp (buffer_get_line (&buf, 0), "hellohello") == 0, "paste");
   
   // Test 9: paste multiple
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "");
   if (clipboard) free (clipboard);
-  clipboard = malloc (2);
+  clipboard = xmalloc (2);
   strcpy (clipboard, "x");
   for (int i = 0; i < 5; i++)
     buffer_insert_text (&buf, 0, i, clipboard);
@@ -490,6 +516,7 @@ void test_clipboard_comprehensive ()
   
   // Test 10: empty clipboard
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "test");
   if (clipboard) free (clipboard);
@@ -498,6 +525,7 @@ void test_clipboard_comprehensive ()
   
   // Test 11: copy line no selection
   buffer_free (&buf);
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "line1");
   buffer_insert_line (&buf, 1, "line2");
@@ -507,7 +535,8 @@ void test_clipboard_comprehensive ()
   
 // Test 12: cut line no selection
 buffer_free (&buf);
-buffer_init (&buf);
+free_undo ();
+  buffer_init (&buf);
 buffer_insert_line (&buf, 0, "line1");
 buffer_insert_line (&buf, 1, "line2");
 buffer_insert_line (&buf, 2, "line3");
@@ -518,7 +547,8 @@ test_assert (strcmp (clipboard, "line3") == 0 && buffer_num_lines (&buf) == 2, "
 
 // Test 13: cut last line when only one line
 buffer_free (&buf);
-buffer_init (&buf);
+free_undo ();
+  buffer_init (&buf);
 buffer_insert_line (&buf, 0, "onlyline");
 if (clipboard) free (clipboard);
 clipboard = strdup (buffer_get_line (&buf, 0));
@@ -547,7 +577,7 @@ test_ctrl_x_last_line (void)
   cursor_col = 0;
   clipboard = strdup("prior_data_from_before_led");
    handle_input (24, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                  &show_line_numbers, search_buffer, &search_mode, clipboard,
+                  &show_line_numbers, search_buffer, &search_mode, &clipboard,
                   filename, NULL);
   {
     char *l = buffer_get_line (&buf, 0);
@@ -556,16 +586,14 @@ test_ctrl_x_last_line (void)
                  && cursor_line == 0 && cursor_col == 0
                  && strcmp (clipboard, "testline") == 0,
                  "Ctrl-X on single line leaves empty line, adjusts cursor (replaces startup clipboard)");
-    free (l);
   }
    handle_input (22, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                  &show_line_numbers, search_buffer, &search_mode, clipboard,
+                  &show_line_numbers, search_buffer, &search_mode, &clipboard,
                   filename, NULL);
   {
     char *l = buffer_get_line (&buf, 0);
     test_assert (strcmp (l, "testline") == 0,
                  "paste after cut restores the line");
-    free (l);
   }
   fprintf (stderr, "Ctrl-X last line test completed\n");
 }
@@ -588,6 +616,7 @@ test_enter_key_newline_insertion (void)
 {
   fprintf (stderr, "Running enter key newline insertion test\n");
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "Hello world");
   int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 5; // Cursor at "Hello| world"
@@ -598,7 +627,7 @@ test_enter_key_newline_insertion (void)
   const char *filename = NULL;
   // Simulate Enter key
    handle_input ('\n', &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                 &show_line_numbers, search_buffer, &search_mode, clipboard,
+                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
                  filename, NULL);
   test_assert (buffer_num_lines (&buf) == 2
                && strcmp (buffer_get_line (&buf, 0), "Hello") == 0
@@ -614,11 +643,12 @@ test_cursor_newline_undo_redo_bug (void)
 {
   fprintf (stderr, "Running cursor newline undo/redo bug test\n");
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   Editor ed = {0}; // Dummy
   ed.config.display.tab_width = 8;
   COLS = 80; // Set terminal width for test
-  init_undo ();
+
 
   // Insert test line
   buffer_insert_line (&buf, 0, "hello world");
@@ -632,7 +662,7 @@ test_cursor_newline_undo_redo_bug (void)
 
   // Step 1: Initial newline
    handle_input ('\n', &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                 &show_line_numbers, search_buffer, &search_mode, clipboard,
+                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
                  filename, &ed);
   test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0,
                "Initial newline splits line and positions cursor correctly");
@@ -650,7 +680,7 @@ test_cursor_newline_undo_redo_bug (void)
 
     // Step 4: Subsequent newline (potential bug point)
     handle_input ('\n', &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                 &show_line_numbers, search_buffer, &search_mode, clipboard,
+                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
                  filename, &ed);
     test_assert (buffer_num_lines (&buf) == 3 && cursor_line == 2 && cursor_col == 0
                 && strcmp (buffer_get_line (&buf, 2), "") == 0,
@@ -658,7 +688,7 @@ test_cursor_newline_undo_redo_bug (void)
 
     // Step 5: Backspace to merge lines
     handle_input (KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                  &show_line_numbers, search_buffer, &search_mode, clipboard,
+                  &show_line_numbers, search_buffer, &search_mode, &clipboard,
                   filename, &ed);
     test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0
                 && strcmp (buffer_get_line (&buf, 1), "") == 0,
@@ -670,7 +700,7 @@ test_cursor_newline_undo_redo_bug (void)
                 && strcmp (buffer_get_line (&buf, 2), "") == 0,
                "Undo of backspace positions cursor correctly");
 
-    free_undo ();
+  
     buffer_free (&buf);
     fprintf (stderr, "Cursor newline undo/redo bug test completed\n");
 }
@@ -680,6 +710,7 @@ test_right_arrow_repeat_navigation (void)
 {
   fprintf (stderr, "Running right arrow repeat navigation test\n");
   Buffer buf;
+  free_undo ();
   buffer_init (&buf);
   // Create a multi-line document with a very long line
   buffer_insert_line (&buf, 0, "Line one");
@@ -715,7 +746,7 @@ test_right_arrow_repeat_navigation (void)
       int prev_line = cursor_line;
       int prev_col = cursor_col;
        handle_input (KEY_RIGHT, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
-                     &show_line_numbers, search_buffer, &search_mode, clipboard,
+                     &show_line_numbers, search_buffer, &search_mode, &clipboard,
                      filename, &ed);
       if (cursor_line == prev_line && cursor_col == prev_col)
         break;

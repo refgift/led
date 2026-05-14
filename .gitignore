@@ -1,5 +1,5 @@
 led
 *.bak.c
-*.bak.txt
+*.bak.txt.*
 *.o
 AGENTS.md
