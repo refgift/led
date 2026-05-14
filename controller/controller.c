@@ -11,7 +11,6 @@
 UndoStack undo_stack = { NULL, 0, 0 };
 UndoStack redo_stack = { NULL, 0, 0 };
 
-static char lineclip[400];
 
 void
 init_undo (void)
@@ -354,9 +353,14 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
           }
           break;
         case 22: /* Ctrl-V paste */
-if (*clipboard && **clipboard) {
+	  if (*clipboard && **clipboard) {
             buffer_insert_text (buf, *cursor_line, *cursor_col, *clipboard);
             *cursor_col += strlen (*clipboard);
+          }
+          break;
+        case 19: /* Ctrl-S Save File */
+	  if (*filename) {
+            buffer_save_to_file (buf, filename);
           }
           break;
         case KEY_BACKSPACE:
