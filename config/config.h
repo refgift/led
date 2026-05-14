@@ -3,7 +3,7 @@
 #include <ncurses.h>
 #include <sched.h>
 #include <time.h>
-#define VERSION "1.0-beta3"
+#define VERSION "1.0.4"
 typedef struct {
     int normal_fg, normal_bg;
     int selection_fg, selection_bg;
@@ -42,6 +42,10 @@ typedef struct {
     int max_file_size_mb;
     int memory_limit_mb;
 } PerformanceConfig;
+typedef struct {
+    int enabled;
+    int max_pattern_length;
+} SearchConfig;
 typedef enum {
     CONFIG_SUCCESS = 0,
     CONFIG_PARSE_ERROR,
@@ -60,8 +64,7 @@ typedef struct {
     StatusBarConfig statusbar;
     DisplayConfig display;
     PerformanceConfig performance;
-    
-    // Validation state
+    SearchConfig search;
     ConfigError last_error;
 } EditorConfig;
 ConfigError load_editor_config(EditorConfig* config);
