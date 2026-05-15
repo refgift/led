@@ -647,7 +647,7 @@ test_cursor_newline_undo_redo_bug (void)
   buffer_init (&buf);
   Editor ed = {0}; // Dummy
   ed.config.display.tab_width = 8;
-  COLS = 80; // Set terminal width for test
+  
 
 
   // Insert test line
@@ -728,7 +728,7 @@ test_right_arrow_repeat_navigation (void)
   const char *filename = NULL;
   Editor ed = {0}; // Dummy
   ed.config.display.tab_width = 8;
-  COLS = 80; // Set terminal width for test
+ 
 
   // Start at beginning
   cursor_line = 0;
