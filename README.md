@@ -1,4 +1,4 @@
-# led - Larry's Editor for Linux/Unix Terminal (Version 1.0.0)
+# led - Larry's Editor for Linux/Unix Terminal (Version 1.0.4)
 > See [WARNINGS.md](WARNINGS.md) for known limitations and safety notes. 
 
 ## Dedication
