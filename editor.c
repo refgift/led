@@ -158,7 +158,7 @@ editor_handle_input (Editor *ed, int ch)
       ed->show_line_numbers = !ed->show_line_numbers;
       return;
     }
-  if ((ch == 31 || ch == '/') && ed->config.search.enabled) /* Ctrl+/ or / */
+  if ((ch == 31) && ed->config.search.enabled) /* Ctrl+/ or / */
     {
       ed->search_mode = 1;
       ed->replace_step = 0;
