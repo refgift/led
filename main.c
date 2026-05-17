@@ -78,8 +78,8 @@ main (int argc, char *argv[])
     }
   if (test_mode)
     {
-      COLS = 80;
-      LINES = 24;
+      //COLS = 80;
+      //LINES = 24;
       run_comprehensive_tests();
       fprintf(stderr, "\nTest summary: %d passed, %d failed\n", tests_passed, tests_failed);
       if (tests_failed == 0) {
