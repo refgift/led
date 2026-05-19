@@ -174,6 +174,8 @@ load_editor_config (EditorConfig *config)
         config->search.max_pattern_length = atoi (value);
       else if (strcmp (key, "tab_width") == 0)
         config->display.tab_width = atoi (value);
+      else if (strcmp (key, "spaces_for_tab") == 0)
+        config->display.spaces_for_tab = atoi (value);
       else if (strcmp (key, "show_key_meter") == 0)
         config->statusbar.show_key_meter = atoi (value);
     }

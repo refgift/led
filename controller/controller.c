@@ -377,30 +377,65 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               buffer_save_to_file (buf, filename);
             }
           break;
-        case KEY_BACKSPACE:
-        case 127:
-        case 8:
-          if (*cursor_col > 0)
-            {
-              char deleted =
-                buffer_get_char (buf, *cursor_line, *cursor_col - 1);
-              push_undo (false, *cursor_line, *cursor_col - 1, deleted);
-              buffer_delete_char (buf, *cursor_line, *cursor_col - 1);
-              (*cursor_col)--;
-              clear_redo ();
-            }
-          else if (*cursor_line > 0)
-            {
-              int prev = *cursor_line - 1;
-              int prevlen = buffer_get_line_length (buf, prev);
-              *cursor_line = prev;
-              *cursor_col = prevlen;
-              push_undo (false, prev, prevlen, '\n');
-              buffer_delete_char (buf, prev, prevlen);
-              clear_redo ();
-            }
-          break;
-        default:
+         case KEY_BACKSPACE:
+         case 127:
+         case 8:
+           if (*cursor_col > 0)
+             {
+               char deleted =
+                 buffer_get_char (buf, *cursor_line, *cursor_col - 1);
+               push_undo (false, *cursor_line, *cursor_col - 1, deleted);
+               buffer_delete_char (buf, *cursor_line, *cursor_col - 1);
+               (*cursor_col)--;
+               clear_redo ();
+             }
+           else if (*cursor_line > 0)
+             {
+               int prev = *cursor_line - 1;
+               int prevlen = buffer_get_line_length (buf, prev);
+               *cursor_line = prev;
+               *cursor_col = prevlen;
+               push_undo (false, prev, prevlen, '\n');
+               buffer_delete_char (buf, prev, prevlen);
+               clear_redo ();
+             }
+           break;
+         case 9: /* TAB */
+           if (ed && ed->config.display.tab_width == 0)
+             break; /* disabled */
+           if (ed && ed->config.display.spaces_for_tab)
+             {
+               char *line = buffer_get_line (buf, *cursor_line);
+               if (line)
+                 {
+                   int line_len = strlen (line);
+                   int current_vis =
+                     visual_column (line, line_len, *cursor_col,
+                                    ed->config.display.tab_width);
+                   int tabw = ed->config.display.tab_width;
+                   int spaces = tabw - (current_vis % tabw);
+                   if (spaces == 0)
+                     spaces = tabw;
+                   for (int i = 0; i < spaces; i++)
+                     {
+                       push_undo (true, *cursor_line, *cursor_col + i, ' ');
+                       buffer_insert_char (buf, *cursor_line, *cursor_col + i,
+                                           ' ');
+                     }
+                   *cursor_col += spaces;
+                   clear_redo ();
+                   free (line);
+                 }
+             }
+           else
+             {
+               push_undo (true, *cursor_line, *cursor_col, '\t');
+               buffer_insert_char (buf, *cursor_line, *cursor_col, '\t');
+               (*cursor_col)++;
+               clear_redo ();
+             }
+           break;
+         default:
           if (ch >= 32 && ch <= 126)
             {
               buffer_insert_char (buf, *cursor_line, *cursor_col, (char) ch);
