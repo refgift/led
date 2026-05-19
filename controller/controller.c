@@ -167,7 +167,9 @@ redo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
 void
 clear_redo (void)
 {
+  redo_stack.changes = NULL;
   redo_stack.count = 0;
+  redo_stack.capacity = 0;
 }
 
 void
@@ -177,11 +179,324 @@ free_undo (void)
   undo_stack.changes = NULL;
   undo_stack.count = 0;
   undo_stack.capacity = 0;
+
   free (redo_stack.changes);
   redo_stack.changes = NULL;
   redo_stack.count = 0;
   redo_stack.capacity = 0;
 }
+
+/* === Simple dispatch table (KISS) === */
+typedef struct {
+    Buffer   *buf;
+    int      *scroll_row, *scroll_col;
+    int      *cursor_line, *cursor_col;
+    int      *show_line_numbers;
+    char     *search_buffer;
+    int      *search_mode;
+    char    **clipboard;
+    const char *filename;
+    Editor   *ed;
+} InputContext;
+
+typedef struct {
+    int  key;
+    void (*handler)(int ch, InputContext *ctx);
+} KeyHandler;
+
+/* Forward declarations for handlers */
+static void handle_left      (int ch, InputContext *ctx);
+static void handle_right     (int ch, InputContext *ctx);
+static void handle_up        (int ch, InputContext *ctx);
+static void handle_down      (int ch, InputContext *ctx);
+static void handle_home      (int ch, InputContext *ctx);
+static void handle_end       (int ch, InputContext *ctx);
+static void handle_ppage     (int ch, InputContext *ctx);
+static void handle_npage     (int ch, InputContext *ctx);
+static void handle_undo      (int ch, InputContext *ctx);
+static void handle_redo      (int ch, InputContext *ctx);
+static void handle_select_all(int ch, InputContext *ctx);
+static void handle_enter     (int ch, InputContext *ctx);
+static void handle_cut       (int ch, InputContext *ctx);
+static void handle_paste     (int ch, InputContext *ctx);
+static void handle_save      (int ch, InputContext *ctx);
+static void handle_backspace (int ch, InputContext *ctx);
+static void handle_tab       (int ch, InputContext *ctx);
+static void handle_printable (int ch, InputContext *ctx);
+
+static const KeyHandler key_table[] = {
+    { KEY_LEFT,   handle_left },
+    { KEY_RIGHT,  handle_right },
+    { KEY_UP,     handle_up },
+    { KEY_DOWN,   handle_down },
+    { KEY_HOME,   handle_home },
+    { KEY_END,    handle_end },
+    { KEY_PPAGE,  handle_ppage },
+    { KEY_NPAGE,  handle_npage },
+    { 26,         handle_undo },        /* Ctrl+Z */
+    { 25,         handle_redo },        /* Ctrl+Y */
+    { 1,          handle_select_all },  /* Ctrl+A */
+    { KEY_ENTER,  handle_enter },
+    { 10,         handle_enter },
+    { 13,         handle_enter },
+    { 24,         handle_cut },         /* Ctrl+X */
+    { 22,         handle_paste },       /* Ctrl+V */
+    { 19,         handle_save },        /* Ctrl+S */
+    { KEY_BACKSPACE, handle_backspace },
+    { 127,        handle_backspace },
+    { 8,          handle_backspace },
+    { 9,          handle_tab },         /* TAB */
+    { 0,          NULL }                /* sentinel */
+};
+
+static void
+dispatch_key (int ch, InputContext *ctx)
+{
+  for (int i = 0; key_table[i].handler != NULL; i++)
+    {
+      if (key_table[i].key == ch)
+        {
+          key_table[i].handler (ch, ctx);
+          return;
+        }
+    }
+  if (ch >= 32 && ch <= 126)
+    handle_printable (ch, ctx);
+}
+
+/* === Handler implementations === */
+static void handle_left (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (*ctx->cursor_col > 0)
+    (*ctx->cursor_col)--;
+  else if (*ctx->cursor_line > 0)
+    {
+      (*ctx->cursor_line)--;
+      *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+    }
+}
+
+static void handle_right (int ch, InputContext *ctx)
+{
+  (void)ch;
+  int len = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+  if (*ctx->cursor_col < len)
+    (*ctx->cursor_col)++;
+  else if (*ctx->cursor_line < buffer_num_lines (ctx->buf) - 1)
+    {
+      (*ctx->cursor_line)++;
+      *ctx->cursor_col = 0;
+    }
+}
+
+static void handle_up (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (*ctx->cursor_line > 0)
+    {
+      (*ctx->cursor_line)--;
+      if (*ctx->cursor_col > buffer_get_line_length (ctx->buf, *ctx->cursor_line))
+        *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+    }
+}
+
+static void handle_down (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (*ctx->cursor_line < buffer_num_lines (ctx->buf) - 1)
+    {
+      (*ctx->cursor_line)++;
+      if (*ctx->cursor_col > buffer_get_line_length (ctx->buf, *ctx->cursor_line))
+        *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+    }
+}
+
+static void handle_home (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (ctx->ed && ctx->ed->prev_key == KEY_HOME)
+    {
+      *ctx->cursor_line = 0;
+      *ctx->cursor_col = 0;
+      *ctx->scroll_row = 0;
+      *ctx->scroll_col = 0;
+    }
+  else
+    *ctx->cursor_col = 0;
+}
+
+static void handle_end (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (ctx->ed && ctx->ed->prev_key == KEY_END)
+    {
+      *ctx->cursor_line = buffer_num_lines (ctx->buf) - 1;
+      *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+      *ctx->scroll_row = *ctx->cursor_line > 5 ? *ctx->cursor_line - 5 : 0;
+    }
+  else
+    *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+}
+
+static void handle_ppage (int ch, InputContext *ctx)
+{
+  (void)ch;
+  *ctx->cursor_line -= (LINES > 5 ? LINES - 3 : 5);
+  if (*ctx->cursor_line < 0) *ctx->cursor_line = 0;
+  *ctx->cursor_col = 0;
+  if (*ctx->scroll_row > *ctx->cursor_line) *ctx->scroll_row = *ctx->cursor_line;
+}
+
+static void handle_npage (int ch, InputContext *ctx)
+{
+  (void)ch;
+  *ctx->cursor_line += (LINES > 5 ? LINES - 3 : 5);
+  if (*ctx->cursor_line >= buffer_num_lines (ctx->buf))
+    *ctx->cursor_line = buffer_num_lines (ctx->buf) - 1;
+  *ctx->cursor_col = 0;
+}
+
+static void handle_undo (int ch, InputContext *ctx)
+{
+  (void)ch;
+  undo_operation (ctx->buf, ctx->cursor_line, ctx->cursor_col);
+}
+
+static void handle_redo (int ch, InputContext *ctx)
+{
+  (void)ch;
+  redo_operation (ctx->buf, ctx->cursor_line, ctx->cursor_col);
+}
+
+static void handle_select_all (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (ctx->ed)
+    {
+      ctx->ed->selection_active = 1;
+      ctx->ed->selection_start_line = 0;
+      ctx->ed->selection_start_col = 0;
+      ctx->ed->selection_end_line = buffer_num_lines (ctx->buf) - 1;
+      ctx->ed->selection_end_col = buffer_get_line_length (ctx->buf, ctx->ed->selection_end_line);
+      *ctx->cursor_line = ctx->ed->selection_end_line;
+      *ctx->cursor_col = ctx->ed->selection_end_col;
+    }
+}
+
+static void handle_enter (int ch, InputContext *ctx)
+{
+  (void)ch;
+  push_undo (true, *ctx->cursor_line, *ctx->cursor_col, '\n');
+  buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, '\n');
+  (*ctx->cursor_line)++;
+  *ctx->cursor_col = 0;
+  clear_redo ();
+}
+
+static void handle_cut (int ch, InputContext *ctx)
+{
+  (void)ch;
+  int row = *ctx->cursor_line;
+  int col = *ctx->cursor_col;
+  int linelen = buffer_get_line_length (ctx->buf, row);
+  if (col < linelen)
+    {
+      char *linecontent = buffer_get_line (ctx->buf, row);
+      if (linecontent)
+        {
+          size_t textlen = strlen (linecontent + col);
+          if (*ctx->clipboard) free (*ctx->clipboard);
+          *ctx->clipboard = xmalloc (textlen + 1);
+          if (*ctx->clipboard) strcpy (*ctx->clipboard, linecontent + col);
+          free (linecontent);
+          push_undo (false, row, col, 0);
+          buffer_delete_range (ctx->buf, row, col, row, linelen);
+          clear_redo ();
+        }
+    }
+}
+
+static void handle_paste (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (*ctx->clipboard && **ctx->clipboard)
+    {
+      buffer_insert_text (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, *ctx->clipboard);
+      *ctx->cursor_col += strlen (*ctx->clipboard);
+    }
+}
+
+static void handle_save (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (ctx->filename) buffer_save_to_file (ctx->buf, ctx->filename);
+}
+
+static void handle_backspace (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (*ctx->cursor_col > 0)
+    {
+      char deleted = buffer_get_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col - 1);
+      push_undo (false, *ctx->cursor_line, *ctx->cursor_col - 1, deleted);
+      buffer_delete_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col - 1);
+      (*ctx->cursor_col)--;
+      clear_redo ();
+    }
+  else if (*ctx->cursor_line > 0)
+    {
+      int prev = *ctx->cursor_line - 1;
+      int prevlen = buffer_get_line_length (ctx->buf, prev);
+      *ctx->cursor_line = prev;
+      *ctx->cursor_col = prevlen;
+      push_undo (false, prev, prevlen, '\n');
+      buffer_delete_char (ctx->buf, prev, prevlen);
+      clear_redo ();
+    }
+}
+
+static void handle_tab (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (ctx->ed && ctx->ed->config.display.tab_width == 0) return;
+  if (ctx->ed && ctx->ed->config.display.spaces_for_tab)
+    {
+      char *line = buffer_get_line (ctx->buf, *ctx->cursor_line);
+      if (line)
+        {
+          int line_len = strlen (line);
+          int current_vis = visual_column (line, line_len, *ctx->cursor_col,
+                                           ctx->ed->config.display.tab_width);
+          int tabw = ctx->ed->config.display.tab_width;
+          int spaces = tabw - (current_vis % tabw);
+          if (spaces == 0) spaces = tabw;
+          for (int i = 0; i < spaces; i++)
+            {
+              push_undo (true, *ctx->cursor_line, *ctx->cursor_col, ' ');
+              buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, ' ');
+              (*ctx->cursor_col)++;
+            }
+          free (line);
+        }
+    }
+  else
+    {
+      push_undo (true, *ctx->cursor_line, *ctx->cursor_col, '\t');
+      buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, '\t');
+      (*ctx->cursor_col)++;
+      clear_redo ();
+    }
+}
+
+static void handle_printable (int ch, InputContext *ctx)
+{
+  buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, (char) ch);
+  push_undo (true, *ctx->cursor_line, *ctx->cursor_col, (char) ch);
+  (*ctx->cursor_col)++;
+  clear_redo ();
+}
+/* === End of dispatch table === */
 
 int
 handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
@@ -222,228 +537,20 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
     }
   else
     {
-      switch (ch)
-        {
-        case KEY_LEFT:
-          if (*cursor_col > 0)
-            {
-              (*cursor_col)--;
-            }
-          else if (*cursor_line > 0)
-            {
-              (*cursor_line)--;
-              *cursor_col = buffer_get_line_length (buf, *cursor_line);
-            }
-          break;
-        case KEY_RIGHT:
-          int len = buffer_get_line_length (buf, *cursor_line);
-          if (*cursor_col < len)
-            {
-              (*cursor_col)++;
-            }
-          else if (*cursor_line < buffer_num_lines (buf) - 1)
-            {
-              (*cursor_line)++;
-              *cursor_col = 0;
-            }
-          break;
-        case KEY_UP:
-          if (*cursor_line > 0)
-            {
-              (*cursor_line)--;
-              if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
-                {
-                  *cursor_col = buffer_get_line_length (buf, *cursor_line);
-                }
-            }
-          break;
-        case KEY_DOWN:
-          if (*cursor_line < buffer_num_lines (buf) - 1)
-            {
-              (*cursor_line)++;
-              if (*cursor_col > buffer_get_line_length (buf, *cursor_line))
-                {
-                  *cursor_col = buffer_get_line_length (buf, *cursor_line);
-                }
-            }
-          break;
-        case KEY_HOME:
-          if (ed && ed->prev_key == KEY_HOME)
-            {
-              /* double home: top of file */
-              *cursor_line = 0;
-              *cursor_col = 0;
-              *scroll_row = 0;
-              *scroll_col = 0;
-            }
-          else
-            {
-              *cursor_col = 0;
-            }
-          break;
-        case KEY_END:
-          if (ed && ed->prev_key == KEY_END)
-            {
-              /* double end: bottom of file */
-              *cursor_line = buffer_num_lines (buf) - 1;
-              *cursor_col = buffer_get_line_length (buf, *cursor_line);
-              *scroll_row = *cursor_line > 5 ? *cursor_line - 5 : 0;
-            }
-          else
-            {
-              *cursor_col = buffer_get_line_length (buf, *cursor_line);
-            }
-          break;
-        case KEY_PPAGE:
-          *cursor_line -= (LINES > 5 ? LINES - 3 : 5);
-          if (*cursor_line < 0)
-            *cursor_line = 0;
-          *cursor_col = 0;
-          if (*scroll_row > *cursor_line)
-            *scroll_row = *cursor_line;
-          break;
-        case KEY_NPAGE:
-          *cursor_line += (LINES > 5 ? LINES - 3 : 5);
-          if (*cursor_line >= buffer_num_lines (buf))
-            *cursor_line = buffer_num_lines (buf) - 1;
-          *cursor_col = 0;
-          break;
-        case 26:               /* Ctrl+Z */
-          undo_operation (buf, cursor_line, cursor_col);
-          break;
-        case 25:               /* Ctrl+Y */
-          redo_operation (buf, cursor_line, cursor_col);
-          break;
-        case 1:                /* Ctrl+A select all */
-          if (ed)
-            {
-              ed->selection_active = 1;
-              ed->selection_start_line = 0;
-              ed->selection_start_col = 0;
-              ed->selection_end_line = buffer_num_lines (buf) - 1;
-              ed->selection_end_col =
-                buffer_get_line_length (buf, ed->selection_end_line);
-              *cursor_line = ed->selection_end_line;
-              *cursor_col = ed->selection_end_col;
-            }
-          break;
-
-        case KEY_ENTER:
-        case 10:
-        case 13:
-          push_undo (true, *cursor_line, *cursor_col, '\n');
-          buffer_insert_char (buf, *cursor_line, *cursor_col, '\n');
-          *cursor_line += 1;
-          *cursor_col = 0;
-          clear_redo ();
-          break;
-        case 24:               /* Ctrl-X cut to EOL */
-          {
-            int row = *cursor_line;
-            int col = *cursor_col;
-            int linelen = buffer_get_line_length (buf, row);
-            if (col < linelen)
-              {
-                char *linecontent = buffer_get_line (buf, row);
-                if (linecontent)
-                  {
-                    size_t textlen = strlen (linecontent + col);
-                    if (*clipboard)
-                      free (*clipboard);
-                    *clipboard = xmalloc (textlen + 1);
-                    if (*clipboard)
-                      {
-                        strcpy (*clipboard, linecontent + col);
-                      }
-                    free (linecontent);
-                    /* record for undo */
-                    push_undo (false, row, col, 0);     /* simplified */
-                    buffer_delete_range (buf, row, col, row, linelen);
-                    clear_redo ();
-                  }
-              }
-          }
-          break;
-        case 22:               /* Ctrl-V paste */
-          if (*clipboard && **clipboard)
-            {
-              buffer_insert_text (buf, *cursor_line, *cursor_col, *clipboard);
-              *cursor_col += strlen (*clipboard);
-            }
-          break;
-        case 19:               /* Ctrl-S Save File */
-          if (*filename)
-            {
-              buffer_save_to_file (buf, filename);
-            }
-          break;
-         case KEY_BACKSPACE:
-         case 127:
-         case 8:
-           if (*cursor_col > 0)
-             {
-               char deleted =
-                 buffer_get_char (buf, *cursor_line, *cursor_col - 1);
-               push_undo (false, *cursor_line, *cursor_col - 1, deleted);
-               buffer_delete_char (buf, *cursor_line, *cursor_col - 1);
-               (*cursor_col)--;
-               clear_redo ();
-             }
-           else if (*cursor_line > 0)
-             {
-               int prev = *cursor_line - 1;
-               int prevlen = buffer_get_line_length (buf, prev);
-               *cursor_line = prev;
-               *cursor_col = prevlen;
-               push_undo (false, prev, prevlen, '\n');
-               buffer_delete_char (buf, prev, prevlen);
-               clear_redo ();
-             }
-           break;
-         case 9: /* TAB */
-           if (ed && ed->config.display.tab_width == 0)
-             break; /* disabled */
-           if (ed && ed->config.display.spaces_for_tab)
-             {
-               char *line = buffer_get_line (buf, *cursor_line);
-               if (line)
-                 {
-                   int line_len = strlen (line);
-                   int current_vis =
-                     visual_column (line, line_len, *cursor_col,
-                                    ed->config.display.tab_width);
-                   int tabw = ed->config.display.tab_width;
-                   int spaces = tabw - (current_vis % tabw);
-                   if (spaces == 0)
-                     spaces = tabw;
-                    for (int i = 0; i < spaces; i++)
-                      {
-                        push_undo (true, *cursor_line, *cursor_col, ' ');
-                        buffer_insert_char (buf, *cursor_line, *cursor_col, ' ');
-                        (*cursor_col)++;
-                      }
-                   clear_redo ();
-                   free (line);
-                 }
-             }
-           else
-             {
-               push_undo (true, *cursor_line, *cursor_col, '\t');
-               buffer_insert_char (buf, *cursor_line, *cursor_col, '\t');
-               (*cursor_col)++;
-               clear_redo ();
-             }
-           break;
-         default:
-          if (ch >= 32 && ch <= 126)
-            {
-              buffer_insert_char (buf, *cursor_line, *cursor_col, (char) ch);
-              push_undo (true, *cursor_line, *cursor_col, (char) ch);
-              (*cursor_col)++;
-              clear_redo ();
-            }
-          break;
-        }
+      InputContext ctx = {
+        .buf = buf,
+        .scroll_row = scroll_row,
+        .scroll_col = scroll_col,
+        .cursor_line = cursor_line,
+        .cursor_col = cursor_col,
+        .show_line_numbers = show_line_numbers,
+        .search_buffer = search_buffer,
+        .search_mode = search_mode,
+        .clipboard = clipboard,
+        .filename = filename,
+        .ed = ed
+      };
+      dispatch_key (ch, &ctx);
     }
   // Clamp cursor after input
   {
