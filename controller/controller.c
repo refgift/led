@@ -416,13 +416,12 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
                    int spaces = tabw - (current_vis % tabw);
                    if (spaces == 0)
                      spaces = tabw;
-                   for (int i = 0; i < spaces; i++)
-                     {
-                       push_undo (true, *cursor_line, *cursor_col + i, ' ');
-                       buffer_insert_char (buf, *cursor_line, *cursor_col + i,
-                                           ' ');
-                     }
-                   *cursor_col += spaces;
+                    for (int i = 0; i < spaces; i++)
+                      {
+                        push_undo (true, *cursor_line, *cursor_col, ' ');
+                        buffer_insert_char (buf, *cursor_line, *cursor_col, ' ');
+                        (*cursor_col)++;
+                      }
                    clear_redo ();
                    free (line);
                  }

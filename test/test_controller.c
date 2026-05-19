@@ -762,6 +762,63 @@ test_right_arrow_repeat_navigation (void)
 }
 
 void
+test_tab_key (void)
+{
+  fprintf (stderr, "Running TAB key handling test\n");
+  Buffer buf;
+  free_undo ();
+  buffer_init (&buf);
+  Editor ed = {0};
+  ed.config.display.tab_width = 4;
+  ed.config.display.spaces_for_tab = 1;
+
+  buffer_insert_line (&buf, 0, "abc");
+  int cursor_line = 0, cursor_col = 3;
+  int scroll_row = 0, scroll_col = 0, show_line_numbers = 0;
+  char search_buffer[256] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+
+  // Test 1: spaces_for_tab = 1 → insert 4 spaces at col 3 (next tab stop)
+  handle_input (9, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  char *line = buffer_get_line (&buf, 0);
+  test_assert (strcmp (line, "abc ") == 0, "TAB inserts 1 space to next tab stop");
+  test_assert (cursor_col == 4, "Cursor advanced by 1 to next tab stop");
+  free (line);
+
+  // Test 2: spaces_for_tab = 0 → insert literal tab char
+  buffer_free (&buf);
+  free_undo ();
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "x");
+  cursor_line = 0;
+  cursor_col = 1;
+  ed.config.display.spaces_for_tab = 0;
+  handle_input (9, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  line = buffer_get_line (&buf, 0);
+  test_assert (line[1] == '\t', "TAB inserts literal tab char");
+  test_assert (cursor_col == 2, "Cursor advanced by 1 for literal tab");
+  free (line);
+
+  // Test 3: tab_width = 0 → TAB does nothing
+  ed.config.display.tab_width = 0;
+  int before_len = buffer_get_line_length (&buf, 0);
+  handle_input (9, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  test_assert (buffer_get_line_length (&buf, 0) == before_len,
+               "TAB ignored when tab_width=0");
+
+  buffer_free (&buf);
+  fprintf (stderr, "TAB key handling test completed\n");
+}
+
+void
 run_comprehensive_tests (void)
 {
   fprintf (stderr, "Running led test suite... (wordwrap tests skipped for stability)\n");
@@ -822,6 +879,9 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   fprintf (stderr, "Test %d: right_arrow_repeat_navigation - Right arrow navigation through document\n",
              ++test_number);
   test_right_arrow_repeat_navigation ();
+  fprintf (stderr, "Test %d: tab_key_handling - TAB key with spaces and literal tab\n",
+           ++test_number);
+  test_tab_key ();
   fprintf (stderr, "Test %d: autosave_comprehensive - Auto-save and backups\n",
              ++test_number);
   test_autosave_comprehensive (); 
