@@ -268,25 +268,31 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             }
           break;
         case KEY_HOME:
-          if (ed && ed->prev_key == KEY_HOME) {
-            /* double home: top of file */
-            *cursor_line = 0;
-            *cursor_col = 0;
-            *scroll_row = 0;
-            *scroll_col = 0;
-          } else {
-            *cursor_col = 0;
-          }
+          if (ed && ed->prev_key == KEY_HOME)
+            {
+              /* double home: top of file */
+              *cursor_line = 0;
+              *cursor_col = 0;
+              *scroll_row = 0;
+              *scroll_col = 0;
+            }
+          else
+            {
+              *cursor_col = 0;
+            }
           break;
         case KEY_END:
-          if (ed && ed->prev_key == KEY_END) {
-            /* double end: bottom of file */
-            *cursor_line = buffer_num_lines (buf) - 1;
-            *cursor_col = buffer_get_line_length (buf, *cursor_line);
-            *scroll_row = *cursor_line > 5 ? *cursor_line - 5 : 0;
-          } else {
-            *cursor_col = buffer_get_line_length (buf, *cursor_line);
-          }
+          if (ed && ed->prev_key == KEY_END)
+            {
+              /* double end: bottom of file */
+              *cursor_line = buffer_num_lines (buf) - 1;
+              *cursor_col = buffer_get_line_length (buf, *cursor_line);
+              *scroll_row = *cursor_line > 5 ? *cursor_line - 5 : 0;
+            }
+          else
+            {
+              *cursor_col = buffer_get_line_length (buf, *cursor_line);
+            }
           break;
         case KEY_PPAGE:
           *cursor_line -= (LINES > 5 ? LINES - 3 : 5);
@@ -302,102 +308,116 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
             *cursor_line = buffer_num_lines (buf) - 1;
           *cursor_col = 0;
           break;
-        case 26: /* Ctrl+Z */
+        case 26:               /* Ctrl+Z */
           undo_operation (buf, cursor_line, cursor_col);
           break;
-        case 25: /* Ctrl+Y */
+        case 25:               /* Ctrl+Y */
           redo_operation (buf, cursor_line, cursor_col);
           break;
-        case 1: /* Ctrl+A select all */
-          if (ed) {
-            ed->selection_active = 1;
-            ed->selection_start_line = 0;
-            ed->selection_start_col = 0;
-            ed->selection_end_line = buffer_num_lines(buf) - 1;
-            ed->selection_end_col = buffer_get_line_length(buf, ed->selection_end_line);
-            *cursor_line = ed->selection_end_line;
-            *cursor_col = ed->selection_end_col;
-          }
+        case 1:                /* Ctrl+A select all */
+          if (ed)
+            {
+              ed->selection_active = 1;
+              ed->selection_start_line = 0;
+              ed->selection_start_col = 0;
+              ed->selection_end_line = buffer_num_lines (buf) - 1;
+              ed->selection_end_col =
+                buffer_get_line_length (buf, ed->selection_end_line);
+              *cursor_line = ed->selection_end_line;
+              *cursor_col = ed->selection_end_col;
+            }
           break;
 
         case KEY_ENTER:
         case 10:
         case 13:
-          push_undo(true, *cursor_line, *cursor_col, '\n');
-          buffer_insert_char(buf, *cursor_line, *cursor_col, '\n');
+          push_undo (true, *cursor_line, *cursor_col, '\n');
+          buffer_insert_char (buf, *cursor_line, *cursor_col, '\n');
           *cursor_line += 1;
           *cursor_col = 0;
-          clear_redo();
+          clear_redo ();
           break;
-        case 24: /* Ctrl-X cut to EOL */
+        case 24:               /* Ctrl-X cut to EOL */
           {
             int row = *cursor_line;
             int col = *cursor_col;
-            int linelen = buffer_get_line_length(buf, row);
-            if (col < linelen) {
-              char *linecontent = buffer_get_line(buf, row);
-              if (linecontent) {
-                size_t textlen = strlen(linecontent + col);
-                if (*clipboard) free(*clipboard);
-                *clipboard = xmalloc(textlen + 1);
-                if (*clipboard) {
-                  strcpy(*clipboard, linecontent + col);
-                }
-                free(linecontent);
-                /* record for undo */
-                push_undo(false, row, col, 0); /* simplified */
-                buffer_delete_range(buf, row, col, row, linelen);
-                clear_redo();
+            int linelen = buffer_get_line_length (buf, row);
+            if (col < linelen)
+              {
+                char *linecontent = buffer_get_line (buf, row);
+                if (linecontent)
+                  {
+                    size_t textlen = strlen (linecontent + col);
+                    if (*clipboard)
+                      free (*clipboard);
+                    *clipboard = xmalloc (textlen + 1);
+                    if (*clipboard)
+                      {
+                        strcpy (*clipboard, linecontent + col);
+                      }
+                    free (linecontent);
+                    /* record for undo */
+                    push_undo (false, row, col, 0);     /* simplified */
+                    buffer_delete_range (buf, row, col, row, linelen);
+                    clear_redo ();
+                  }
               }
+          }
+          break;
+        case 22:               /* Ctrl-V paste */
+          if (*clipboard && **clipboard)
+            {
+              buffer_insert_text (buf, *cursor_line, *cursor_col, *clipboard);
+              *cursor_col += strlen (*clipboard);
             }
-          }
           break;
-        case 22: /* Ctrl-V paste */
-	  if (*clipboard && **clipboard) {
-            buffer_insert_text (buf, *cursor_line, *cursor_col, *clipboard);
-            *cursor_col += strlen (*clipboard);
-          }
-          break;
-        case 19: /* Ctrl-S Save File */
-	  if (*filename) {
-            buffer_save_to_file (buf, filename);
-          }
+        case 19:               /* Ctrl-S Save File */
+          if (*filename)
+            {
+              buffer_save_to_file (buf, filename);
+            }
           break;
         case KEY_BACKSPACE:
         case 127:
         case 8:
-          if (*cursor_col > 0) {
-            char deleted = buffer_get_char(buf, *cursor_line, *cursor_col - 1);
-            push_undo(false, *cursor_line, *cursor_col - 1, deleted);
-            buffer_delete_char(buf, *cursor_line, *cursor_col - 1);
-            (*cursor_col)--;
-            clear_redo();
-          } else if (*cursor_line > 0) {
-            int prev = *cursor_line - 1;
-            int prevlen = buffer_get_line_length(buf, prev);
-            *cursor_line = prev;
-            *cursor_col = prevlen;
-            push_undo(false, prev, prevlen, '\n');
-            buffer_delete_char(buf, prev, prevlen);
-            clear_redo();
-          }
+          if (*cursor_col > 0)
+            {
+              char deleted =
+                buffer_get_char (buf, *cursor_line, *cursor_col - 1);
+              push_undo (false, *cursor_line, *cursor_col - 1, deleted);
+              buffer_delete_char (buf, *cursor_line, *cursor_col - 1);
+              (*cursor_col)--;
+              clear_redo ();
+            }
+          else if (*cursor_line > 0)
+            {
+              int prev = *cursor_line - 1;
+              int prevlen = buffer_get_line_length (buf, prev);
+              *cursor_line = prev;
+              *cursor_col = prevlen;
+              push_undo (false, prev, prevlen, '\n');
+              buffer_delete_char (buf, prev, prevlen);
+              clear_redo ();
+            }
           break;
         default:
-          if (ch >= 32 && ch <= 126) {
-            buffer_insert_char(buf, *cursor_line, *cursor_col, (char)ch);
-            push_undo(true, *cursor_line, *cursor_col, (char)ch);
-            (*cursor_col)++;
-            clear_redo();
-          }
+          if (ch >= 32 && ch <= 126)
+            {
+              buffer_insert_char (buf, *cursor_line, *cursor_col, (char) ch);
+              push_undo (true, *cursor_line, *cursor_col, (char) ch);
+              (*cursor_col)++;
+              clear_redo ();
+            }
           break;
         }
     }
   // Clamp cursor after input
   {
-    int clen = buffer_get_line_length(buf, *cursor_line);
-    if (*cursor_col > clen) {
-      *cursor_col = clen;
-    }
+    int clen = buffer_get_line_length (buf, *cursor_line);
+    if (*cursor_col > clen)
+      {
+        *cursor_col = clen;
+      }
   }
   return error_occurred ? -1 : 0;
 }
@@ -416,34 +436,41 @@ search_next (Buffer *buf, int *cursor_line, int *cursor_col,
   int clamped = 0;
   int iters = 0;
   for (int l = *cursor_line;
-       l < buffer_num_lines (buf) && !found && (!clamped || l == *cursor_line);
-       l++) {
-    const char *line = buffer_get_line (buf, l);
-    int len = strlen (line);
-    if (l == *cursor_line && *cursor_col > len) {
-      *cursor_col = len;
-      clamped = 1;
-    }
+       l < buffer_num_lines (buf) && !found && (!clamped
+                                                || l == *cursor_line); l++)
+    {
+      const char *line = buffer_get_line (buf, l);
+      int len = strlen (line);
+      if (l == *cursor_line && *cursor_col > len)
+        {
+          *cursor_col = len;
+          clamped = 1;
+        }
 
-    regmatch_t match;
-    int pos = (l == *cursor_line) ? *cursor_col : 0;
-    int line_flags = (pos > 0) ? REG_NOTBOL : 0;
-    while (regexec (&regex, line + pos, 1, &match, line_flags) == 0 && iters++ < 1000) {
-      if (match.rm_eo == 0) {
-        pos++;
-        if (pos >= len) break;
-        continue;
-      }
-      if (match.rm_so == 0 && pos == *cursor_col && l == *cursor_line) {
-        pos += match.rm_eo;
-        line_flags = REG_NOTBOL;
-        continue;
-      }
-      *cursor_line = l;
-      *cursor_col = pos + match.rm_so;
-      found = 1;
-      break;
+      regmatch_t match;
+      int pos = (l == *cursor_line) ? *cursor_col : 0;
+      int line_flags = (pos > 0) ? REG_NOTBOL : 0;
+      while (regexec (&regex, line + pos, 1, &match, line_flags) == 0
+             && iters++ < 1000)
+        {
+          if (match.rm_eo == 0)
+            {
+              pos++;
+              if (pos >= len)
+                break;
+              continue;
+            }
+          if (match.rm_so == 0 && pos == *cursor_col && l == *cursor_line)
+            {
+              pos += match.rm_eo;
+              line_flags = REG_NOTBOL;
+              continue;
+            }
+          *cursor_line = l;
+          *cursor_col = pos + match.rm_so;
+          found = 1;
+          break;
+        }
     }
-  }
   regfree (&regex);
 }

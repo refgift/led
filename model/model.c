@@ -739,14 +739,12 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
        int pos = 0;
        regmatch_t match;
        int changed = 0;
-       while (regexec (&reg, original_line + pos, 1, &match, 0) == 0)
-         {
-		
-
-
-
-           // Append before match
-           int before_len = (int) match.rm_so;
+        while (regexec (&reg, original_line + pos, 1, &match, 0) == 0)
+          {
+            if (match.rm_eo == match.rm_so)
+              break;  // zero-width match would cause infinite loop
+            // Append before match
+            int before_len = (int) match.rm_so;
            if (used + before_len >= new_cap)
              {
                new_cap = (new_cap == 0) ? 128 : new_cap * 2;

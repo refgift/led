@@ -181,7 +181,10 @@ editor_handle_input (Editor *ed, int ch)
       if (ch == 27)
         ed->replace_step = 0;
       else if (ch == 10 || ch == 13 || ch == KEY_ENTER)
-        ed->replace_step = 2;
+        {
+          if (strlen (ed->search_buffer) > 0)
+            ed->replace_step = 2;
+        }
       else if (isprint (ch)
                && strlen (ed->search_buffer) < sizeof (ed->search_buffer) - 1)
         {
