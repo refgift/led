@@ -216,6 +216,7 @@ static void handle_npage     (int ch, InputContext *ctx);
 static void handle_undo      (int ch, InputContext *ctx);
 static void handle_redo      (int ch, InputContext *ctx);
 static void handle_select_all(int ch, InputContext *ctx);
+static void handle_copy      (int ch, InputContext *ctx);
 static void handle_enter     (int ch, InputContext *ctx);
 static void handle_cut       (int ch, InputContext *ctx);
 static void handle_paste     (int ch, InputContext *ctx);
@@ -236,6 +237,7 @@ static const KeyHandler key_table[] = {
     { 26,         handle_undo },        /* Ctrl+Z */
     { 25,         handle_redo },        /* Ctrl+Y */
     { 1,          handle_select_all },  /* Ctrl+A */
+    { 3,          handle_copy },        /* Ctrl+C */
     { KEY_ENTER,  handle_enter },
     { 10,         handle_enter },
     { 13,         handle_enter },
@@ -413,6 +415,26 @@ static void handle_cut (int ch, InputContext *ctx)
           push_undo (false, row, col, 0);
           buffer_delete_range (ctx->buf, row, col, row, linelen);
           clear_redo ();
+        }
+    }
+}
+
+static void handle_copy (int ch, InputContext *ctx)
+{
+  (void)ch;
+  int row = *ctx->cursor_line;
+  int col = *ctx->cursor_col;
+  int linelen = buffer_get_line_length (ctx->buf, row);
+  if (col < linelen)
+    {
+      char *linecontent = buffer_get_line (ctx->buf, row);
+      if (linecontent)
+        {
+          size_t textlen = strlen (linecontent + col);
+          if (*ctx->clipboard) free (*ctx->clipboard);
+          *ctx->clipboard = xmalloc (textlen + 1);
+          if (*ctx->clipboard) strcpy (*ctx->clipboard, linecontent + col);
+          free (linecontent);
         }
     }
 }
