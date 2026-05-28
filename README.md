@@ -86,23 +86,29 @@ architecture for maintainability.
 - **Test Suite**: Expanded to 95 tests covering edge cases and large files.
 
 ## Dependencies
-The code is in C language and needs a C compiler and build chain.
-It comes with a Makefile which needs the make utility to use.
-It uses the libncurses development files to perform TUI work.
-Uses glibc regex for search and replace operations.
+- The code is in C language and needs a C compiler and build chain.
+- It comes with a Makefile which needs the make utility to use.
+- It uses the libncurses development files to perform TUI work.
+- Uses glibc regex for search and replace operations.
 
 ## Build
-make
+- make has Linux version and UNIX version.
+- for UNIX use the gmake Linux compatible make utility.
+- make has targets: make install, make doc, make lint. 
+- make with target builds the led program from the source code by directing the C ompiler
+  and linker to complete it.
 
 ## Run
-./led filename.c
+- ./led filename.c
+- After make install, the ./ can be despensed with.
 
 ## Test Mode
-./led -t filename.c  # Loads file, runs automated tests on 
-model/view/controller, outputs to stderr, exits
+- ./led -t filename.c 
+- Loads file, runs automated tests on model/view/controller, outputs to stderr, exits
 
 ## Usage
-The editor is controlled via keyboard shortcuts and arrow keys.
+- The editor is controlled via keyboard shortcuts and arrow keys.
+- After make doc, the usage can be recalled with: man led 
 
 ### Navigation
 - Arrow keys: Move cursor up, down, left, right

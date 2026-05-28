@@ -1,5 +1,5 @@
 # Dependencies: ncurses (for terminal UI)
-CC = gcc
+CC = cc
 CFLAGS = -I. -Iview -Itest -Imodel -Icontroller -Iconfig -D_POSIX_C_SOURCE -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 -O3 
 LDFLAGS = -lncurses
 TARGET = led
