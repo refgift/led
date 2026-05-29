@@ -29,6 +29,27 @@ Integrate cleaning into scripts or hooks:
 - Add unit tests: For new fixes (e.g., crash in controller.c, add to test_controller.c).
 - Stress Testing: Use test_performance_stress() for large inputs.
 
+## Quality Measurement (Software Thermometer)
+
+A new mandatory step in the development process:
+
+- After any meaningful change (especially before committing):  
+  ```bash
+  make clean && make && ./led -t && quality .
+  ```
+
+- `quality .` runs the Software Thermometer on the current directory and reports:
+  - Per-file quality "temperature" (in °F).
+  - **Directory average quality temperature** (the key number we track over time).
+
+**Core Philosophy for this project**:
+- **.h header files are "hot"** — they are the public contracts, types, and interfaces. They have the highest leverage on overall quality and maintainability. Prioritize making every `.h` file excellent (high comment density, clean declarations, minimal duplication, no dead includes).
+- **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented.
+
+Current baseline (as of recent measurement): **38.0F** directory average.
+
+The goal is steady, measurable improvement in the average temperature, with special attention paid to the temperatures of all `.h` files.
+
 ## Documentation and Release
 - Update README.md for overviews, WARNINGS.md for issues.
 - Man Page: Edit led.1 and run `make doc` to install.

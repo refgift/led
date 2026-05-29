@@ -787,11 +787,7 @@ test_right_arrow_repeat_navigation (void)
   cursor_col = 0;
 
   // Simulate repeated right arrow presses until end of document
-  int total_chars = 0;
-  for (int l = 0; l < buffer_num_lines (&buf); l++)
-    {
-      total_chars += buffer_get_line_length (&buf, l) + 1;
-    }
+  (void) buffer_num_lines(&buf); // total length calculation not needed for the test logic
   // Move right until we can't anymore
   while (1)
     {

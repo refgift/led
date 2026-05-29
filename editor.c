@@ -158,6 +158,12 @@ editor_handle_input (Editor *ed, int ch)
       ed->show_line_numbers = !ed->show_line_numbers;
       return;
     }
+  if (ch == KEY_F (3))
+    {
+      ed->config.display.word_wrap = !ed->config.display.word_wrap;
+      set_status_message (ed, ed->config.display.word_wrap ? "Word wrap: ON" : "Word wrap: OFF");
+      return;
+    }
   if ((ch == 31) && ed->config.search.enabled) /* Ctrl+/ or / */
     {
       ed->search_mode = 1;
@@ -222,7 +228,8 @@ editor_handle_input (Editor *ed, int ch)
       // Increment unsaved keystrokes for editing operations (exclude search/replace)
       if (!ed->search_mode && !ed->replace_step &&
           ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
-           || ch == KEY_BACKSPACE || ch == KEY_DC || ch == 3 || ch == 22 || ch == 24))
+           || ch == KEY_BACKSPACE || ch == KEY_DC || ch == KEY_F(3)
+           || ch == 3 || ch == 22 || ch == 24))
         {
           ed->unsaved_keystrokes++;
           ed->file_modified = 1;

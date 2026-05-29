@@ -75,6 +75,50 @@ visual_column (const char *line, int len, int logical_pos,
   }
   return vis;
 }
+
+/*
+ * Find a good break point for word wrapping.
+ * Returns the number of characters (in logical line) that can be printed
+ * starting at 'start' without exceeding max_width visual columns.
+ * Prefers breaking at a space; falls back to hard break.
+ * Correctly accounts for tabs via visual_column.
+ */
+static int
+get_wrap_break (const char *line, int start, int line_len, int max_width, int tab_width)
+{
+  if (start >= line_len)
+    return 0;
+
+  // First, find the maximum we could take if we ignored word boundaries
+  int vis = 0;
+  int max_chars = 0;
+  for (int i = start; i < line_len; i++)
+    {
+      int char_vis = (line[i] == '\t') ? (tab_width - (vis % tab_width)) : 1;
+      if (vis + char_vis > max_width)
+        break;
+      vis += char_vis;
+      max_chars++;
+    }
+  if (start + max_chars >= line_len)
+    return line_len - start;   // fits entirely
+
+  // Try to find a space to break at, working backwards from max_chars
+  for (int i = max_chars; i > 0; i--)
+    {
+      if (line[start + i] == ' ')
+        {
+          // Include the space on this row (or not? convention: break after space)
+          // We include it so the next row starts clean.
+          return i + 1;
+        }
+    }
+
+  // No nice break — hard break at max_chars
+  if (max_chars == 0)
+    max_chars = 1;             // always make progress on pathological input
+  return max_chars;
+}
 // Compute color array for a line based on syntax highlighting
 // Returns an array of color indices (1-based, as per ncurses COLOR_PAIR)
 // Caller must free the returned array.
@@ -757,10 +801,11 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
             (logical_line == selection_end_line) ? selection_end_col : len;
         }
       
-      // Render line (no word wrap - truncate only)
-      if (0) // word wrap feature removed
+      // Render line — choose wrap vs truncate based on config
+      // IMPORTANT: The truncate path below (the else) must remain untouched.
+      if (config && config->display.word_wrap)
         {
-          // (disabled)
+          // Word wrap ON: break long logical lines across multiple visual rows.
           while (pos < len && visual_row < max_lines)
             {
 		
@@ -773,11 +818,11 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
                 }
               
-              int segment_len = available_width;
-              
-              // Don't split in middle of word: break at space if possible
-              if (pos + segment_len < len)
-                {
+              // Use helper for word-aware breaking (correctly handles tabs)
+              int segment_len = get_wrap_break (line, pos, len, available_width,
+                                                config ? config->display.tab_width : 8);
+              // (old naive word-break logic removed — using get_wrap_break above)
+              if (0) { /* old block disabled - safe to delete */
                   int break_at = segment_len;
                   for (int i = segment_len; i > 0; i--)
                     {

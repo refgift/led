@@ -1,9 +1,8 @@
 
 
 
-#include <sched.h>
 int
-main ()
-{{
-  return 0;
-}}
+main (void)
+{
+    return 0;
+}

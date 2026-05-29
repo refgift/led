@@ -1,9 +1,20 @@
 #pragma once
 
+/**
+ * test_controller.h - Declarations for the comprehensive test suite.
+ *
+ * These functions are implemented in test_controller.c and exercised
+ * via `./led -t`.
+ */
+
 void run_comprehensive_tests(void);
 extern int tests_passed;
 extern int tests_failed;
-void run_all_tests(void); // legacy alias if needed
+
+/* Legacy alias */
+void run_all_tests(void);
+
+/* Individual test groups */
 void test_buffer_init_free(void);
 void test_buffer_load_save(void);
 void test_buffer_manipulation(void);

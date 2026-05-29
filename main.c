@@ -11,10 +11,6 @@
 extern int tests_passed;
 extern int tests_failed;
 
-
-
-
-#include <sched.h>
 int
 main (int argc, char *argv[])
 {

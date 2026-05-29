@@ -1,9 +1,9 @@
 # Dependencies: ncurses (for terminal UI)
 CC = cc
-CFLAGS = -I. -Iview -Itest -Imodel -Icontroller -Iconfig -D_POSIX_C_SOURCE -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 -O3 
+CFLAGS = -I. -Iview -Itest -Imodel -Icontroller -Iconfig -Iutils -D_POSIX_C_SOURCE -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -std=c11 -O3 
 LDFLAGS = -lncurses
 TARGET = led
-SRCS = main.c model/model.c view/view.c controller/controller.c editor.c config/config.c test/test_controller.c test/test_view.c test/test_autosave.c
+SRCS = main.c model/model.c view/view.c controller/controller.c editor.c config/config.c utils/utils.c test/test_helpers.c test/test_controller.c test/test_view.c test/test_autosave.c
 OBJS = $(SRCS:.c=.o)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
