@@ -222,6 +222,7 @@ static void handle_cut       (int ch, InputContext *ctx);
 static void handle_paste     (int ch, InputContext *ctx);
 static void handle_save      (int ch, InputContext *ctx);
 static void handle_backspace (int ch, InputContext *ctx);
+static void handle_delete    (int ch, InputContext *ctx);
 static void handle_tab       (int ch, InputContext *ctx);
 static void handle_printable (int ch, InputContext *ctx);
 
@@ -247,6 +248,7 @@ static const KeyHandler key_table[] = {
     { KEY_BACKSPACE, handle_backspace },
     { 127,        handle_backspace },
     { 8,          handle_backspace },
+    { KEY_DC,     handle_delete },      /* Delete (forward delete) */
     { 9,          handle_tab },         /* TAB */
     { 0,          NULL }                /* sentinel */
 };
@@ -474,6 +476,31 @@ static void handle_backspace (int ch, InputContext *ctx)
       *ctx->cursor_col = prevlen;
       push_undo (false, prev, prevlen, '\n');
       buffer_delete_char (ctx->buf, prev, prevlen);
+      clear_redo ();
+    }
+}
+
+static void handle_delete (int ch, InputContext *ctx)
+{
+  (void)ch;
+  int len = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+  if (*ctx->cursor_col < len)
+    {
+      // Delete character at cursor (forward)
+      char deleted = buffer_get_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
+      push_undo (false, *ctx->cursor_line, *ctx->cursor_col, deleted);
+      buffer_delete_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
+      // cursor position does not move
+      clear_redo ();
+    }
+  else if (*ctx->cursor_line < buffer_num_lines (ctx->buf) - 1)
+    {
+      // At end of line: delete the newline (merge next line into this one)
+      // buffer_delete_char at col == len already handles the merge
+      int curr_line = *ctx->cursor_line;
+      push_undo (false, curr_line, len, '\n');
+      buffer_delete_char (ctx->buf, curr_line, len);
+      // cursor stays at the join point (old end of line)
       clear_redo ();
     }
 }

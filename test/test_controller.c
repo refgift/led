@@ -35,6 +35,7 @@ void test_buffer_replace_all ();
 void test_undo_redo_comprehensive ();
 void test_clipboard_comprehensive ();
 void test_enter_key_newline_insertion ();
+void test_delete_key ();
 void test_right_arrow_repeat_navigation ();
 
 extern void run_view_tests(void);  // From test_view.c
@@ -639,6 +640,57 @@ test_enter_key_newline_insertion (void)
 }
 
 void
+test_delete_key (void)
+{
+  fprintf (stderr, "Running delete key test\n");
+  Buffer buf;
+  free_undo ();
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "Hello world");
+  int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 5; // Cursor between "Hello| world"
+  int show_line_numbers = 0;
+  char search_buffer[SEARCH_BUFFER_SIZE] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+  Editor ed = {0};
+  ed.config.display.tab_width = 8;
+
+  // Delete the space after "Hello"
+  handle_input (KEY_DC, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "Helloworld") == 0
+               && cursor_line == 0 && cursor_col == 5,
+               "Delete removes char at cursor (forward delete)");
+
+  // Undo the delete (cursor adjustment follows existing undo rules)
+  int saved_col = cursor_col;
+  undo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "Hello world") == 0,
+               "Undo after Delete restores the character");
+
+  // Redo
+  redo_operation (&buf, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "Helloworld") == 0,
+               "Redo after Delete re-applies the deletion");
+
+  // Now test deleting at end of line (merge with next)
+  buffer_insert_line (&buf, 1, "next");
+  cursor_col = buffer_get_line_length (&buf, 0); // end of first line
+  handle_input (KEY_DC, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  test_assert (buffer_num_lines (&buf) == 1
+               && strcmp (buffer_get_line (&buf, 0), "Helloworldnext") == 0
+               && cursor_line == 0,
+               "Delete at end of line merges with next line (cursor at join point)");
+
+  buffer_free (&buf);
+  fprintf (stderr, "Delete key test completed\n");
+}
+
+void
 test_cursor_newline_undo_redo_bug (void)
 {
   fprintf (stderr, "Running cursor newline undo/redo bug test\n");
@@ -876,6 +928,9 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   fprintf (stderr, "Test %d: enter_key_newline_insertion - Enter key inserts newline\n",
              ++test_number);
   test_enter_key_newline_insertion ();
+  fprintf (stderr, "Test %d: delete_key - Delete key (forward delete)\n",
+             ++test_number);
+  test_delete_key ();
   fprintf (stderr, "Test %d: right_arrow_repeat_navigation - Right arrow navigation through document\n",
              ++test_number);
   test_right_arrow_repeat_navigation ();
