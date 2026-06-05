@@ -246,9 +246,8 @@ static const KeyHandler key_table[] = {
     { 22,         handle_paste },       /* Ctrl+V */
     { 19,         handle_save },        /* Ctrl+S */
     { KEY_BACKSPACE, handle_backspace },
-    { 127,        handle_backspace },
     { 8,          handle_backspace },
-    { KEY_DC,     handle_delete },      /* Delete (forward delete) */
+    { KEY_DC,     handle_delete },      /* Delete key */
     { 9,          handle_tab },         /* TAB */
     { 0,          NULL }                /* sentinel */
 };
