@@ -16,7 +16,7 @@
 #include <ncurses.h>
 #include <time.h>
 
-#define VERSION "1.0.5"
+#define VERSION "1.0.6"
 /**
  * ColorScheme - ncurses color pairs for different syntactic elements.
  * All values are ncurses color constants (COLOR_BLACK, COLOR_RED, etc.).
@@ -72,6 +72,7 @@ typedef struct {
 typedef struct {
     int max_file_size_mb;
     int memory_limit_mb;
+    int max_line_length;   /* max chars per logical line before truncation on load */
 } PerformanceConfig;
 
 /** SearchConfig - Limits for regex search/replace to prevent DoS. */

@@ -18,10 +18,16 @@
  */
 
 #include <stddef.h>
+#include <stdbool.h>
 
 /* Allocation helpers - abort on failure with perror + exit */
 void* xmalloc(size_t n);
 void* xrealloc(void *p, size_t n);
 void* xcalloc(size_t nmemb, size_t size);
+
+/** Basic filename safety check to mitigate trivial directory traversal.
+ *  Rejects: NULL/empty, length > 255, any ".." sequence, control characters.
+ */
+bool is_filename_safe(const char *fn);
 
 #endif /* UTILS_H */

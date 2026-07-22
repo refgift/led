@@ -3,6 +3,7 @@
 #include "controller.h"
 #include "view.h"
 #include "config.h"
+#include "utils/utils.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,10 @@ editor_init (Editor *ed, int argc, char *argv[])
   (void) load_editor_config (&ed->config);
   buffer_init (&ed->model);
   ed->filename = argc > 1 ? argv[1] : NULL;
+  if (ed->filename && !is_filename_safe (ed->filename))
+    {
+      ed->filename = NULL;      /* reject unsafe names early */
+    }
   if (ed->filename)
     {
       // Check for recovery file first
@@ -26,7 +31,9 @@ editor_init (Editor *ed, int argc, char *argv[])
         {
           fclose (recovery_fp);
           // Recovery file exists, load from it
-          buffer_load_from_file (&ed->model, recovery_path);
+          buffer_load_from_file (&ed->model, recovery_path,
+            (long)ed->config.performance.max_file_size_mb * 1024 * 1024,
+            ed->config.performance.max_line_length);
           // Remove recovery file after loading
           unlink (recovery_path);
         }
@@ -39,13 +46,15 @@ editor_init (Editor *ed, int argc, char *argv[])
               fseek (fp, 0, SEEK_END);
               long size = ftell (fp);
               fclose (fp);
-              if (size > 10 * 1024 * 1024)
-                {               // 10MB limit
+              long maxb = (long)ed->config.performance.max_file_size_mb * 1024 * 1024;
+              if (maxb <= 0) maxb = 10L * 1024 * 1024;
+              if (size > maxb)
+                {
                   // Skip loading large files
                 }
               else
                 {
-                  buffer_load_from_file (&ed->model, ed->filename);
+                  buffer_load_from_file (&ed->model, ed->filename, maxb, ed->config.performance.max_line_length);
                 }
             }
         }
@@ -95,6 +104,13 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->replace_buffer[0] = 0;
   ed->replace_step = 0;
   ed->clipboard = NULL;
+  // Initialize per-Editor undo/redo stacks (moved from globals)
+  ed->undo_stack.changes = NULL;
+  ed->undo_stack.count = 0;
+  ed->undo_stack.capacity = 0;
+  ed->redo_stack.changes = NULL;
+  ed->redo_stack.count = 0;
+  ed->redo_stack.capacity = 0;
   // Initialize auto-save
   ed->unsaved_keystrokes = 0;
   ed->auto_save_threshold = ed->config.autosave.keystrokes;     // Configurable keystrokes
@@ -286,5 +302,5 @@ editor_cleanup (Editor *ed)
   buffer_free (&ed->model);
   if (ed->clipboard)
     free (ed->clipboard);
-  free_undo ();
+  free_undo_stacks (&ed->undo_stack, &ed->redo_stack);
 }

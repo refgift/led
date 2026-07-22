@@ -80,7 +80,7 @@ void gap_buffer_insert_many(GapBuffer* gb, int pos, const char* s, int n);
 void buffer_init(Buffer* buf);
 void buffer_free(Buffer* buf);
 
-int buffer_load_from_file(Buffer* buf, const char* filename);
+int buffer_load_from_file(Buffer* buf, const char* filename, long max_bytes, int max_line_len);
 int buffer_save_to_file(const Buffer* buf, const char* filename);
 
 /** Returns a newly allocated copy of the line. Caller must free(). */

@@ -23,4 +23,4 @@ Report bugs to help us improve:
 - Crash logs: Use `gdb ./led` and share backtrace.
 - Submit at: https://github.com/refgift/led/issues
 ## Disclaimer
-This is led version 1.0.0, a stable production release. Report any issues at: https://github.com/refgift/led/issues for ongoing improvements. Thanks for your feedback!</content>
+This is led version 1.0.6, a stable production release. Report any issues at: https://github.com/refgift/led/issues for ongoing improvements. Thanks for your feedback!</content>

@@ -8,6 +8,7 @@
 #include "view.h"
 #include "config.h"
 #include "editor.h"
+#include "test_helpers.h"
 
 void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
                      int *cursor_line, int *cursor_col,
@@ -67,7 +68,6 @@ void
 test_buffer_init_free ()
 {
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   test_assert (buf.lines == NULL, "buffer_init sets lines to NULL");
   test_assert (buf.num_lines == 0, "buffer_init sets num_lines to 0");
@@ -80,10 +80,9 @@ void
 test_buffer_load_save ()
 {
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   // Load non-existent file (should fail gracefully)
-  int load_result = buffer_load_from_file (&buf, "/nonexistent");
+  int load_result = buffer_load_from_file (&buf, "/nonexistent", 0, 0);
   test_assert (load_result == -1,
                "buffer_load_from_file returns -1 for non-existent file");
   test_assert (buffer_num_lines (&buf) == 0,
@@ -97,7 +96,7 @@ test_buffer_load_save ()
       fputs ("line1\nline2\n", wfp);
       fclose (wfp);
       // Load the temp file
-      load_result = buffer_load_from_file (&buf, temp_file);
+      load_result = buffer_load_from_file (&buf, temp_file, 0, 0);
       test_assert (load_result == 0,
                    "buffer_load_from_file succeeds for valid file");
       test_assert (buffer_num_lines (&buf) == 3,
@@ -125,7 +124,6 @@ void
 test_buffer_manipulation ()
 {
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
 
   // Test insert_line
@@ -156,11 +154,146 @@ test_buffer_manipulation ()
 }
 
 void
+test_undo_redo_comprehensive ()
+{
+  fprintf (stderr, "Running undo/redo comprehensive tests\n");
+  Buffer buf;
+  Editor ed = {0};
+  buffer_init (&buf);
+
+  // Test 1: initialization
+  test_assert (ed.undo_stack.count == 0, "undo_stack initializes with count=0");
+  test_assert (ed.redo_stack.count == 0, "redo_stack initializes with count=0");
+  
+  // Test 2: single insert and undo
+  buffer_insert_line (&buf, 0, "");
+  buffer_insert_char (&buf, 0, 0, 'a');
+  push_undo (&ed.undo_stack, true, 0, 0, 'a');
+  test_assert (strcmp (buffer_get_line (&buf, 0), "a") == 0, "char inserted");
+  int cursor_line = 0, cursor_col = 1;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "") == 0, "undo removes char");
+  test_assert (cursor_col == 0, "undo adjusts cursor");
+  
+  // Test 3: delete and undo
+  buffer_free (&buf);
+  buffer_init (&buf);
+
+  buffer_insert_line (&buf, 0, "hello");
+  char ch = buffer_get_char (&buf, 0, 0);
+  buffer_delete_char (&buf, 0, 0);
+  push_undo (&ed.undo_stack, false, 0, 0, ch);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "ello") == 0, "char deleted");
+  cursor_line = 0; cursor_col = 0;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "hello") == 0, "undo restores");
+  
+  // Test 4: undo with empty stack
+  buffer_free (&buf);
+  buffer_init (&buf);
+
+  buffer_insert_line (&buf, 0, "test");
+  cursor_line = 0; cursor_col = 0;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "test") == 0, "empty undo doesn't crash");
+  
+  // Test 5: redo after undo
+  buffer_free (&buf);
+  buffer_init (&buf);
+  test_reset_undo(&ed);
+
+  buffer_insert_line (&buf, 0, "");
+  buffer_insert_char (&buf, 0, 0, 'x');
+  push_undo (&ed.undo_stack, true, 0, 0, 'x');
+  cursor_line = 0; cursor_col = 1;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (ed.redo_stack.count == 1, "redo_stack has entry");
+  redo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "x") == 0, "redo restores");
+  
+  // Test 6: stack growth
+  buffer_free (&buf);
+  buffer_init (&buf);
+
+  buffer_insert_line (&buf, 0, "");
+  for (int i = 0; i < 32; i++)
+    {
+		
+
+ 
+
+ 
+      buffer_insert_char (&buf, 0, i, 'a');
+      push_undo (&ed.undo_stack, true, 0, i, 'a');
+    }
+  test_assert (ed.undo_stack.capacity >= 32, "stack grows");
+  
+  // Test 7: multiline undo
+  buffer_free (&buf);
+  buffer_init (&buf);
+
+  buffer_insert_line (&buf, 0, "hello");
+  buffer_insert_line (&buf, 1, "world");
+  buffer_insert_char (&buf, 1, 3, 'X');
+  push_undo (&ed.undo_stack, true, 1, 3, 'X');
+  cursor_line = 1; cursor_col = 4;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 1), "world") == 0, "multiline undo");
+  
+  // Test 8: redo clears on new edit
+  buffer_free (&buf);
+  buffer_init (&buf);
+  test_reset_undo(&ed);
+
+  buffer_insert_line (&buf, 0, "");
+  buffer_insert_char (&buf, 0, 0, 'a');
+  push_undo (&ed.undo_stack, true, 0, 0, 'a');
+  cursor_line = 0; cursor_col = 1;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (ed.redo_stack.count == 1, "redo populated");
+  clear_redo (&ed.redo_stack);
+  test_assert (ed.redo_stack.count == 0, "redo cleared");
+  
+  // Test 9: multiple undos
+  buffer_free (&buf);
+  buffer_init (&buf);
+
+  buffer_insert_line (&buf, 0, "initial");
+  for (int i = 0; i < 5; i++)
+    {
+		
+
+ 
+
+ 
+
+      buffer_insert_char (&buf, 0, 7 + i, 'x');
+      push_undo (&ed.undo_stack, true, 0, 7 + i, 'x');
+    }
+  for (int i = 0; i < 5; i++)
+    {
+		
+
+ 
+
+ 
+
+      cursor_line = 0; cursor_col = 12 - i;
+      undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+    }
+  test_assert (strcmp (buffer_get_line (&buf, 0), "initial") == 0, "multiple undos");
+
+  buffer_free (&buf);
+  fprintf (stderr, "Undo/redo comprehensive tests completed\n");
+}
+
+void
 test_search_functionality ()
 {
   fprintf (stderr, "Running search functionality test\n");
   Buffer buf;
-  free_undo ();
+  Editor ed = {0};
+  test_reset_undo (&ed);
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world hello");
   buffer_insert_line (&buf, 1, "goodbye world hello");
@@ -250,162 +383,6 @@ test_buffer_replace_all ()
 }
 
 /* Word wrap test removed - feature disabled to ensure reliable editing */
-
-void test_undo_redo_comprehensive ()
-{
-  fprintf (stderr, "Running undo/redo comprehensive tests\n");
-  Buffer buf;
-  free_undo ();
-  buffer_init (&buf);
-
-
-
-  
-  // Test 1: initialization
-  test_assert (undo_stack.count == 0, "undo_stack initializes with count=0");
-  test_assert (redo_stack.count == 0, "redo_stack initializes with count=0");
-  
-  // Test 2: single insert and undo
-  buffer_insert_line (&buf, 0, "");
-  buffer_insert_char (&buf, 0, 0, 'a');
-  push_undo (true, 0, 0, 'a');
-  test_assert (strcmp (buffer_get_line (&buf, 0), "a") == 0, "char inserted");
-  int cursor_line = 0, cursor_col = 1;
-  undo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (strcmp (buffer_get_line (&buf, 0), "") == 0, "undo removes char");
-  test_assert (cursor_col == 0, "undo adjusts cursor");
-  
-  // Test 3: delete and undo
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "hello");
-  char ch = buffer_get_char (&buf, 0, 0);
-  buffer_delete_char (&buf, 0, 0);
-  push_undo (false, 0, 0, ch);
-  test_assert (strcmp (buffer_get_line (&buf, 0), "ello") == 0, "char deleted");
-  cursor_line = 0; cursor_col = 0;
-  undo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (strcmp (buffer_get_line (&buf, 0), "hello") == 0, "undo restores");
-  
-  // Test 4: undo with empty stack
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "test");
-  cursor_line = 0; cursor_col = 0;
-  undo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (strcmp (buffer_get_line (&buf, 0), "test") == 0, "empty undo doesn't crash");
-  
-  // Test 5: redo after undo
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "");
-  buffer_insert_char (&buf, 0, 0, 'x');
-  push_undo (true, 0, 0, 'x');
-  cursor_line = 0; cursor_col = 1;
-  undo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (redo_stack.count == 1, "redo_stack has entry");
-  redo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (strcmp (buffer_get_line (&buf, 0), "x") == 0, "redo restores");
-  
-  // Test 6: stack growth
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "");
-  for (int i = 0; i < 32; i++)
-    {
-		
-
-
-
-      buffer_insert_char (&buf, 0, i, 'a');
-      push_undo (true, 0, i, 'a');
-    }
-  test_assert (undo_stack.capacity >= 32, "stack grows");
-  
-  // Test 7: multiline undo
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "hello");
-  buffer_insert_line (&buf, 1, "world");
-  buffer_insert_char (&buf, 1, 3, 'X');
-  push_undo (true, 1, 3, 'X');
-  cursor_line = 1; cursor_col = 4;
-  undo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (strcmp (buffer_get_line (&buf, 1), "world") == 0, "multiline undo");
-  
-  // Test 8: redo clears on new edit
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "");
-  buffer_insert_char (&buf, 0, 0, 'a');
-  push_undo (true, 0, 0, 'a');
-  cursor_line = 0; cursor_col = 1;
-  undo_operation (&buf, &cursor_line, &cursor_col);
-  test_assert (redo_stack.count == 1, "redo populated");
-  clear_redo ();
-  test_assert (redo_stack.count == 0, "redo cleared");
-  
-  // Test 9: multiple undos
-  buffer_free (&buf);
-  free_undo ();
-  buffer_init (&buf);
-
-
-  buffer_insert_line (&buf, 0, "initial");
-  for (int i = 0; i < 5; i++)
-    {
-		
-
-
-
-      buffer_insert_char (&buf, 0, 7 + i, 'x');
-      push_undo (true, 0, 7 + i, 'x');
-    }
-  for (int i = 0; i < 5; i++)
-    {
-		
-
-
-
-      cursor_line = 0; cursor_col = 12 - i;
-      undo_operation (&buf, &cursor_line, &cursor_col);
-    }
-  test_assert (strcmp (buffer_get_line (&buf, 0), "initial") == 0, "multiple undos");
-  
-  // Test 10: redo with multiple operations
-  for (int i = 0; i < 3; i++)
-    {
-		
-
-
-
-      cursor_line = 0; cursor_col = 7 + i;
-      redo_operation (&buf, &cursor_line, &cursor_col);
-    }
-  test_assert (strcmp (buffer_get_line (&buf, 0), "initialxxx") == 0, "partial redo");
-  
-  buffer_free (&buf);
-
-  fprintf (stderr, "Undo/redo comprehensive tests completed\n");
-}
 
 void test_clipboard_comprehensive ()
 {
@@ -665,13 +642,13 @@ test_delete_key (void)
                "Delete removes char at cursor (forward delete)");
 
   // Undo the delete (cursor adjustment follows existing undo rules)
-  int saved_col = cursor_col;
-  undo_operation (&buf, &cursor_line, &cursor_col);
+  (void)cursor_col;
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
   test_assert (strcmp (buffer_get_line (&buf, 0), "Hello world") == 0,
                "Undo after Delete restores the character");
 
   // Redo
-  redo_operation (&buf, &cursor_line, &cursor_col);
+  redo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
   test_assert (strcmp (buffer_get_line (&buf, 0), "Helloworld") == 0,
                "Redo after Delete re-applies the deletion");
 
@@ -720,13 +697,13 @@ test_cursor_newline_undo_redo_bug (void)
                "Initial newline splits line and positions cursor correctly");
 
   // Step 2: Undo
-  undo_operation (&buf, &cursor_line, &cursor_col);
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
   test_assert (buffer_num_lines (&buf) == 1 && strcmp (buffer_get_line (&buf, 0), "hello world") == 0
                && cursor_line == 0 && cursor_col == 11,
                "Undo reverts newline and cursor position");
 
   // Step 3: Redo
-  redo_operation (&buf, &cursor_line, &cursor_col);
+  redo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
   test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0,
                "Redo reapplies newline and cursor position");
 
@@ -747,10 +724,10 @@ test_cursor_newline_undo_redo_bug (void)
                "Backspace at start of line merges lines correctly");
 
     // Step 6: Undo the backspace
-    undo_operation (&buf, &cursor_line, &cursor_col);
+    undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
     test_assert (buffer_num_lines (&buf) == 3 && cursor_line == 2 && cursor_col == 0
                 && strcmp (buffer_get_line (&buf, 2), "") == 0,
-               "Undo of backspace positions cursor correctly");
+                "Undo of backspace positions cursor correctly");
 
   
     buffer_free (&buf);

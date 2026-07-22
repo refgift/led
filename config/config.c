@@ -82,11 +82,12 @@ set_default_config (EditorConfig *config)
   config->display.show_line_numbers = 0;
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
-  config->display.spaces_for_tab = 1;
+  config->display.spaces_for_tab = 0;
   config->display.word_wrap = 0;  /* default off for stability */
   // Performance
   config->performance.max_file_size_mb = 10;
   config->performance.memory_limit_mb = 50;
+  config->performance.max_line_length = 10000;
   config->search.enabled = 1;
   config->search.max_pattern_length = 100;
 }

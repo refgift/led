@@ -30,8 +30,8 @@ void test_init(TestContext *ctx);
 /** Clean up a test context (frees buffer + clipboard + undo stacks). */
 void test_cleanup(TestContext *ctx);
 
-/** Reset only the undo/redo state (useful between sub-tests). */
-void test_reset_undo(void);
+/** Reset only the undo/redo state for the given Editor (useful between sub-tests). */
+void test_reset_undo(Editor *ed);
 
 /**
  * Convenience wrapper for handle_input using the TestContext.

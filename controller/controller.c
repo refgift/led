@@ -8,182 +8,177 @@
 #include <ctype.h>
 #include <stdio.h>
 
-UndoStack undo_stack = { NULL, 0, 0 };
-UndoStack redo_stack = { NULL, 0, 0 };
-
-
-void
-init_undo (void)
+static void
+push_change (UndoStack *stack, bool is_insert, int line, int col, char ch)
 {
-  // Already initialized statically
-}
-
-void
-push_undo (bool is_insert, int line, int col, char ch)
-{
-  if (undo_stack.count >= undo_stack.capacity)
+  if (!stack)
+    return;
+  if (stack->count >= stack->capacity)
     {
-      if (undo_stack.capacity >= 10000)
+      if (stack->capacity >= 10000)
         return;
       int new_capacity =
-        undo_stack.capacity == 0 ? 16 : undo_stack.capacity * 2;
+        stack->capacity == 0 ? 16 : stack->capacity * 2;
       Change *temp =
-        xrealloc (undo_stack.changes, new_capacity * sizeof (Change));
+        xrealloc (stack->changes, new_capacity * sizeof (Change));
       if (!temp)
         return;
-      undo_stack.changes = temp;
-      undo_stack.capacity = new_capacity;
+      stack->changes = temp;
+      stack->capacity = new_capacity;
     }
-  undo_stack.changes[undo_stack.count].is_insert = is_insert;
-  undo_stack.changes[undo_stack.count].line = line;
-  undo_stack.changes[undo_stack.count].col = col;
-  undo_stack.changes[undo_stack.count].ch = ch;
-  undo_stack.count++;
+  stack->changes[stack->count].is_insert = is_insert;
+  stack->changes[stack->count].line = line;
+  stack->changes[stack->count].col = col;
+  stack->changes[stack->count].ch = ch;
+  stack->count++;
 }
 
 void
-push_redo (bool is_insert, int line, int col, char ch)
+push_undo (UndoStack *stack, bool is_insert, int line, int col, char ch)
 {
-  if (redo_stack.count >= redo_stack.capacity)
-    {
-      if (redo_stack.capacity >= 10000)
-        return;
-      int new_capacity =
-        redo_stack.capacity == 0 ? 16 : redo_stack.capacity * 2;
-      Change *temp =
-        xrealloc (redo_stack.changes, new_capacity * sizeof (Change));
-      if (!temp)
-        return;
-      redo_stack.changes = temp;
-      redo_stack.capacity = new_capacity;
-    }
-  redo_stack.changes[redo_stack.count].is_insert = is_insert;
-  redo_stack.changes[redo_stack.count].line = line;
-  redo_stack.changes[redo_stack.count].col = col;
-  redo_stack.changes[redo_stack.count].ch = ch;
-  redo_stack.count++;
+  push_change (stack, is_insert, line, col, ch);
 }
 
 void
-undo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
+push_redo (UndoStack *stack, bool is_insert, int line, int col, char ch)
 {
-  if (undo_stack.count > 0)
+  push_change (stack, is_insert, line, col, ch);
+}
+
+void
+undo_operation (Buffer *buf, UndoStack *undo, UndoStack *redo, int *cursor_line, int *cursor_col)
+{
+  if (!undo || undo->count <= 0)
+    return;
+  undo->count--;
+  Change c = undo->changes[undo->count];
+  push_redo (redo, c.is_insert, c.line, c.col, c.ch);
+  if (c.is_insert)
     {
-      undo_stack.count--;
-      Change c = undo_stack.changes[undo_stack.count];
-      push_redo (c.is_insert, c.line, c.col, c.ch);
-      if (c.is_insert)
+      buffer_delete_char (buf, c.line, c.col);
+      if (c.ch == '\n')
         {
-          buffer_delete_char (buf, c.line, c.col);
-          if (c.ch == '\n')
+          if (*cursor_line > c.line)
             {
-              if (*cursor_line > c.line)
-                {
-                  (*cursor_line)--;
-                  *cursor_col += c.col;
-                }
-              else if (*cursor_line == c.line && *cursor_col > c.col)
-                (*cursor_col)--;
+              (*cursor_line)--;
+              *cursor_col += c.col;
             }
-          else
+          else if (*cursor_line == c.line && *cursor_col > c.col)
+            (*cursor_col)--;
+        }
+      else
+        {
+          if (*cursor_line == c.line && *cursor_col > c.col)
+            (*cursor_col)--;
+        }
+    }
+  else
+    {
+      buffer_insert_char (buf, c.line, c.col, c.ch);
+      if (c.ch == '\n')
+        {
+          if (*cursor_line == c.line && *cursor_col >= c.col)
             {
-              if (*cursor_line == c.line && *cursor_col > c.col)
-                (*cursor_col)--;
+              (*cursor_line)++;
+              *cursor_col -= c.col;
             }
         }
       else
         {
-          buffer_insert_char (buf, c.line, c.col, c.ch);
-          if (c.ch == '\n')
-            {
-              if (*cursor_line == c.line && *cursor_col >= c.col)
-                {
-                  (*cursor_line)++;
-                  *cursor_col -= c.col;
-                }
-            }
-          else
-            {
-              if (*cursor_line == c.line && *cursor_col >= c.col)
-                (*cursor_col)++;
-            }
+          if (*cursor_line == c.line && *cursor_col >= c.col)
+            (*cursor_col)++;
         }
-      int len = buffer_get_line_length (buf, *cursor_line);
-      if (*cursor_col > len)
-        *cursor_col = len;
     }
+  int len = buffer_get_line_length (buf, *cursor_line);
+  if (*cursor_col > len)
+    *cursor_col = len;
 }
 
 void
-redo_operation (Buffer *buf, int *cursor_line, int *cursor_col)
+redo_operation (Buffer *buf, UndoStack *undo, UndoStack *redo, int *cursor_line, int *cursor_col)
 {
-  if (redo_stack.count > 0)
+  if (!redo || redo->count <= 0)
+    return;
+  redo->count--;
+  Change c = redo->changes[redo->count];
+  push_undo (undo, !c.is_insert, c.line, c.col, c.ch);
+  if (c.is_insert)
     {
-      redo_stack.count--;
-      Change c = redo_stack.changes[redo_stack.count];
-      push_undo (!c.is_insert, c.line, c.col, c.ch);
-      if (c.is_insert)
+      buffer_insert_char (buf, c.line, c.col, c.ch);
+      if (c.ch == '\n')
         {
-          buffer_insert_char (buf, c.line, c.col, c.ch);
-          if (c.ch == '\n')
+          if (*cursor_line == c.line && *cursor_col >= c.col)
             {
-              if (*cursor_line == c.line && *cursor_col >= c.col)
-                {
-                  (*cursor_line)++;
-                  *cursor_col -= c.col;
-                }
-            }
-          else
-            {
-              if (*cursor_line == c.line && *cursor_col >= c.col)
-                (*cursor_col)++;
+              (*cursor_line)++;
+              *cursor_col -= c.col;
             }
         }
       else
         {
-          buffer_delete_char (buf, c.line, c.col);
-          if (c.ch == '\n')
-            {
-              if (*cursor_line > c.line)
-                {
-                  (*cursor_line)--;
-                  *cursor_col += c.col;
-                }
-              else if (*cursor_line == c.line && *cursor_col > c.col)
-                (*cursor_col)--;
-            }
-          else
-            {
-              if (*cursor_line == c.line && *cursor_col > c.col)
-                (*cursor_col)--;
-            }
+          if (*cursor_line == c.line && *cursor_col >= c.col)
+            (*cursor_col)++;
         }
-      int len = buffer_get_line_length (buf, *cursor_line);
-      if (*cursor_col > len)
-        *cursor_col = len;
     }
+  else
+    {
+      buffer_delete_char (buf, c.line, c.col);
+      if (c.ch == '\n')
+        {
+          if (*cursor_line > c.line)
+            {
+              (*cursor_line)--;
+              *cursor_col += c.col;
+            }
+          else if (*cursor_line == c.line && *cursor_col > c.col)
+            (*cursor_col)--;
+        }
+      else
+        {
+          if (*cursor_line == c.line && *cursor_col > c.col)
+            (*cursor_col)--;
+        }
+    }
+  int len = buffer_get_line_length (buf, *cursor_line);
+  if (*cursor_col > len)
+    *cursor_col = len;
 }
 
 void
-clear_redo (void)
+clear_redo (UndoStack *redo)
 {
-  redo_stack.changes = NULL;
-  redo_stack.count = 0;
-  redo_stack.capacity = 0;
+  if (!redo)
+    return;
+  free (redo->changes);
+  redo->changes = NULL;
+  redo->count = 0;
+  redo->capacity = 0;
 }
 
+void
+free_undo_stacks (UndoStack *undo, UndoStack *redo)
+{
+  if (undo)
+    {
+      free (undo->changes);
+      undo->changes = NULL;
+      undo->count = 0;
+      undo->capacity = 0;
+    }
+  if (redo)
+    {
+      free (redo->changes);
+      redo->changes = NULL;
+      redo->count = 0;
+      redo->capacity = 0;
+    }
+}
+
+/* Legacy shim to keep older test code compiling during migration.
+   New code should use free_undo_stacks or test_reset_undo(&ed). */
 void
 free_undo (void)
 {
-  free (undo_stack.changes);
-  undo_stack.changes = NULL;
-  undo_stack.count = 0;
-  undo_stack.capacity = 0;
-
-  free (redo_stack.changes);
-  redo_stack.changes = NULL;
-  redo_stack.count = 0;
-  redo_stack.capacity = 0;
+  /* no-op */
 }
 
 /* === Simple dispatch table (KISS) === */
@@ -363,13 +358,15 @@ static void handle_npage (int ch, InputContext *ctx)
 static void handle_undo (int ch, InputContext *ctx)
 {
   (void)ch;
-  undo_operation (ctx->buf, ctx->cursor_line, ctx->cursor_col);
+  if (ctx->ed)
+    undo_operation (ctx->buf, &ctx->ed->undo_stack, &ctx->ed->redo_stack, ctx->cursor_line, ctx->cursor_col);
 }
 
 static void handle_redo (int ch, InputContext *ctx)
 {
   (void)ch;
-  redo_operation (ctx->buf, ctx->cursor_line, ctx->cursor_col);
+  if (ctx->ed)
+    redo_operation (ctx->buf, &ctx->ed->undo_stack, &ctx->ed->redo_stack, ctx->cursor_line, ctx->cursor_col);
 }
 
 static void handle_select_all (int ch, InputContext *ctx)
@@ -390,11 +387,14 @@ static void handle_select_all (int ch, InputContext *ctx)
 static void handle_enter (int ch, InputContext *ctx)
 {
   (void)ch;
-  push_undo (true, *ctx->cursor_line, *ctx->cursor_col, '\n');
+  if (ctx->ed)
+    {
+      push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, '\n');
+      clear_redo (&ctx->ed->redo_stack);
+    }
   buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, '\n');
   (*ctx->cursor_line)++;
   *ctx->cursor_col = 0;
-  clear_redo ();
 }
 
 static void handle_cut (int ch, InputContext *ctx)
@@ -413,9 +413,12 @@ static void handle_cut (int ch, InputContext *ctx)
           *ctx->clipboard = xmalloc (textlen + 1);
           if (*ctx->clipboard) strcpy (*ctx->clipboard, linecontent + col);
           free (linecontent);
-          push_undo (false, row, col, 0);
+          if (ctx->ed)
+            {
+              push_undo (&ctx->ed->undo_stack, false, row, col, 0);
+              clear_redo (&ctx->ed->redo_stack);
+            }
           buffer_delete_range (ctx->buf, row, col, row, linelen);
-          clear_redo ();
         }
     }
 }
@@ -462,10 +465,13 @@ static void handle_backspace (int ch, InputContext *ctx)
   if (*ctx->cursor_col > 0)
     {
       char deleted = buffer_get_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col - 1);
-      push_undo (false, *ctx->cursor_line, *ctx->cursor_col - 1, deleted);
+      if (ctx->ed)
+        {
+          push_undo (&ctx->ed->undo_stack, false, *ctx->cursor_line, *ctx->cursor_col - 1, deleted);
+          clear_redo (&ctx->ed->redo_stack);
+        }
       buffer_delete_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col - 1);
       (*ctx->cursor_col)--;
-      clear_redo ();
     }
   else if (*ctx->cursor_line > 0)
     {
@@ -473,9 +479,12 @@ static void handle_backspace (int ch, InputContext *ctx)
       int prevlen = buffer_get_line_length (ctx->buf, prev);
       *ctx->cursor_line = prev;
       *ctx->cursor_col = prevlen;
-      push_undo (false, prev, prevlen, '\n');
+      if (ctx->ed)
+        {
+          push_undo (&ctx->ed->undo_stack, false, prev, prevlen, '\n');
+          clear_redo (&ctx->ed->redo_stack);
+        }
       buffer_delete_char (ctx->buf, prev, prevlen);
-      clear_redo ();
     }
 }
 
@@ -487,20 +496,26 @@ static void handle_delete (int ch, InputContext *ctx)
     {
       // Delete character at cursor (forward)
       char deleted = buffer_get_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
-      push_undo (false, *ctx->cursor_line, *ctx->cursor_col, deleted);
+      if (ctx->ed)
+        {
+          push_undo (&ctx->ed->undo_stack, false, *ctx->cursor_line, *ctx->cursor_col, deleted);
+          clear_redo (&ctx->ed->redo_stack);
+        }
       buffer_delete_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
       // cursor position does not move
-      clear_redo ();
     }
   else if (*ctx->cursor_line < buffer_num_lines (ctx->buf) - 1)
     {
       // At end of line: delete the newline (merge next line into this one)
       // buffer_delete_char at col == len already handles the merge
       int curr_line = *ctx->cursor_line;
-      push_undo (false, curr_line, len, '\n');
+      if (ctx->ed)
+        {
+          push_undo (&ctx->ed->undo_stack, false, curr_line, len, '\n');
+          clear_redo (&ctx->ed->redo_stack);
+        }
       buffer_delete_char (ctx->buf, curr_line, len);
       // cursor stays at the join point (old end of line)
-      clear_redo ();
     }
 }
 
@@ -521,28 +536,35 @@ static void handle_tab (int ch, InputContext *ctx)
           if (spaces == 0) spaces = tabw;
           for (int i = 0; i < spaces; i++)
             {
-              push_undo (true, *ctx->cursor_line, *ctx->cursor_col, ' ');
+              if (ctx->ed)
+                push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, ' ');
               buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, ' ');
               (*ctx->cursor_col)++;
             }
           free (line);
         }
     }
-  else
+    else
     {
-      push_undo (true, *ctx->cursor_line, *ctx->cursor_col, '\t');
+      if (ctx->ed)
+        {
+          push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, '\t');
+          clear_redo (&ctx->ed->redo_stack);
+        }
       buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, '\t');
       (*ctx->cursor_col)++;
-      clear_redo ();
     }
 }
 
 static void handle_printable (int ch, InputContext *ctx)
 {
   buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, (char) ch);
-  push_undo (true, *ctx->cursor_line, *ctx->cursor_col, (char) ch);
+  if (ctx->ed)
+    {
+      push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, (char) ch);
+      clear_redo (&ctx->ed->redo_stack);
+    }
   (*ctx->cursor_col)++;
-  clear_redo ();
 }
 /* === End of dispatch table === */
 

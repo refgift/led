@@ -14,17 +14,16 @@
  * They should eventually move into the Editor struct.
  */
 
-/* Global undo/redo stacks (legacy — see note above) */
-extern UndoStack undo_stack;
-extern UndoStack redo_stack;
+/* === Undo / Redo primitives (operate on per-Editor stacks) === */
 
-/* === Undo / Redo primitives === */
+void push_undo (UndoStack *stack, bool is_insert, int line, int col, char ch);
+void push_redo (UndoStack *stack, bool is_insert, int line, int col, char ch);
+void undo_operation (Buffer * buf, UndoStack *undo, UndoStack *redo, int *cursor_line, int *cursor_col);
+void redo_operation (Buffer * buf, UndoStack *undo, UndoStack *redo, int *cursor_line, int *cursor_col);
+void clear_redo (UndoStack *redo);
+void free_undo_stacks (UndoStack *undo, UndoStack *redo);
 
-void push_undo (bool is_insert, int line, int col, char ch);
-void push_redo (bool is_insert, int line, int col, char ch);
-void undo_operation (Buffer * buf, int *cursor_line, int *cursor_col);
-void redo_operation (Buffer * buf, int *cursor_line, int *cursor_col);
-void clear_redo (void);
+/* Legacy no-op for tests not yet updated to per-Editor stacks. */
 void free_undo (void);
 
 /* === Main input dispatcher === */

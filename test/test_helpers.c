@@ -1,5 +1,5 @@
 #include "test_helpers.h"
-#include "controller.h"   /* for free_undo */
+#include "controller.h"
 
 #include <string.h>
 
@@ -9,7 +9,7 @@ void test_init(TestContext *ctx)
 
     memset(ctx, 0, sizeof(*ctx));
 
-    test_reset_undo();
+    test_reset_undo(&ctx->ed);
 
     buffer_init(&ctx->buf);
     ctx->filename = NULL;
@@ -27,12 +27,13 @@ void test_cleanup(TestContext *ctx)
         ctx->clipboard = NULL;
     }
 
-    test_reset_undo();
+    test_reset_undo(&ctx->ed);
 }
 
-void test_reset_undo(void)
+void test_reset_undo(Editor *ed)
 {
-    free_undo();
+    if (ed)
+        free_undo_stacks(&ed->undo_stack, &ed->redo_stack);
 }
 
 int test_handle_input(TestContext *ctx, int ch)

@@ -4,8 +4,9 @@
 #include <stdio.h>
 #include <regex.h>
 #include <sys/stat.h>
-#define MAX_FILE_SIZE (10 * 1024 * 1024)       // 10MB
-#define MAX_LINE_LENGTH 10000
+/* Fallback default; caller should pass a limit from EditorConfig. */
+#define DEFAULT_MAX_FILE_BYTES (10L * 1024 * 1024)
+#define DEFAULT_MAX_LINE_LENGTH 10000
 
 // GapBuffer implementation
 GapBuffer*
@@ -218,14 +219,15 @@ _invalidate_cache_from (Buffer *buf, int line)
 }
 
 int
-buffer_load_from_file (Buffer *buf, const char *filename)
+buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes, int max_line_len)
 {
   struct stat st;
   if (stat (filename, &st) != 0)
     {
       return -1;
     }
-  if (st.st_size > MAX_FILE_SIZE)
+  long limit = (max_bytes > 0 ? max_bytes : DEFAULT_MAX_FILE_BYTES);
+  if (st.st_size > limit)
     {
       return -1;                  // File too large
     }
@@ -267,7 +269,7 @@ buffer_load_from_file (Buffer *buf, const char *filename)
   fclose (fp);
   temp[pos] = '\0';
   // Safety checks
-  if (pos > MAX_FILE_SIZE)
+  if (pos > limit)
     {
       free (temp);
       return -1;                // File too large
@@ -289,9 +291,10 @@ buffer_load_from_file (Buffer *buf, const char *filename)
       if (temp[i] == '\n' || temp[i] == '\0')
         {
           int len = i - start;
-          if (len > MAX_LINE_LENGTH)
+          int maxll = (max_line_len > 0 ? max_line_len : DEFAULT_MAX_LINE_LENGTH);
+          if (len > maxll)
             {
-              len = MAX_LINE_LENGTH; // Truncate long lines
+              len = maxll; // Truncate long lines
             }
           char *line = malloc (len + 1);
           if (!line)

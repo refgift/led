@@ -127,7 +127,8 @@ int *
 compute_line_colors (const char *full_line, int line_len,
                      int highlight_pair, EditorConfig *config, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack)
 {
-  if (highlight_pair == 1 || line_len > 10000)
+  int maxll = (config && config->performance.max_line_length > 0) ? config->performance.max_line_length : 10000;
+  if (highlight_pair == 1 || line_len > maxll)
     {
       return NULL;              // No colors if disabled or line too long
     }

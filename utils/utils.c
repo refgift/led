@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
 
 /**
  * Centralized allocation helpers.
@@ -40,4 +42,23 @@ void* xcalloc(size_t nmemb, size_t size)
         exit(EXIT_FAILURE);
     }
     return p;
+}
+
+bool
+is_filename_safe (const char *fn)
+{
+  if (!fn || !*fn)
+    return false;
+  size_t n = strlen (fn);
+  if (n > 255)
+    return false;
+  if (strstr (fn, ".."))
+    return false;
+  for (size_t i = 0; i < n; i++)
+    {
+      unsigned char c = (unsigned char) fn[i];
+      if (c < 32 || c == 127)
+        return false;
+    }
+  return true;
 }
