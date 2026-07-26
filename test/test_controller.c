@@ -37,6 +37,7 @@ void test_undo_redo_comprehensive ();
 void test_clipboard_comprehensive ();
 void test_enter_key_newline_insertion ();
 void test_delete_key ();
+void test_backspace_key ();
 void test_right_arrow_repeat_navigation ();
 
 extern void run_view_tests(void);  // From test_view.c
@@ -668,6 +669,83 @@ test_delete_key (void)
 }
 
 void
+test_backspace_key (void)
+{
+  fprintf (stderr, "Running backspace key test\n");
+  Buffer buf;
+  free_undo ();
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "Hello world");
+  int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 6;
+  int show_line_numbers = 0;
+  char search_buffer[SEARCH_BUFFER_SIZE] = "";
+  int search_mode = 0;
+  char *clipboard = NULL;
+  const char *filename = NULL;
+  Editor ed = {0};
+  ed.config.display.tab_width = 8;
+
+  /* ASCII 127 (DEL / ^?) — typical terminal Backspace */
+  handle_input (127, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "Helloworld") == 0
+               && cursor_line == 0 && cursor_col == 5,
+               "Backspace (127) removes char before cursor");
+
+  undo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "Hello world") == 0,
+               "Undo after Backspace restores the character");
+
+  redo_operation (&buf, &ed.undo_stack, &ed.redo_stack, &cursor_line, &cursor_col);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "Helloworld") == 0,
+               "Redo after Backspace re-applies the deletion");
+
+  /* ASCII 8 (BS / Ctrl+H) */
+  free_undo ();
+  clear_redo (&ed.redo_stack);
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "ab");
+  cursor_line = 0;
+  cursor_col = 2;
+  handle_input (8, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "a") == 0
+               && cursor_col == 1,
+               "Backspace (8) removes char before cursor");
+
+  /* KEY_BACKSPACE (ncurses symbolic) */
+  handle_input (KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line,
+                &cursor_col, &show_line_numbers, search_buffer, &search_mode,
+                &clipboard, filename, &ed);
+  test_assert (strcmp (buffer_get_line (&buf, 0), "") == 0
+               && cursor_col == 0,
+               "Backspace (KEY_BACKSPACE) removes char before cursor");
+
+  /* Line merge: backspace at column 0 joins with previous line */
+  free_undo ();
+  clear_redo (&ed.redo_stack);
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "foo");
+  buffer_insert_line (&buf, 1, "bar");
+  cursor_line = 1;
+  cursor_col = 0;
+  handle_input (127, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+                &show_line_numbers, search_buffer, &search_mode, &clipboard,
+                filename, &ed);
+  test_assert (buffer_num_lines (&buf) == 1
+               && strcmp (buffer_get_line (&buf, 0), "foobar") == 0
+               && cursor_line == 0 && cursor_col == 3,
+               "Backspace at start of line merges with previous line");
+
+  buffer_free (&buf);
+  fprintf (stderr, "Backspace key test completed\n");
+}
+
+void
 test_cursor_newline_undo_redo_bug (void)
 {
   fprintf (stderr, "Running cursor newline undo/redo bug test\n");
@@ -904,6 +982,9 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   fprintf (stderr, "Test %d: delete_key - Delete key (forward delete)\n",
              ++test_number);
   test_delete_key ();
+  fprintf (stderr, "Test %d: backspace_key - Backspace (127, 8, KEY_BACKSPACE)\n",
+             ++test_number);
+  test_backspace_key ();
   fprintf (stderr, "Test %d: right_arrow_repeat_navigation - Right arrow navigation through document\n",
              ++test_number);
   test_right_arrow_repeat_navigation ();

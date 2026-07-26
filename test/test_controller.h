@@ -24,6 +24,8 @@ void test_undo_redo_comprehensive(void);
 void test_clipboard_comprehensive(void);
 void test_ctrl_x_last_line(void);
 void test_enter_key_newline_insertion(void);
+void test_delete_key(void);
+void test_backspace_key(void);
 void test_right_arrow_repeat_navigation(void);
 void test_cursor_newline_undo_redo_bug(void);
 void test_tab_key(void);
