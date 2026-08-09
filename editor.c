@@ -207,7 +207,7 @@ editor_handle_input (Editor *ed, int ch)
           if (strlen (ed->search_buffer) > 0)
             ed->replace_step = 2;
         }
-      else if (isprint (ch)
+      else if (((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
                && strlen (ed->search_buffer) < sizeof (ed->search_buffer) - 1)
         {
           strncat (ed->search_buffer, (char *) &ch, 1);
@@ -223,7 +223,7 @@ editor_handle_input (Editor *ed, int ch)
                               ed->replace_buffer);
           ed->replace_step = 0;
         }
-      else if (isprint (ch)
+      else if (((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
                && strlen (ed->replace_buffer) <
                sizeof (ed->replace_buffer) - 1)
         {
@@ -243,7 +243,8 @@ editor_handle_input (Editor *ed, int ch)
       ed->prev_key = ch;
       // Increment unsaved keystrokes for editing operations (exclude search/replace)
       if (!ed->search_mode && !ed->replace_step &&
-          ((ch >= 32 && ch <= 126) || ch == 9 || ch == 10 || ch == 13 || ch == 127
+          ((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255)
+           || ch == 9 || ch == 10 || ch == 13 || ch == 127
            || ch == KEY_BACKSPACE || ch == KEY_DC || ch == KEY_F(3)
            || ch == 3 || ch == 22 || ch == 24))
         {

@@ -1,5 +1,6 @@
 #include "view.h"
 #include "config.h"
+#include "utils.h"
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -60,19 +61,39 @@ calculate_digits (int n)
   while (n > 0);
   return digits;
 }
-// Compute the visual column for a given logical position in a line
+// Compute the visual column for a given logical byte position in a line
 int
 visual_column (const char *line, int len, int logical_pos,
                int tab_width)
 {
+  if (!line || logical_pos <= 0)
+    return 0;
+  if (logical_pos > len)
+    logical_pos = len;
+  if (tab_width <= 0)
+    tab_width = 8;
   int vis = 0;
-  for (int i = 0; i < logical_pos && i < len; i++) {
-    if (line[i] == '\t') {
-      vis += tab_width - (vis % tab_width);
-    } else {
-      vis++;
+  int i = 0;
+  while (i < logical_pos)
+    {
+      if (line[i] == '\t')
+        {
+          vis += tab_width - (vis % tab_width);
+          i++;
+        }
+      else
+        {
+          int clen = utf8_char_len (line + i, logical_pos - i);
+          /* If multi-byte sequence would cross logical_pos, count remaining bytes as width 1 */
+          if (i + clen > logical_pos)
+            {
+              vis += logical_pos - i;
+              break;
+            }
+          vis += utf8_char_width (line + i, len - i);
+          i += clen;
+        }
     }
-  }
   return vis;
 }
 
@@ -92,13 +113,25 @@ get_wrap_break (const char *line, int start, int line_len, int max_width, int ta
   // First, find the maximum we could take if we ignored word boundaries
   int vis = 0;
   int max_chars = 0;
-  for (int i = start; i < line_len; i++)
+  for (int i = start; i < line_len; )
     {
-      int char_vis = (line[i] == '\t') ? (tab_width - (vis % tab_width)) : 1;
+      int clen;
+      int char_vis;
+      if (line[i] == '\t')
+        {
+          clen = 1;
+          char_vis = tab_width - (vis % tab_width);
+        }
+      else
+        {
+          clen = utf8_char_len (line + i, line_len - i);
+          char_vis = utf8_char_width (line + i, line_len - i);
+        }
       if (vis + char_vis > max_width)
         break;
       vis += char_vis;
-      max_chars++;
+      max_chars += clen;
+      i += clen;
     }
   if (start + max_chars >= line_len)
     return line_len - start;   // fits entirely
@@ -518,134 +551,124 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
     memcpy(buf->nesting_cache[logical_line].kw_stack, kw_stack, sizeof(int) * 100);
   }
 
-  // Compute expanded length
-  int expanded_len = 0;
-  int current_vis = 0;
-  for (int i = start; i < start + len && i < line_len; i++)
-    {
-		
-
-
-
-      if (full_line[i] == '\t')
-        {
-          int spaces =
-            config->display.tab_width -
-            (current_vis % config->display.tab_width);
-          expanded_len += spaces;
-          current_vis += spaces;
-        }
-      else
-        {
-          expanded_len++;
-          current_vis++;
-        }
-    }
-  // Build expanded string
-  char *expanded = xmalloc (expanded_len + 1);
-  if (!expanded)
+  int end = start + len;
+  if (end > line_len)
+    end = line_len;
+  if (start < 0)
+    start = 0;
+  if (start >= end)
     {
       if (colors)
         free (colors);
-      mvprintw (y, x, "%.*s", (int) (len <= INT_MAX ? len : INT_MAX),
-                &full_line[start]);
       return;
     }
-  int exp_idx = 0;
-  current_vis = 0;
-  for (int i = start; i < start + len && i < line_len; i++)
+
+  /* Expand tabs to spaces; keep UTF-8 multi-byte sequences intact */
+  int tab_width = (config && config->display.tab_width > 0)
+                    ? config->display.tab_width : 8;
+  int base_vis = visual_column (full_line, line_len, start, tab_width);
+  int max_exp = 0;
+  int current_vis = base_vis;
+  for (int i = start; i < end; )
     {
-		
-
-
-
       if (full_line[i] == '\t')
         {
-          int spaces =
-            config->display.tab_width -
-            (current_vis % config->display.tab_width);
-          for (int s = 0; s < spaces; s++)
-            {
-		
-
-
-
-              expanded[exp_idx++] = ' ';
-            }
+          int spaces = tab_width - (current_vis % tab_width);
+          max_exp += spaces;
           current_vis += spaces;
+          i++;
         }
       else
         {
-          expanded[exp_idx++] = full_line[i];
-          current_vis++;
+          int clen = utf8_char_len (full_line + i, end - i);
+          max_exp += clen;
+          current_vis += utf8_char_width (full_line + i, end - i);
+          i += clen;
+        }
+    }
+
+  char *expanded = xmalloc ((size_t) max_exp + 1);
+  int *exp_src = xmalloc ((size_t) max_exp * sizeof (int));
+  if (!expanded || !exp_src)
+    {
+      free (expanded);
+      free (exp_src);
+      if (colors)
+        free (colors);
+      mvaddnstr (y, x, &full_line[start], end - start);
+      return;
+    }
+
+  int exp_idx = 0;
+  current_vis = base_vis;
+  for (int i = start; i < end; )
+    {
+      if (full_line[i] == '\t')
+        {
+          int spaces = tab_width - (current_vis % tab_width);
+          for (int s = 0; s < spaces; s++)
+            {
+              expanded[exp_idx] = ' ';
+              exp_src[exp_idx] = i;
+              exp_idx++;
+            }
+          current_vis += spaces;
+          i++;
+        }
+      else
+        {
+          int clen = utf8_char_len (full_line + i, end - i);
+          for (int b = 0; b < clen; b++)
+            {
+              expanded[exp_idx] = full_line[i + b];
+              exp_src[exp_idx] = i;
+              exp_idx++;
+            }
+          current_vis += utf8_char_width (full_line + i, end - i);
+          i += clen;
         }
     }
   expanded[exp_idx] = '\0';
-  // If no colors, print expanded
+  int expanded_len = exp_idx;
+
   if (!colors)
     {
-      mvprintw (y, x, "%.*s", (int) expanded_len, expanded);
+      mvaddnstr (y, x, expanded, expanded_len);
       free (expanded);
+      free (exp_src);
       return;
     }
-  // Build expanded colors
-  int *expanded_colors = xmalloc (expanded_len * sizeof (int));
-  if (!expanded_colors)
-    {
-      free (colors);
-      mvprintw (y, x, "%.*s", (int) expanded_len, expanded);
-      free (expanded);
-      return;
-    }
-  int log_idx = start;
-  exp_idx = 0;
-  current_vis = 0;
-  while (log_idx < start + len && log_idx < line_len)
-    {
-		
 
-
-
-      int color = colors[log_idx];
-      if (full_line[log_idx] == '\t')
-        {
-          int spaces =
-            config->display.tab_width -
-            (current_vis % config->display.tab_width);
-          for (int s = 0; s < spaces; s++)
-            {
-		
-
-
-
-              expanded_colors[exp_idx++] = color;
-            }
-          current_vis += spaces;
-        }
-      else
-        {
-          expanded_colors[exp_idx++] = color;
-          current_vis++;
-        }
-      log_idx++;
-    }
-  // Print
+  /* Print runs of same color as complete UTF-8 sequences */
   int current_x = x;
-  for (int i = 0; i < expanded_len; i++)
+  int i = 0;
+  while (i < expanded_len && current_x < COLS)
     {
-		
-
-
-
-      if (current_x >= COLS)
-        break;
-      attron (COLOR_PAIR (expanded_colors[i]));
-      mvprintw (y, current_x++, "%c", expanded[i]);
-      attroff (COLOR_PAIR (expanded_colors[i]));
+      int color = colors[exp_src[i]];
+      int run_start = i;
+      while (i < expanded_len && colors[exp_src[i]] == color)
+        i++;
+      int run_len = i - run_start;
+      attron (COLOR_PAIR (color));
+      /* Advance by display width of each char in the run */
+      int j = run_start;
+      int run_x = current_x;
+      while (j < run_start + run_len && run_x < COLS)
+        {
+          int clen = utf8_char_len (expanded + j, run_start + run_len - j);
+          int cw = utf8_char_width (expanded + j, run_start + run_len - j);
+          if (run_x + cw > COLS)
+            break;
+          mvaddnstr (y, run_x, expanded + j, clen);
+          run_x += cw;
+          j += clen;
+        }
+      attroff (COLOR_PAIR (color));
+      current_x = run_x;
     }
   free (colors);
   free (expanded);
-  free (expanded_colors);
+  free (exp_src);
 }
 // Function to handle tab insertion
 // Inserts spaces or a tab character at the cursor position based on config
@@ -847,6 +870,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                 }
               
               int x = 1 + num_width;
+              int tab_w = config ? config->display.tab_width : 8;
               
               // Print segment (respecting selection)
               int seg_end = pos + segment_len;
@@ -858,7 +882,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   int print_len = end - pos;
                   print_highlighted (1 + visual_row, x, line, len, pos, print_len,
                                      syntax_highlight ? 4 : 1, config, buf, logical_line);
-                  x += print_len;
+                  x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
                   pos += print_len;
                 }
               
@@ -869,10 +893,10 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   int print_len = end - pos;
                   if (syntax_highlight)
                     attron (COLOR_PAIR (2));
-                  mvprintw (1 + visual_row, x, "%.*s", (int) print_len, &line[pos]);
+                  mvaddnstr (1 + visual_row, x, &line[pos], print_len);
                   if (syntax_highlight)
                     attroff (COLOR_PAIR (2));
-                  x += print_len;
+                  x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
                   pos += print_len;
                 }
               
@@ -897,6 +921,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
             }
           
           int x = 1 + num_width;
+          int tab_w = config ? config->display.tab_width : 8;
           
           // Print before selection
           if (pos < sel_start)
@@ -904,36 +929,34 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
               int end = (sel_start < len) ? sel_start : len;
               int print_len = end - pos;
               int max_print = available_width;
-              if (print_len > max_print)
-                print_len = max_print;
+              int fit = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
+              print_len = fit;
               print_highlighted (1 + visual_row, x, line, len, pos, print_len,
                                  syntax_highlight ? 4 : 1, config, buf, logical_line);
-              x += print_len;
+              x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
               pos += print_len;
             }
           // Print selection
-          if (pos < sel_end)
+          if (pos < sel_end && (x - 1 - num_width) < available_width)
             {
               int end = sel_end;
               int print_len = end - pos;
               int max_print = available_width - (x - 1 - num_width);
-              if (print_len > max_print)
-                print_len = max_print;
+              print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
               if (syntax_highlight)
                 attron (COLOR_PAIR (2));
-              mvprintw (1 + visual_row, x, "%.*s", (int) print_len, &line[pos]);
+              mvaddnstr (1 + visual_row, x, &line[pos], print_len);
               if (syntax_highlight)
                 attroff (COLOR_PAIR (2));
-              x += print_len;
+              x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
               pos += print_len;
             }
           // Print after selection
-          if (pos < len)
+          if (pos < len && (x - 1 - num_width) < available_width)
             {
               int print_len = len - pos;
               int max_print = available_width - (x - 1 - num_width);
-              if (print_len > max_print)
-                print_len = max_print;
+              print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
               print_highlighted (1 + visual_row, x, line, len, pos, print_len,
                                  syntax_highlight ? 4 : 1, config, buf, logical_line);
             }

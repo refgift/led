@@ -259,7 +259,8 @@ dispatch_key (int ch, InputContext *ctx)
           return;
         }
     }
-  if (ch >= 32 && ch <= 126)
+  /* ASCII printables and UTF-8 continuation / lead bytes (128-255) */
+  if ((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
     handle_printable (ch, ctx);
 }
 
@@ -590,7 +591,7 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
           *search_mode = 0;
           search_buffer[0] = 0;
         }
-      else if (ch >= 32 && ch <= 126)
+      else if ((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
         {
           int len = strlen (search_buffer);
           if (len < 255)

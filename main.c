@@ -29,7 +29,7 @@ main (int argc, char *argv[])
   // Initialize curses only if not in test mode
   if (!test_mode)
     {
-      (void) setlocale (LC_ALL, "C");    // Use C locale for consistent behavior
+      (void) setlocale (LC_ALL, "");    /* Enable UTF-8 / extended chars */
       if (initscr () == NULL)
         {
           fprintf (stderr, "Error: Failed to initialize ncurses\n");

@@ -30,4 +30,11 @@ void* xcalloc(size_t nmemb, size_t size);
  */
 bool is_filename_safe(const char *fn);
 
+/* UTF-8 helpers (byte-oriented buffer; display width via wcwidth) */
+int utf8_char_len(const char *s, int maxlen);
+int utf8_char_width(const char *s, int maxlen);
+int utf8_visual_width(const char *s, int byte_len, int tab_width, int start_vis);
+/* Max bytes of s[0..byte_len) that fit in max_vis display columns (tabs expanded). */
+int utf8_fit_bytes(const char *s, int byte_len, int max_vis, int tab_width, int start_vis);
+
 #endif /* UTILS_H */

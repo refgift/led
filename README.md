@@ -21,6 +21,9 @@ disposable artifacts. Contributors are welcome to extend this vision, ensuring
 that digital editing respects the user's work as paper once did: permanent, 
 safe, and under their control.
 
+## What's New
+- Added support for Cryllic and other Unicode character sets.
+
 ## Recent Code Review and Fixes
 
 Following a thorough code review of led version 1.0.0, several critical security vulnerabilities, memory management issues, and reliability problems have been addressed. The review prioritized fixes that prevent data loss, crashes, and security exploits, aligning with the editor's philosophy of data safety.
