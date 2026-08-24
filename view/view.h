@@ -13,6 +13,49 @@
  * word-wrap logic (when enabled), and cursor positioning math.
  */
 
+/* === Incremental rendering === */
+
+/**
+ * ViewFrameState - snapshot of everything that determines the rendered
+ * output of one draw pass (minus transient status text). Two consecutive
+ * passes with equal states render identical pixels, so the view can skip
+ * work. Pure data: safe to construct and compare in unit tests.
+ */
+typedef struct {
+    int valid;
+    int term_lines, term_cols;
+    unsigned long generation;        /* Buffer.edit_generation at draw time */
+    int num_lines;
+    int changed_first, changed_last; /* Buffer change range (INT_MAX/-1 if none) */
+    int structure_changed;           /* Buffer.structure_changed */
+    int scroll_row, scroll_col;
+    int cursor_line, cursor_col;
+    int show_line_numbers, syntax_highlight;
+    int word_wrap;
+    int selection_active;
+    int sel_sl, sel_sc, sel_el, sel_ec;
+} ViewFrameState;
+
+typedef enum {
+    LED_PLAN_STATUS_ONLY = 0,  /* rewrite status bar + cursor only */
+    LED_PLAN_LINES,            /* repaint first_line..last_line (+ status) */
+    LED_PLAN_FULL              /* erase + repaint everything */
+} RenderPlanKind;
+
+typedef struct {
+    RenderPlanKind kind;
+    int first_line, last_line;   /* meaningful when kind == LED_PLAN_LINES */
+} RenderPlan;
+
+/**
+ * Decide how much of the screen a new frame must paint, given the
+ * previously committed frame state and the current one. Pure function.
+ */
+RenderPlan view_decide(const ViewFrameState* last, const ViewFrameState* cur);
+
+/** Forces the next draw_update to perform a full repaint. */
+void view_invalidate(void);
+
 /* === Main rendering entry points === */
 
 void draw_initial(WINDOW* win, Buffer* buf, int* scroll_row, int* scroll_col,

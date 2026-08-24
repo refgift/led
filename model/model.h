@@ -61,6 +61,12 @@ typedef struct {
     int capacity;
     NestingCache* nesting_cache;  /* one entry per logical line */
     bool dirty;                   /* true if any line has been modified since last cache invalidation */
+
+    /* Incremental rendering support (consumed by view, see draw_update) */
+    unsigned long edit_generation; /* bumped on every mutation */
+    int changed_first;             /* lowest logical line touched since last draw; INT_MAX = none */
+    int changed_last;              /* highest logical line touched since last draw; -1 = none */
+    int structure_changed;         /* 1 if lines were inserted/deleted/shifted or bulk-replaced */
 } Buffer;
 
 /* === GapBuffer operations (low-level) === */
@@ -97,5 +103,10 @@ int buffer_delete_char(Buffer* buf, int line, int col);
 int buffer_delete_range(Buffer* buf, int start_line, int start_col, int end_line, int end_col);
 int buffer_insert_text(Buffer* buf, int line, int col, const char* text);
 void buffer_replace_all(Buffer* buf, const char* search_regex, const char* replace_str);
+
+/** Clears the per-draw change range (changed_first/last/structure_changed).
+ *  Does NOT reset edit_generation. The view calls this after consuming
+ *  change info at the end of a draw pass. */
+void buffer_reset_change_tracking(Buffer* buf);
 
 #endif

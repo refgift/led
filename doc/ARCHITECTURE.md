@@ -138,6 +138,74 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
+│           draw_update() (view.c)                             │
+│           Incremental renderer                               │
+└──────────────────────────────────────────────────────────────┘
+                          │
+                ┌─────────┴─────────┐
+                ↓                   ↓
+        Snapshot state      Adjust scroll
+        (ViewFrameState)    (keep cursor visible)
+                │
+                ↓
+        view_decide(last, cur)
+                │
+    ┌───────────┼───────────────┐
+    ↓           ↓               ↓
+LED_PLAN_    LED_PLAN_      LED_PLAN_
+STATUS_ONLY  LINES(a,b)     FULL
+    │           │               │
+    │           │          Erase content rows,
+    │           │          box(), render loop:
+    │           │          ├─ word_wrap ON: wrap path
+    │           │          └─ word_wrap OFF: truncate path
+    │           │               per row via render_content_row()
+    │      Repaint rows     (clrtoeol per row first)
+    │      [a..b] ∩ viewport
+    ↓           ↓               ↓
+        render_status_bar()  (always)
+                ↓
+        Commit frame state,
+        buffer_reset_change_tracking()
+                ↓
+        Position cursor, refresh()
+```
+
+### When is each plan chosen?
+
+- **STATUS_ONLY** — buffer unchanged (`edit_generation` equal), same scroll,
+  same toggles/selection/terminal size: only cursor or status text moved.
+- **LINES(a,b)** — non-structural edit(s): `Buffer.changed_first..last` marks
+  exactly which logical lines were touched; only those viewport rows repaint.
+  Requires identical line count and no structural change.
+- **FULL** — everything else: startup, resize, scroll change, toggles (F2/F3),
+  selection changes, line inserts/deletes, undo across lines, `replace_all`,
+  and always when word_wrap is enabled.
+
+### Supporting machinery
+
+```
+MODEL                              VIEW
+─────                              ────
+Buffer.edit_generation   ──diff──▶ view_decide()
+Buffer.changed_first/last          g_last_frame snapshot
+Buffer.structure_changed           ┌────────────────────────┐
+                                   │ LineColorEntry cache    │
+mutators bump generation,          │ (256 slots, keyed by    │
+mark ranges; _invalidate_cache_from│ generation + start hash │
+invalidates NestingCache as before │ + exact text compare)   │
+                                   └────────────────────────┘
+config_parse_syntax(): reserved words sorted once at load;
+view looks up via config_is_reserved_word() (binary search)
+and reads pre-parsed syntax_pairs — no per-frame string parsing.
+```
+
+---
+
+## Legacy Full-Redraw Pipeline (pre-incremental reference)
+
+```
+┌──────────────────────────────────────────────────────────────┐
 │           draw_update() (view.c:558-884)                     │
 └──────────────────────────────────────────────────────────────┘
                           │

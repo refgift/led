@@ -9,39 +9,8 @@
 #include <string.h>             // For strdup
 // Meta symbols for basic syntax highlighting (braces, semicolons, etc.)
 static const char *meta_symbols = ";,{}()[]";
-// Structure for keyword pairs (e.g., if-else, for-while)
-typedef struct
-{
-  char open[32];
-  char close[32];
-} KeywordPair;
-// Check if a word is in a comma-separated list of reserved words
-static int
-is_reserved_word (const char *word, const char *list)
-{
-  if (!list || !word)
-    return 0;
-  char *dup = xmalloc (strlen (list) + 1);
-  if (!dup)
-    return 0;
-  strcpy (dup, list);
-  char *token = strtok (dup, ",");
-  while (token)
-    {
-		
-
-      
-      
-      if (strcmp (word, token) == 0)
-        {
-          free (dup);
-          return 1;
-        }
-      token = strtok (NULL, ",");
-    }
-  free (dup);
-  return 0;
-}
+// Alias for the pre-parsed config pair type
+typedef SyntaxPair KeywordPair;
 // Calculate the number of digits in a int number (for line numbers)
 int
 calculate_digits (int n)
@@ -179,40 +148,9 @@ compute_line_colors (const char *full_line, int line_len,
     }
   if (!config)
     return colors;              // Safety check
-  // Parse paired keywords into array
-  KeywordPair pairs[10];
-  memset(pairs, 0, sizeof(pairs));
-  int num_pairs = 0;
-  if (strlen(config->syntax.paired_keywords) >0 )
-    {
-      char *dup_pk = xmalloc (strlen (config->syntax.paired_keywords) + 1);
-      if (dup_pk)
-        {
-          strcpy (dup_pk, config->syntax.paired_keywords);
-          char *token = strtok (dup_pk, ",");
-          while (token && num_pairs < 10)
-            {
-		
-
-
-
-              char *dash = strchr (token, '-');
-              if (dash)
-                {
-                  *dash = '\0';
-                  strncpy (pairs[num_pairs].open, token,
-                           sizeof(pairs[num_pairs].open) - 1);
-                  pairs[num_pairs].open[sizeof(pairs[num_pairs].open) - 1] = '\0';
-                  strncpy (pairs[num_pairs].close, dash + 1,
-                           sizeof(pairs[num_pairs].close) - 1);
-                  pairs[num_pairs].close[sizeof(pairs[num_pairs].close) - 1] = '\0';
-                  num_pairs++;
-                }
-              token = strtok (NULL, ",");
-            }
-          free (dup_pk);
-        }
-    }
+  // Use pre-paired keyword pairs parsed once by load_editor_config
+  KeywordPair *pairs = (KeywordPair *) config->syntax_pairs;
+  int num_pairs = config->num_syntax_pairs;
   // Copy starting stacks and levels
   // State is updated in place via pointers
   int word_start = 0;
@@ -321,8 +259,7 @@ compute_line_colors (const char *full_line, int line_len,
                     }
                   // Check for reserved words (if not paired)
                   if (!colored
-                      && is_reserved_word (word,
-                                           config->syntax.reserved_words))
+                      && config_is_reserved_word (config, word))
                     {
                       for (int j = word_start; j < i; j++)
                         colors[j] = 8;
@@ -376,7 +313,7 @@ compute_line_colors (const char *full_line, int line_len,
                     }
                 }
               if (!colored
-                  && is_reserved_word (word, config->syntax.reserved_words))
+                  && config_is_reserved_word (config, word))
                 {
                   for (int j = word_start; j < line_len; j++)
                     colors[j] = 8;
@@ -482,35 +419,9 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
   *brace_top = 0;
   *kw_level = 1;
   *kw_top = 0;
-  // Parse paired keywords
-  KeywordPair pairs[10];
-  memset(pairs, 0, sizeof(pairs));
-  int num_pairs = 0;
-  if (strlen(config->syntax.paired_keywords) > 0) {
-    int pk_len = strlen(config->syntax.paired_keywords);
-    char *dup_pk = malloc(pk_len + 1);
-    if (dup_pk) {
-      strcpy(dup_pk, config->syntax.paired_keywords);
-      char *token = strtok(dup_pk, ",");
-      while (token && num_pairs < 10) {
-		
-
-
-
-        char *dash = strchr(token, '-');
-        if (dash) {
-          *dash = '\0';
-          strncpy(pairs[num_pairs].open, token, sizeof(pairs[num_pairs].open) - 1);
-          pairs[num_pairs].open[sizeof(pairs[num_pairs].open) - 1] = '\0';
-          strncpy(pairs[num_pairs].close, dash + 1, sizeof(pairs[num_pairs].close) - 1);
-          pairs[num_pairs].close[sizeof(pairs[num_pairs].close) - 1] = '\0';
-          num_pairs++;
-        }
-        token = strtok(NULL, ",");
-      }
-      free(dup_pk);
-    }
-  }
+  // Use pre-parsed pairs from config
+  KeywordPair *pairs = (KeywordPair *) config->syntax_pairs;
+  int num_pairs = config->num_syntax_pairs;
   // Update state for each previous line
   for (int l = 0; l < start_line; l++) {
 		
@@ -523,6 +434,160 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
     free(line);
   }
 }
+
+/* === Per-line color cache (Tier 4) === */
+#define CCACHE_SLOTS 256
+#define CCACHE_MAX_LINE 4096
+
+typedef struct {
+  int used;
+  int line_no;
+  unsigned long generation;
+  unsigned long start_hash;
+  int has_colors;
+  int text_len;
+  int *colors;
+  char *text;
+  /* nesting state AFTER this line, so hits restore identical state */
+  int brace_level, brace_top, brace_stack[256];
+  int kw_level, kw_top, kw_stack[100];
+} LineColorEntry;
+
+static LineColorEntry g_ccache[CCACHE_SLOTS];
+
+static unsigned long
+hash_start_state (int bl, int bt, const int *bs, int kl, int kt, const int *ks)
+{
+  unsigned long h = 1469598103934665603UL;
+  unsigned long vals[8];
+  int n = 0;
+  vals[n++] = (unsigned long) bl;
+  vals[n++] = (unsigned long) bt;
+  for (int i = 0; i < bt && i < 256; i++)
+    vals[(n++) & 7] = (unsigned long) bs[i];
+  vals[n++ & 7] = (unsigned long) kl;
+  vals[n++ & 7] = (unsigned long) kt;
+  for (int i = 0; i < kt && i < 100; i++)
+    vals[(n++) & 7] = (unsigned long) ks[i];
+  for (int i = 0; i < 8; i++)
+    {
+      h ^= vals[i];
+      h *= 1099511628211UL;
+    }
+  return h;
+}
+
+/*
+ * Compute (or fetch cached) colors for one logical line.
+ * Always returns a pointer owned by this module (or NULL when
+ * highlighting is disabled/line too long). Callers must NOT free it.
+ * The in/out nesting state behaves exactly like compute_line_colors.
+ */
+static int *
+colors_for_line (Buffer *buf, int logical_line, const char *line, int len,
+                 int highlight_pair, EditorConfig *config,
+                 int *brace_level, int *brace_top, int brace_stack[],
+                 int *kw_level, int *kw_top, int kw_stack[])
+{
+  static int *overflow_colors;
+  static int overflow_cap;
+  int maxll = (config && config->performance.max_line_length > 0)
+    ? config->performance.max_line_length : 10000;
+  if (highlight_pair == 1 || len > maxll || len > CCACHE_MAX_LINE)
+    {
+      int *computed = compute_line_colors (line, len, highlight_pair, config,
+                                           brace_level, brace_top, brace_stack,
+                                           kw_level, kw_top, kw_stack);
+      if (!computed)
+        return NULL;
+      if (overflow_cap < len)
+        {
+          int *nc = realloc (overflow_colors, (size_t) len * sizeof (int));
+          if (!nc)
+            {
+              free (computed);
+              return NULL;
+            }
+          overflow_colors = nc;
+          overflow_cap = len;
+        }
+      memcpy (overflow_colors, computed, (size_t) len * sizeof (int));
+      free (computed);
+      return overflow_colors;
+    }
+  LineColorEntry *slot = &g_ccache[logical_line & (CCACHE_SLOTS - 1)];
+  unsigned long h = hash_start_state (*brace_level, *brace_top, brace_stack,
+                                      *kw_level, *kw_top, kw_stack);
+  if (slot->used && slot->line_no == logical_line
+      && slot->generation == buf->edit_generation
+      && slot->start_hash == h
+      && slot->text_len == len
+      && memcmp (slot->text, line, (size_t) len) == 0)
+    {
+      *brace_level = slot->brace_level;
+      *brace_top = slot->brace_top;
+      memcpy (brace_stack, slot->brace_stack, sizeof (int) * 256);
+      *kw_level = slot->kw_level;
+      *kw_top = slot->kw_top;
+      memcpy (kw_stack, slot->kw_stack, sizeof (int) * 100);
+      return slot->has_colors ? slot->colors : NULL;
+    }
+  int *computed = compute_line_colors (line, len, highlight_pair, config,
+                                       brace_level, brace_top, brace_stack,
+                                       kw_level, kw_top, kw_stack);
+  if (!slot->colors)
+    slot->colors = xmalloc ((size_t) CCACHE_MAX_LINE * sizeof (int));
+  if (!slot->text)
+    slot->text = xmalloc ((size_t) CCACHE_MAX_LINE + 1);
+  if (slot->colors && slot->text)
+    {
+      slot->used = 1;
+      slot->line_no = logical_line;
+      slot->generation = buf->edit_generation;
+      slot->start_hash = hash_start_state (*brace_level, *brace_top,
+                                           brace_stack, *kw_level, *kw_top,
+                                           kw_stack);
+      slot->has_colors = (computed != NULL);
+      slot->text_len = len;
+      memcpy (slot->text, line, (size_t) len);
+      slot->text[len] = '\0';
+      if (computed)
+        memcpy (slot->colors, computed, (size_t) len * sizeof (int));
+      slot->brace_level = *brace_level;
+      slot->brace_top = *brace_top;
+      memcpy (slot->brace_stack, brace_stack, sizeof (int) * 256);
+      slot->kw_level = *kw_level;
+      slot->kw_top = *kw_top;
+      memcpy (slot->kw_stack, kw_stack, sizeof (int) * 100);
+    }
+  return computed;
+}
+
+/* === Grow-only scratch buffers for tab expansion === */
+static char *g_exp_buf;
+static int *g_exp_src_buf;
+static size_t g_exp_cap;
+
+static int
+ensure_exp_capacity (size_t need)
+{
+  if (g_exp_cap >= need)
+    return 1;
+  size_t ncap = g_exp_cap ? g_exp_cap : 1024;
+  while (ncap < need)
+    ncap *= 2;
+  char *nb = realloc (g_exp_buf, ncap);
+  if (!nb)
+    return 0;
+  g_exp_buf = nb;
+  int *ns = realloc (g_exp_src_buf, ncap * sizeof (int));
+  if (!ns)
+    return 0;
+  g_exp_src_buf = ns;
+  g_exp_cap = ncap;
+  return 1;
+}
+
 // Print a highlighted substring of a line
 static void
 print_highlighted (int y, int x, const char *full_line, int line_len,
@@ -538,7 +603,10 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   int kw_stack[100];
   memset(kw_stack, 0, sizeof(kw_stack));
   get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
-  int *colors = compute_line_colors(full_line, line_len, highlight_pair, config, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack);
+  int *colors = colors_for_line (buf, logical_line, full_line, line_len,
+                                 highlight_pair, config,
+                                 &brace_level, &brace_top, brace_stack,
+                                 &kw_level, &kw_top, kw_stack);
 
   // Cache the nesting state after processing this line (for next line's use)
   if (buf->nesting_cache && logical_line < buf->capacity) {
@@ -558,8 +626,6 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
     start = 0;
   if (start >= end)
     {
-      if (colors)
-        free (colors);
       return;
     }
 
@@ -587,17 +653,13 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
         }
     }
 
-  char *expanded = xmalloc ((size_t) max_exp + 1);
-  int *exp_src = xmalloc ((size_t) max_exp * sizeof (int));
-  if (!expanded || !exp_src)
+  if (!ensure_exp_capacity ((size_t) max_exp + 1))
     {
-      free (expanded);
-      free (exp_src);
-      if (colors)
-        free (colors);
       mvaddnstr (y, x, &full_line[start], end - start);
       return;
     }
+  char *expanded = g_exp_buf;
+  int *exp_src = g_exp_src_buf;
 
   int exp_idx = 0;
   current_vis = base_vis;
@@ -634,8 +696,6 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
   if (!colors)
     {
       mvaddnstr (y, x, expanded, expanded_len);
-      free (expanded);
-      free (exp_src);
       return;
     }
 
@@ -666,10 +726,8 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
       attroff (COLOR_PAIR (color));
       current_x = run_x;
     }
-  free (colors);
-  free (expanded);
-  free (exp_src);
 }
+
 // Function to handle tab insertion
 // Inserts spaces or a tab character at the cursor position based on config
 void
@@ -770,7 +828,266 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
   *cursor_screen_x = (int) screen_x;
   move (screen_y, screen_x);
   refresh ();
+  view_invalidate ();
 }
+// Repaint one content row in truncate (no-wrap) mode, erasing stale cells
+static void
+render_content_row (int visual_row, int logical_line, Buffer *buf,
+                    int *scroll_col, int available_width, int num_digits,
+                    int num_width, int show_line_numbers,
+                    int syntax_highlight,
+                    int sel_start_line, int sel_start_col,
+                    int sel_end_line, int sel_end_col, int selection_active,
+                    EditorConfig *config)
+{
+  move (1 + visual_row, 1);
+  clrtoeol ();
+  char *line = NULL;
+  int len = 0;
+
+  if (show_line_numbers)
+    {
+      mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+    }
+
+  line = buffer_get_line (buf, logical_line);
+  len = strlen (line);
+  int pos = *scroll_col ? *scroll_col : 0;
+
+  // Handle selection
+  int sel_start = len;
+  int sel_end = len;
+  if (selection_active && logical_line >= sel_start_line
+      && logical_line <= sel_end_line)
+    {
+      sel_start =
+        (logical_line == sel_start_line) ? sel_start_col : 0;
+      sel_end =
+        (logical_line == sel_end_line) ? sel_end_col : len;
+    }
+
+  int x = 1 + num_width;
+  int tab_w = config ? config->display.tab_width : 8;
+
+  // Print before selection
+  if (pos < sel_start)
+    {
+      int end = (sel_start < len) ? sel_start : len;
+      int print_len = end - pos;
+      int max_print = available_width;
+      int fit = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
+      print_len = fit;
+      print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+                         syntax_highlight ? 4 : 1, config, buf, logical_line);
+      x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
+      pos += print_len;
+    }
+  // Print selection
+  if (pos < sel_end && (x - 1 - num_width) < available_width)
+    {
+      int end = sel_end;
+      int print_len = end - pos;
+      int max_print = available_width - (x - 1 - num_width);
+      print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
+      if (syntax_highlight)
+        attron (COLOR_PAIR (2));
+      mvaddnstr (1 + visual_row, x, &line[pos], print_len);
+      if (syntax_highlight)
+        attroff (COLOR_PAIR (2));
+      x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
+      pos += print_len;
+    }
+  // Print after selection
+  if (pos < len && (x - 1 - num_width) < available_width)
+    {
+      int print_len = len - pos;
+      int max_print = available_width - (x - 1 - num_width);
+      print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
+      print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+                         syntax_highlight ? 4 : 1, config, buf, logical_line);
+    }
+
+  free (line);
+}
+
+// Rebuild and repaint the bottom status line
+static void
+render_status_bar (Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
+                   int search_mode, char *search_buffer, int replace_step,
+                   char *replace_buffer, EditorConfig *config)
+{
+  move (LINES - 1, 1);
+  clrtoeol ();
+  char status_line[COLS + 1];
+  // Temporary message prefix
+  char message_prefix[COLS];
+  message_prefix[0] = 0;
+  if (ed && ed->status_message[0]
+      && (time (NULL) - ed->status_message_time) < 5)
+    {
+      snprintf (message_prefix, COLS, "%s | ",
+                ed->status_message);
+    }
+  if (replace_step == 1)
+    {
+      snprintf (status_line, COLS, "Replace search: %s",
+                search_buffer ? search_buffer : "");
+    }
+  else if (replace_step == 2)
+    {
+      snprintf (status_line, COLS, "Replace with: %s",
+                replace_buffer ? replace_buffer : "");
+    }
+  else if (search_mode)
+    {
+      snprintf (status_line, COLS, "Search: %s",
+                search_buffer ? search_buffer : "");
+    }
+  else
+    {
+      // Build standard status
+      char time_str[16] = "";
+      if (config && config->statusbar.show_time)
+        {
+          time_t now = time (NULL);
+           struct tm *tm_info = localtime (&now);
+           if (config->statusbar.time_format == 24)
+             {
+               (void) strftime (time_str, 16, "%H:%M", tm_info);
+             }
+           else
+             {
+               (void) strftime (time_str, 16, "%I:%M%p", tm_info);
+             }
+        }
+      char version_str[32] = "";
+      if (config && config->statusbar.show_version)
+        {
+          snprintf (version_str, 32, "%s ", VERSION);
+        }
+         char pos_str[64];
+         int total_lines = buffer_num_lines (buf);
+         snprintf (pos_str, 64, "Line %d/%d Col %d",
+                   cursor_line + 1, total_lines, cursor_col + 1);
+          char meter_str[16] = "";
+          if (ed && config && config->statusbar.show_key_meter) {
+            snprintf (meter_str, 16, " | %dus", ed->last_key_us);
+          }
+      char filename_display[256] = "";
+      if (ed && ed->filename)
+        {
+          const char *base = strrchr (ed->filename, '/');
+          base = base ? base + 1 : ed->filename;
+          snprintf (filename_display, 256, "%s%s", base,
+                    ed->file_modified ? "*" : "");
+        }
+      // Assemble status line
+      if (config && config->statusbar.style == 1)
+        {                       // Centered
+          int total_len =
+            (int) (strlen (version_str) + strlen (filename_display) +
+                   strlen (pos_str) + strlen (time_str) + 6);
+          int start_pos = (COLS - total_len) / 2;
+          if (start_pos < 1)
+            start_pos = 1;
+           snprintf (status_line, COLS, "%*s%s %s %s %s%s",
+                     start_pos - 1, "", version_str, filename_display, pos_str,
+                     time_str, meter_str);
+        }
+      else
+        {                       // Balanced
+          int remaining =
+            COLS - 2 - (int) (strlen (pos_str) + strlen (filename_display) +
+                              strlen (meter_str) + 1);
+          int left_space = remaining / 2;
+          int right_space = remaining - left_space;
+          char left[COLS / 2 + 1];
+          char right[COLS / 2 + 1];
+          if (left_space > 0)
+            {
+              snprintf (left, COLS / 2 + 1, "%*s%s",
+                        left_space - (int) strlen (version_str), "",
+                        version_str);
+            }
+          else
+            {
+              left[0] = '\0';
+            }
+          if (right_space > 0)
+            {
+              snprintf (right, COLS / 2 + 1, "%s%*s", time_str,
+                        right_space - (int) strlen (time_str), "");
+            }
+          else
+            {
+              right[0] = '\0';
+            }
+           snprintf (status_line, COLS, "%s%s %s%s%s", left,
+                     filename_display, pos_str, right, meter_str);
+        }
+    }
+  // Prepend message
+  if (message_prefix[0])
+    {
+      char temp[COLS + 1];
+      snprintf (temp, COLS, "%s%s", message_prefix, status_line);
+      strncpy (status_line, temp, COLS - 1);
+      status_line[COLS - 1] = '\0';
+    }
+  // Prepend message
+  mvprintw (LINES - 1, 1, "%s", status_line);
+}
+
+RenderPlan
+view_decide (const ViewFrameState *last, const ViewFrameState *cur)
+{
+  RenderPlan plan;
+  plan.kind = LED_PLAN_FULL;
+  plan.first_line = 0;
+  plan.last_line = 0;
+  if (!last || !cur || !last->valid)
+    return plan;
+  if (cur->term_lines != last->term_lines || cur->term_cols != last->term_cols)
+    return plan;
+  if (cur->word_wrap || last->word_wrap)
+    return plan;
+  if (cur->show_line_numbers != last->show_line_numbers)
+    return plan;
+  if (cur->syntax_highlight != last->syntax_highlight)
+    return plan;
+  if (cur->selection_active != last->selection_active)
+    return plan;
+  if (cur->sel_sl != last->sel_sl || cur->sel_sc != last->sel_sc
+      || cur->sel_el != last->sel_el || cur->sel_ec != last->sel_ec)
+    return plan;
+  if (cur->scroll_row != last->scroll_row
+      || cur->scroll_col != last->scroll_col)
+    return plan;
+  if (cur->generation == last->generation)
+    {
+      plan.kind = LED_PLAN_STATUS_ONLY;
+      return plan;
+    }
+  if (cur->structure_changed || last->structure_changed)
+    return plan;
+  if (cur->num_lines != last->num_lines)
+    return plan;
+  if (cur->changed_first > cur->changed_last)
+    return plan;
+  plan.kind = LED_PLAN_LINES;
+  plan.first_line = cur->changed_first < 0 ? 0 : cur->changed_first;
+  plan.last_line = cur->changed_last;
+  return plan;
+}
+
+static ViewFrameState g_last_frame;
+
+void
+view_invalidate (void)
+{
+  g_last_frame.valid = 0;
+}
+
 // Draw an updated editor view (with scrolling, selection, status bar)
 void
 draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
@@ -797,9 +1114,65 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   if (*scroll_row < 0) *scroll_row = 0;
   if (*scroll_row >= buffer_num_lines(buf)) *scroll_row = buffer_num_lines(buf) > 0 ? buffer_num_lines(buf) - 1 : 0;
 
-  clear ();
-  box (win, 0, 0);
-  
+  // Snapshot the frame state and decide the minimal repaint
+  ViewFrameState cur;
+  memset (&cur, 0, sizeof (cur));
+  cur.valid = 1;
+  cur.term_lines = LINES;
+  cur.term_cols = COLS;
+  cur.generation = buf->edit_generation;
+  cur.num_lines = buffer_num_lines (buf);
+  cur.changed_first = buf->changed_first;
+  cur.changed_last = buf->changed_last;
+  cur.structure_changed = buf->structure_changed;
+  cur.scroll_row = *scroll_row;
+  cur.scroll_col = *scroll_col;
+  cur.cursor_line = cursor_line;
+  cur.cursor_col = cursor_col;
+  cur.show_line_numbers = show_line_numbers;
+  cur.syntax_highlight = syntax_highlight;
+  cur.word_wrap = config ? config->display.word_wrap : 0;
+  cur.selection_active = selection_active;
+  cur.sel_sl = selection_start_line;
+  cur.sel_sc = selection_start_col;
+  cur.sel_el = selection_end_line;
+  cur.sel_ec = selection_end_col;
+
+  RenderPlan plan = view_decide (&g_last_frame, &cur);
+
+  if (plan.kind == LED_PLAN_STATUS_ONLY)
+    {
+      render_status_bar (ed, buf, cursor_line, cursor_col, search_mode,
+                         search_buffer, replace_step, replace_buffer, config);
+    }
+  else if (plan.kind == LED_PLAN_LINES)
+    {
+      int first = plan.first_line;
+      int last = plan.last_line;
+      if (first < *scroll_row)
+        first = *scroll_row;
+      int last_visible = *scroll_row + max_lines - 1;
+      if (last > last_visible)
+        last = last_visible;
+      for (int l = first; l <= last && l < buffer_num_lines (buf); l++)
+        render_content_row (l - *scroll_row, l, buf, scroll_col,
+                            available_width, num_digits, num_width,
+                            show_line_numbers, syntax_highlight,
+                            selection_start_line, selection_start_col,
+                            selection_end_line, selection_end_col,
+                            selection_active, config);
+      render_status_bar (ed, buf, cursor_line, cursor_col, search_mode,
+                         search_buffer, replace_step, replace_buffer, config);
+    }
+  else
+    {
+      for (int r = 1; r <= LINES - 2; r++)
+        {
+          move (r, 1);
+          clrtoeol ();
+        }
+      box (win, 0, 0);
+      
   int visual_row = 0;  // Current row on screen
   int logical_line = *scroll_row;  // Current logical line in buffer
   
@@ -967,126 +1340,14 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
       logical_line++;
       free(line);
     }
-  // Status bar
-  char status_line[COLS + 1];
-  // Temporary message prefix
-  char message_prefix[COLS];
-  message_prefix[0] = 0;
-  if (ed && ed->status_message[0]
-      && (time (NULL) - ed->status_message_time) < 5)
-    {
-      snprintf (message_prefix, COLS, "%s | ",
-                ed->status_message);
+
+      render_status_bar (ed, buf, cursor_line, cursor_col, search_mode,
+                         search_buffer, replace_step, replace_buffer, config);
     }
-  if (replace_step == 1)
-    {
-      snprintf (status_line, COLS, "Replace search: %s",
-                search_buffer ? search_buffer : "");
-    }
-  else if (replace_step == 2)
-    {
-      snprintf (status_line, COLS, "Replace with: %s",
-                replace_buffer ? replace_buffer : "");
-    }
-  else if (search_mode)
-    {
-      snprintf (status_line, COLS, "Search: %s",
-                search_buffer ? search_buffer : "");
-    }
-  else
-    {
-      // Build standard status
-      char time_str[16] = "";
-      if (config && config->statusbar.show_time)
-        {
-          time_t now = time (NULL);
-           struct tm *tm_info = localtime (&now);
-           if (config->statusbar.time_format == 24)
-             {
-               (void) strftime (time_str, 16, "%H:%M", tm_info);
-             }
-           else
-             {
-               (void) strftime (time_str, 16, "%I:%M%p", tm_info);
-             }
-        }
-      char version_str[32] = "";
-      if (config && config->statusbar.show_version)
-        {
-          snprintf (version_str, 32, "%s ", VERSION);
-        }
-         char pos_str[64];
-         int total_lines = buffer_num_lines (buf);
-         snprintf (pos_str, 64, "Line %d/%d Col %d",
-                   cursor_line + 1, total_lines, cursor_col + 1);
-          char meter_str[16] = "";
-          if (ed && config && config->statusbar.show_key_meter) {
-            snprintf (meter_str, 16, " | %dus", ed->last_key_us);
-          }
-      char filename_display[256] = "";
-      if (ed && ed->filename)
-        {
-          const char *base = strrchr (ed->filename, '/');
-          base = base ? base + 1 : ed->filename;
-          snprintf (filename_display, 256, "%s%s", base,
-                    ed->file_modified ? "*" : "");
-        }
-      // Assemble status line
-      if (config && config->statusbar.style == 1)
-        {                       // Centered
-          int total_len =
-            (int) (strlen (version_str) + strlen (filename_display) +
-                   strlen (pos_str) + strlen (time_str) + 6);
-          int start_pos = (COLS - total_len) / 2;
-          if (start_pos < 1)
-            start_pos = 1;
-           snprintf (status_line, COLS, "%*s%s %s %s %s%s",
-                     start_pos - 1, "", version_str, filename_display, pos_str,
-                     time_str, meter_str);
-        }
-      else
-        {                       // Balanced
-          int remaining =
-            COLS - 2 - (int) (strlen (pos_str) + strlen (filename_display) +
-                              strlen (meter_str) + 1);
-          int left_space = remaining / 2;
-          int right_space = remaining - left_space;
-          char left[COLS / 2 + 1];
-          char right[COLS / 2 + 1];
-          if (left_space > 0)
-            {
-              snprintf (left, COLS / 2 + 1, "%*s%s",
-                        left_space - (int) strlen (version_str), "",
-                        version_str);
-            }
-          else
-            {
-              left[0] = '\0';
-            }
-          if (right_space > 0)
-            {
-              snprintf (right, COLS / 2 + 1, "%s%*s", time_str,
-                        right_space - (int) strlen (time_str), "");
-            }
-          else
-            {
-              right[0] = '\0';
-            }
-           snprintf (status_line, COLS, "%s%s %s%s%s", left,
-                     filename_display, pos_str, right, meter_str);
-        }
-    }
-  // Prepend message
-  if (message_prefix[0])
-    {
-      char temp[COLS + 1];
-      snprintf (temp, COLS, "%s%s", message_prefix, status_line);
-      strncpy (status_line, temp, COLS - 1);
-      status_line[COLS - 1] = '\0';
-    }
-  // Prepend message
-  mvprintw (LINES - 1, 1, "%s", status_line);
-  // Cursor position (no word wrap)
+
+  g_last_frame = cur;
+  buffer_reset_change_tracking ((Buffer *) buf);
+
   int screen_y = 1 + (cursor_line - *scroll_row);
   char *line = buffer_get_line (buf, cursor_line);
   int line_len = strlen (line);

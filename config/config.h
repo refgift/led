@@ -17,6 +17,16 @@
 #include <time.h>
 
 #define VERSION "1.0.6"
+
+#define LED_MAX_SYNTAX_PAIRS 10
+/**
+ * SyntaxPair - one open/close keyword pair (e.g. "if"/"then", "(" / ")").
+ * Pre-parsed form of a "open-close" token from paired_keywords.
+ */
+typedef struct {
+    char open[32];
+    char close[32];
+} SyntaxPair;
 /**
  * ColorScheme - ncurses color pairs for different syntactic elements.
  * All values are ncurses color constants (COLOR_BLACK, COLOR_RED, etc.).
@@ -108,9 +118,20 @@ typedef struct {
     SearchConfig search;
 
     ConfigError last_error;
+
+    /* Derived pre-parsed syntax data, built by load_editor_config().
+     * Reserved words are stored sorted for binary search so the view
+     * never re-parses the raw strings per word/per frame. */
+    SyntaxPair syntax_pairs[LED_MAX_SYNTAX_PAIRS];
+    int num_syntax_pairs;
+    char reserved_sorted[1024];  /* words packed NUL-separated */
+    int reserved_offset[256];    /* offsets of each word in reserved_sorted */
+    int reserved_count;
 } EditorConfig;
 
 /* Public API */
 ConfigError load_editor_config(EditorConfig* config);
+void config_parse_syntax(EditorConfig* config);
+int config_is_reserved_word(const EditorConfig* config, const char* word);
 int string_to_color(const char* str);
 #endif

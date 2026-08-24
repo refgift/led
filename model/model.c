@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <limits.h>
 #include <regex.h>
 #include <sys/stat.h>
 /* Fallback default; caller should pass a limit from EditorConfig. */
@@ -153,6 +154,30 @@ buffer_init (Buffer *buf)
   buf->capacity = 0;
   buf->nesting_cache = NULL;
   buf->dirty=false;
+  buf->edit_generation = 0;
+  buf->changed_first = INT_MAX;
+  buf->changed_last = -1;
+  buf->structure_changed = 0;
+}
+
+void
+buffer_reset_change_tracking (Buffer *buf)
+{
+  buf->changed_first = INT_MAX;
+  buf->changed_last = -1;
+  buf->structure_changed = 0;
+}
+
+static void
+_buffer_mark_change (Buffer *buf, int first, int last, int structural)
+{
+  buf->edit_generation++;
+  if (structural)
+    buf->structure_changed = 1;
+  if (first < buf->changed_first)
+    buf->changed_first = first;
+  if (last > buf->changed_last)
+    buf->changed_last = last;
 }
 void
 buffer_free (Buffer *buf)
@@ -332,6 +357,7 @@ buffer_delete_char (Buffer *buf, int line, int col)
       gap_buffer_delete(gb, col);
       // Invalidate cache for this line
       _invalidate_cache_from (buf, line);
+      _buffer_mark_change (buf, line, line, 0);
     }
   else if (line < buf->num_lines - 1)
     {
@@ -360,6 +386,7 @@ buffer_delete_char (Buffer *buf, int line, int col)
       buf->num_lines--;
       // Invalidate cache from merged line onwards
       _invalidate_cache_from (buf, line);
+      _buffer_mark_change (buf, line, line + 1, 1);
     }
   return 0;
 }
@@ -404,6 +431,7 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
         }
       // Invalidate cache from this line onwards
       _invalidate_cache_from (buf, start_line);
+      _buffer_mark_change (buf, start_line, start_line, 0);
     }
   else
     {
@@ -458,6 +486,7 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       buf->num_lines -= lines_deleted;
       // Invalidate cache from start_line onwards
       _invalidate_cache_from (buf, start_line);
+      _buffer_mark_change (buf, start_line, end_line, 1);
     }
   return 0;
 }
@@ -549,6 +578,7 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
   buf->num_lines++;
   // Invalidate cache from inserted line onwards
   _invalidate_cache_from (buf, line);
+  _buffer_mark_change (buf, line, buf->num_lines - 1, 1);
   return 0;
 }
 int
@@ -571,6 +601,7 @@ buffer_delete_line (Buffer *buf, int line)
   buf->num_lines--;
   // Invalidate cache from deleted line onwards
   _invalidate_cache_from (buf, line);
+  _buffer_mark_change (buf, line, buf->num_lines - 1, 1);
   return 0;
 }
 int
@@ -619,6 +650,7 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
       // Replace the new line's gap buffer with new_gb
       gap_buffer_free(buf->lines[line + 1]);
       buf->lines[line + 1] = new_gb;
+      _buffer_mark_change (buf, line, line + 1, 1);
     }
   else
     {
@@ -626,6 +658,7 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
       gap_buffer_insert(gb, col, c);
       // Invalidate cache for this line
       _invalidate_cache_from (buf, line);
+      _buffer_mark_change (buf, line, line, 0);
     }
   return 0;
 }
@@ -639,6 +672,9 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
   const char *p = text;
   int current_line = line;
   int current_col = col;
+  int touched_first = INT_MAX;
+  int touched_last = -1;
+  int structural = 0;
   while (*p)
     {
 		
@@ -653,6 +689,9 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
                        "Error: failed to insert char in buffer_insert_text\n");
               return -1;
             }
+          structural = 1;
+          if (current_line < touched_first) touched_first = current_line;
+          if (current_line + 1 > touched_last) touched_last = current_line + 1;
           current_line++;
           current_col = 0;
           p++;
@@ -677,10 +716,15 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
           // Bulk insert the run
           int run_len = end - p;
           gap_buffer_insert_many(gb, current_col, p, run_len);
+          _invalidate_cache_from (buf, current_line);
+          if (current_line < touched_first) touched_first = current_line;
+          if (current_line > touched_last) touched_last = current_line;
           current_col += run_len;
           p = end;
         }
     }
+  if (touched_last >= touched_first)
+    _buffer_mark_change (buf, touched_first, touched_last, structural);
   return 0;
 }
 int
@@ -852,5 +896,6 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
     }
   // Invalidate entire cache since multiple lines changed
   _invalidate_cache_from (buf, 0);
+  _buffer_mark_change (buf, 0, buf->num_lines - 1, 1);
   regfree (&reg);
 }

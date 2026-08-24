@@ -91,18 +91,133 @@ set_default_config (EditorConfig *config)
   config->search.enabled = 1;
   config->search.max_pattern_length = 100;
 }
+void
+config_parse_syntax (EditorConfig *config)
+{
+  config->num_syntax_pairs = 0;
+  config->reserved_count = 0;
+  if (!config)
+    return;
+
+  /* Parse paired keywords: comma-separated "open-close" tokens */
+  const char *pk = config->syntax.paired_keywords;
+  while (*pk && config->num_syntax_pairs < LED_MAX_SYNTAX_PAIRS)
+    {
+      const char *comma = strchr (pk, ',');
+      size_t tlen = comma ? (size_t) (comma - pk) : strlen (pk);
+      char token[96];
+      if (tlen >= sizeof (token))
+        tlen = sizeof (token) - 1;
+      memcpy (token, pk, tlen);
+      token[tlen] = '\0';
+      char *dash = strchr (token, '-');
+      if (dash && dash > token)
+        {
+          SyntaxPair *pair =
+            &config->syntax_pairs[config->num_syntax_pairs];
+          size_t olen = (size_t) (dash - token);
+          if (olen >= sizeof (pair->open))
+            olen = sizeof (pair->open) - 1;
+          memcpy (pair->open, token, olen);
+          pair->open[olen] = '\0';
+          const char *close = dash + 1;
+          snprintf (pair->close, sizeof (pair->close), "%s", close);
+          trim_whitespace (pair->open);
+          trim_whitespace (pair->close);
+          if (pair->open[0] != '\0' && pair->close[0] != '\0')
+            config->num_syntax_pairs++;
+        }
+      if (!comma)
+        break;
+      pk = comma + 1;
+    }
+
+  /* Parse reserved words into a sorted, NUL-packed array */
+  char *store = config->reserved_sorted;
+  size_t used = 0;
+  const char *rw = config->syntax.reserved_words;
+  while (*rw && config->reserved_count < 256
+         && used < sizeof (config->reserved_sorted))
+    {
+      const char *comma = strchr (rw, ',');
+      size_t tlen = comma ? (size_t) (comma - rw) : strlen (rw);
+      while (tlen > 0 && (rw[0] == ' ' || rw[0] == '\t'))
+        {
+          rw++;
+          tlen--;
+        }
+      while (tlen > 0 && (rw[tlen - 1] == ' ' || rw[tlen - 1] == '\t'))
+        tlen--;
+      if (tlen > 0)
+        {
+          if (used + tlen + 1 > sizeof (config->reserved_sorted))
+            break;
+          config->reserved_offset[config->reserved_count++] = (int) used;
+          memcpy (store + used, rw, tlen);
+          used += tlen;
+          store[used++] = '\0';
+        }
+      if (!comma)
+        break;
+      rw = comma + 1;
+    }
+
+  /* Sort word indices by their strings (insertion sort; n <= 256) */
+  for (int i = 1; i < config->reserved_count; i++)
+    {
+      int key = config->reserved_offset[i];
+      int j = i - 1;
+      while (j >= 0
+             && strcmp (store + config->reserved_offset[j], store + key) > 0)
+        {
+          config->reserved_offset[j + 1] = config->reserved_offset[j];
+          j--;
+        }
+      config->reserved_offset[j + 1] = key;
+    }
+}
+
+int
+config_is_reserved_word (const EditorConfig *config, const char *word)
+{
+  if (!config || !word || config->reserved_count == 0)
+    return 0;
+  int lo = 0;
+  int hi = config->reserved_count - 1;
+  while (lo <= hi)
+    {
+      int mid = lo + (hi - lo) / 2;
+      const char *candidate =
+        config->reserved_sorted + config->reserved_offset[mid];
+      int cmp = strcmp (word, candidate);
+      if (cmp == 0)
+        return 1;
+      if (cmp < 0)
+        hi = mid - 1;
+      else
+        lo = mid + 1;
+    }
+  return 0;
+}
+
 ConfigError
 load_editor_config (EditorConfig *config)
 {
   set_default_config (config);
   const char *home = getenv ("HOME");
   if (!home)
-    return CONFIG_SUCCESS;
+    {
+      config_parse_syntax (config);
+      return CONFIG_SUCCESS;
+    }
   char path[512];
   snprintf (path, sizeof (path), "%s/.config/led/colorization.conf", home);
   FILE *file = fopen (path, "r");
   if (!file)
-    return CONFIG_SUCCESS;      // use defaults
+    {
+      config_parse_syntax (config);
+      return CONFIG_SUCCESS;     // use defaults
+    }
   char line[256];
   while (fgets (line, (int) sizeof (line), file))
     {
@@ -181,5 +296,6 @@ load_editor_config (EditorConfig *config)
         config->statusbar.show_key_meter = atoi (value);
     }
   fclose (file);
+  config_parse_syntax (config);
   return CONFIG_SUCCESS;
 }

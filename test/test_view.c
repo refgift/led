@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 #include "model.h"
 #include "config.h"
 #include "editor.h"
@@ -541,15 +542,190 @@ void test_cursor_position_after_newline_wrap(void) {
   buffer_free(&buf);
 }
 
+/**
+ * Test: Model edit_generation and change-range tracking
+ */
+void test_model_change_tracking(void) {
+  fprintf(stderr, "\n=== Test: Model change tracking ===\n");
+
+  Buffer buf;
+  buffer_init(&buf);
+  test_assert(buf.edit_generation == 0, "tracking: fresh buffer gen is 0");
+  test_assert(buf.changed_first == INT_MAX && buf.changed_last == -1,
+              "tracking: fresh buffer has empty range");
+
+  /* reads never bump generation */
+  buffer_insert_line(&buf, 0, "hello");
+  unsigned long g0 = buf.edit_generation;
+  (void)buffer_get_line(&buf, 0);
+  (void)buffer_num_lines(&buf);
+  (void)buffer_get_line_length(&buf, 0);
+  test_assert(buf.edit_generation == g0, "tracking: reads do not bump gen");
+
+  /* non-structural single-line edit */
+  buffer_reset_change_tracking(&buf);
+  unsigned long g1 = buf.edit_generation;
+  buffer_insert_char(&buf, 0, 5, '!');
+  test_assert(buf.edit_generation == g1 + 1, "tracking: insert_char bumps gen");
+  test_assert(!buf.structure_changed, "tracking: insert_char not structural");
+  test_assert(buf.changed_first == 0 && buf.changed_last == 0,
+              "tracking: insert_char range is [0,0]");
+
+  buffer_reset_change_tracking(&buf);
+  buffer_delete_char(&buf, 0, 5);
+  test_assert(!buf.structure_changed, "tracking: delete_char not structural");
+  test_assert(buf.changed_first == 0 && buf.changed_last == 0,
+              "tracking: delete_char range is [0,0]");
+
+  /* structural: newline split */
+  buffer_reset_change_tracking(&buf);
+  unsigned long g2 = buf.edit_generation;
+  buffer_insert_char(&buf, 0, 2, '\n');
+  test_assert(buf.structure_changed, "tracking: newline split is structural");
+  test_assert(buf.edit_generation > g2, "tracking: split bumps gen");
+  test_assert(buffer_num_lines(&buf) == 2, "tracking: split made 2 lines");
+
+  /* structural: insert_text with embedded newline */
+  buffer_reset_change_tracking(&buf);
+  buffer_insert_text(&buf, 1, 3, "abc\ndef");
+  test_assert(buf.structure_changed,
+              "tracking: multi-line paste is structural");
+
+  /* non-structural: insert_text without newline */
+  buffer_reset_change_tracking(&buf);
+  buffer_insert_text(&buf, 1, 0, "xyz");
+  test_assert(!buf.structure_changed,
+              "tracking: same-line paste not structural");
+  test_assert(buf.changed_first <= 1 && buf.changed_last >= 1,
+              "tracking: paste marks its line");
+
+  /* structural: replace_all */
+  buffer_reset_change_tracking(&buf);
+  buffer_replace_all(&buf, "xyz", "XYZ");
+  test_assert(buf.structure_changed, "tracking: replace_all is structural");
+
+  /* reset clears range but keeps generation */
+  unsigned long g3 = buf.edit_generation;
+  buffer_reset_change_tracking(&buf);
+  test_assert(buf.changed_first == INT_MAX && buf.changed_last == -1
+              && !buf.structure_changed, "tracking: reset clears range");
+  test_assert(buf.edit_generation == g3, "tracking: reset keeps generation");
+
+  buffer_free(&buf);
+}
+
+static ViewFrameState
+make_frame(int valid, int wrap, unsigned long gen, int num_lines,
+           int scroll_row, int cursor_line)
+{
+  ViewFrameState f;
+  memset(&f, 0, sizeof(f));
+  f.valid = valid;
+  f.term_lines = 24;
+  f.term_cols = 80;
+  f.generation = gen;
+  f.num_lines = num_lines;
+  f.changed_first = INT_MAX;
+  f.changed_last = -1;
+  f.scroll_row = scroll_row;
+  f.cursor_line = cursor_line;
+  f.word_wrap = wrap;
+  return f;
+}
+
+/**
+ * Test: view_decide transition table
+ */
+void test_view_decide_transitions(void) {
+  fprintf(stderr, "\n=== Test: view_decide transitions ===\n");
+
+  ViewFrameState last = make_frame(0, 0, 5, 10, 0, 0);
+  RenderPlan plan;
+
+  plan = view_decide(&last, &last);
+  test_assert(plan.kind == LED_PLAN_FULL, "decide: invalid last => FULL");
+
+  last.valid = 1;
+  plan = view_decide(&last, &last);
+  test_assert(plan.kind == LED_PLAN_STATUS_ONLY,
+              "decide: identical frames => STATUS_ONLY");
+
+  ViewFrameState cur = last;
+  cur.cursor_col = 4;   /* pure cursor move */
+  plan = view_decide(&last, &cur);
+  test_assert(plan.kind == LED_PLAN_STATUS_ONLY,
+              "decide: cursor move only => STATUS_ONLY");
+
+  cur = last; cur.term_cols = 100;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: resize => FULL");
+
+  cur = last; cur.word_wrap = 1;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: word_wrap on => FULL");
+
+  cur = last; cur.show_line_numbers = 1;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: line number toggle => FULL");
+
+  cur = last; cur.syntax_highlight = 1;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: highlight toggle => FULL");
+
+  cur = last; cur.selection_active = 1;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: selection became active => FULL");
+
+  cur = last; cur.sel_ec = 3;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: selection endpoint moved => FULL");
+
+  cur = last; cur.scroll_row = 2;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: scroll changed => FULL");
+
+  /* non-structural single-line edit */
+  cur = last;
+  cur.generation = 6;
+  cur.changed_first = 3;
+  cur.changed_last = 3;
+  plan = view_decide(&last, &cur);
+  test_assert(plan.kind == LED_PLAN_LINES && plan.first_line == 3
+              && plan.last_line == 3,
+              "decide: one-line edit => LINES(3,3)");
+
+  cur.changed_last = 5;
+  plan = view_decide(&last, &cur);
+  test_assert(plan.kind == LED_PLAN_LINES && plan.first_line == 3
+              && plan.last_line == 5,
+              "decide: ranged edit => LINES(3,5)");
+
+  cur.structure_changed = 1;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: structural change => FULL");
+  cur.structure_changed = 0;
+
+  cur.num_lines = 11;
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: line count changed => FULL");
+  cur.num_lines = 10;
+
+  cur.changed_first = INT_MAX;   /* defensive: gen moved but no range */
+  test_assert(view_decide(&last, &cur).kind == LED_PLAN_FULL,
+              "decide: missing range => FULL");
+}
+
 void run_view_tests(void) {
   fprintf(stderr, "\n====== TEST VIEW ======\n");
-  
+
   test_truncate_no_wrap();
   /* test_wrap_enabled(); disabled - wordwrap feature removed */
   test_render_no_model_change();
   /* test_toggle_changes_visual_rows(); disabled - requires word_wrap */
   /* test_wrap_cursor_end(); disabled - requires word_wrap */
   /* test_cursor_position_after_newline_wrap(); disabled - requires word_wrap */
+  test_model_change_tracking();
+  test_view_decide_transitions();
 
   fprintf(stderr, "====== VIEW TESTS COMPLETE (wrap tests skipped) ======\n");
 }
