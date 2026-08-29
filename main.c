@@ -48,10 +48,13 @@ main (int argc, char *argv[])
     }
   Editor ed;
   editor_init (&ed, argc, argv);
+  WINDOW *text_win = NULL;
   if (!test_mode)
     {
       // Initialize color pairs
       init_pair (1, ed.config.colors.normal_fg, ed.config.colors.normal_bg);
+      wbkgd(stdscr, COLOR_PAIR(1));
+      // Also set background for stdscr via bkgd for compat
       bkgd(COLOR_PAIR(1));
       init_pair (2, ed.config.colors.selection_fg,
                  ed.config.colors.selection_bg);
@@ -67,8 +70,23 @@ main (int argc, char *argv[])
                  ed.config.colors.meta_level4_bg);
       init_pair (8, ed.config.colors.reserved_words_fg,
                  ed.config.colors.reserved_words_bg);
+      // Create inset text subwindow: border stays on stdscr (frame),
+      // all text rendering goes to text_win (derwin). This isolates
+      // border from xterm block-select so copying text never drags '|'.
+      // Geometry depends on show_border (F4 / LED_NO_BORDER env).
+      if (view_create_text_window_ex(stdscr, &text_win, ed.config.display.show_border) != 0)
+        {
+          fprintf (stderr, "Warning: failed to create text subwindow, falling back to stdscr\n");
+          text_win = NULL;
+        }
+      else
+        {
+          wbkgd(text_win, COLOR_PAIR(1));
+          // Ensure child inherits keypad setting
+          keypad(text_win, FALSE);
+        }
       int dummy_y, dummy_x;
-      draw_initial (stdscr, &ed.model, &ed.scroll_row, &ed.scroll_col,
+      draw_initial (stdscr, text_win, &ed.model, &ed.scroll_row, &ed.scroll_col,
                     ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
                     ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
     }
@@ -91,12 +109,42 @@ main (int argc, char *argv[])
       while (1)
         {
           int ch = getch ();
+          if (ch == KEY_RESIZE)
+            {
+              // Handle terminal resize: stdscr is resized by ncurses,
+              // text subwindow must be resized/moved to stay inset/aligned
+              if (text_win)
+                view_resize_windows_ex(stdscr, text_win, ed.config.display.show_border);
+              view_invalidate();
+              // Full repaint with new geometry
+              int dummy_y, dummy_x;
+              draw_initial (stdscr, text_win, &ed.model, &ed.scroll_row, &ed.scroll_col,
+                            ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
+                            ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
+              continue;
+            }
           if (ch == 17)
             break;              // Ctrl+Q
-          editor_handle_input (&ed, ch);
-          editor_draw (stdscr, &ed);
+          {
+            int old_border = ed.config.display.show_border;
+            editor_handle_input (&ed, ch);
+            if (old_border != ed.config.display.show_border)
+              {
+                // F4 toggled border: recreate text window with new geometry
+                view_recreate_text_window(stdscr, &text_win, ed.config.display.show_border);
+                view_invalidate();
+                int dummy_y, dummy_x;
+                draw_initial(stdscr, text_win, &ed.model, &ed.scroll_row, &ed.scroll_col,
+                             ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
+                             ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
+                continue;
+              }
+          }
+          editor_draw (stdscr, text_win, &ed);
         }
     }
+  if (text_win)
+    delwin(text_win);
   editor_cleanup (&ed);
   if (!test_mode)
     endwin ();

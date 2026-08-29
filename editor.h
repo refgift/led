@@ -118,8 +118,11 @@ struct Editor {
 /** Initialize a new Editor, optionally loading a file from argv. */
 void editor_init(Editor* ed, int argc, char* argv[]);
 
-/** Render the current editor state to the given ncurses window. */
-void editor_draw(WINDOW* win, Editor* ed);
+/** Render the current editor state to the given ncurses windows.
+ *  frame = border window (stdscr), text = inset derwin(frame) for text */
+void editor_draw(WINDOW* frame, WINDOW* text, Editor* ed);
+/* Compat: single-window wrapper (frame==text==stdscr legacy) */
+void editor_draw_compat(WINDOW* win, Editor* ed);
 
 /** Process one keypress. This is the main input dispatcher. */
 void editor_handle_input(Editor* ed, int ch);

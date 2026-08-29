@@ -6,89 +6,69 @@ led \- Larry's Editor, a terminal-based text editor
 [\fIoptions\fR] [\fIfile\fR]
 .SH DESCRIPTION
 .B led
-is a powerful and reliable terminal-based text editor for Linux/Unix systems. It features unlimited undo/redo, syntax highlighting for C/C++ code, search and replace with regex support, selection and clipboard operations, and a configurable user interface. Designed with data safety in mind, it includes crash recovery, auto-save with versioned backups, and comprehensive error handling.
+is a terminal-based editor with unlimited undo/redo, auto-save/backups, syntax highlighting, and incremental rendering. Text lives in a subwindow; border only on full repaint.
 .SH OPTIONS
 .TP
 .B \-t
-Test mode: Loads the file, runs automated tests on the model/view/controller components, outputs results to stderr, and exits.
+Test mode: run model/view/controller tests to stderr, exit.
 .SH KEYBINDINGS
 .SS Navigation
 .TP
-.B Arrow Keys
-Move cursor up, down, left, right
-.TP
-.B Home
-Move to start of line (press twice for top of file)
-.TP
-.B End
-Move to end of line (press twice for bottom of file)
-.TP
-.B Page Up
-Scroll up one page
-.TP
-.B Page Down
-Scroll down one page
+.B Arrows, Home/End (×2 top/bottom), PgUp/PgDn
+Move and scroll.
 .SS Editing
 .TP
-.B Printable Characters
-Insert text
+.B Printable, Enter, Backspace/Delete, Tab, Ctrl+Z/Y
+Insert, newline, delete, tab, undo/redo.
+.SS File
 .TP
-.B Enter
-Insert new line
+.B Ctrl+S / Ctrl+Q
+Save / Quit.
+.SS Selection
 .TP
-.B Backspace/Delete
-Delete character (backward/forward)
+.B Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V
+Select all / Copy / Cut / Paste (paste filtered).
+.SS Search
 .TP
-.B Ctrl+Z
-Undo last operation
-.TP
-.B Ctrl+Y
-Redo last undone operation
-.SS File Operations
-.TP
-.B Ctrl+S
-Save file
-.TP
-.B Ctrl+Q
-Quit editor
-.SS Selection and Clipboard
-.TP
-.B Ctrl+A
-Select all text
-.TP
-.B Ctrl+C
-Copy selected text (or current line if no selection)
-.TP
-.B Ctrl+X
-Cut selected text (or current line if no selection)
-.TP
-.B Ctrl+V
-Paste clipboard content
-.SS Search and Replace
-.TP
-.B Ctrl+/
-Enter search mode (type regex pattern, Enter to search, Esc to cancel)
-.TP
-.B Ctrl+R
-Enter replace mode (type search regex, Enter, type replace string, Enter to replace all matches, Esc to cancel)
+.B Ctrl+/ / Ctrl+R
+Search / Replace (regex).
 .SS Display
 .TP
 .B F2
-Toggle line number display
+Line numbers.
 .TP
 .B F3
-Toggle word wrap (visual soft wrap of long lines)
-.SH CONFIGURATION
-led supports customizable colors and syntax highlighting via ~/.config/led/colorization.conf. See the README.md file for details on configuration options.
-.SH FILES
+Word wrap.
 .TP
+.B F4
+Border on/off. On: \fCderwin(LINES-2,COLS-2,1,1)\fR boxed. Off: \fCderwin(LINES-1,COLS,0,0)\fR full-width so xterm block-select copies only text. Paste filter strips \fC| │ ─ ┌┐└┘\fR. Config \fCshow_border\fR, env \fCLED_NO_BORDER=1\fR.
+.SH WHAT WORKS
+.IP \(bu 2
+Data safety, undo/redo, autosave, crash recovery.
+.IP \(bu 2
+Editing, selection, clipboard, regex search/replace, syntax highlight, Unicode, incremental rendering (75x less output).
+.IP \(bu 2
+Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
+.IP \(bu 2
+133 tests.
+.SH WHAT FAILS
+.IP \(bu 2
+Whole-file in memory, no mmap; lines >10k truncated.
+.IP \(bu 2
+Limits hardcoded, errors not standardized, no per-buffer undo persistence.
+.IP \(bu 2
+No fuzzing, still needs input sanitization, no OSC 52 clipboard.
+.IP \(bu 2
+xterm copy still sees screen cells — use F4 off.
+.SH CONFIGURATION
+\fC~/.config/led/colorization.conf\fR (\fCkey=value\fR, \fC#\fR comments). Colors: \fCnormal_fg/bg\fR etc. (\fCBLACK..WHITE\fR). \fCshow_border=1\fR (F4), \fCshow_key_meter\fR, \fCsyntax_extensions\fR, \fCreserved_words\fR, \fCpaired_keywords\fR, \fCtab_width\fR. Env \fCLED_NO_BORDER=1\fR.
+.SH FILES
 .I ~/.config/led/colorization.conf
-Configuration file for colors and syntax highlighting.
 .SH SEE ALSO
 .BR vim (1),
 .BR emacs (1),
 .BR nano (1)
 .SH AUTHOR
-Developed with assistance from grok-code-fast-1.
+Grok-code-fast-1 assisted.
 .SH BUGS
-Report bugs at https://github.com/refgift/led/issues
+https://github.com/refgift/led/issues

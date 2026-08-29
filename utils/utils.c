@@ -133,6 +133,136 @@ utf8_visual_width (const char *s, int byte_len, int tab_width, int start_vis)
   return vis - start_vis;
 }
 
+/* === Border filter (replaces external `tr -d '|+'`) === */
+static const char *border_glyphs[] = {
+  "|", "+", "-",
+  "\xE2\x94\x82", /* │ U+2502 */
+  "\xE2\x94\x80", /* ─ U+2500 */
+  "\xE2\x94\x8C", /* ┌ U+250C */
+  "\xE2\x94\x90", /* ┐ U+2510 */
+  "\xE2\x94\x94", /* └ U+2514 */
+  "\xE2\x94\x98", /* ┘ U+2518 */
+  "\xE2\x94\x9C", /* ├ U+251C */
+  "\xE2\x94\xA4", /* ┤ U+2524 */
+  "\xE2\x94\xAC", /* ┬ U+252C */
+  "\xE2\x94\xB4", /* ┴ U+2534 */
+  "\xE2\x94\xBC", /* ┼ U+253C */
+  "\xE2\x94\x83", /* ┃ */
+  "\xE2\x94\x81", /* ━ */
+  NULL
+};
+
+static size_t
+border_prefix_len (const char *s, size_t len)
+{
+  for (int i = 0; border_glyphs[i]; i++)
+    {
+      size_t gl = strlen (border_glyphs[i]);
+      if (len >= gl && memcmp (s, border_glyphs[i], gl) == 0)
+        return gl;
+    }
+  return 0;
+}
+
+static size_t
+border_suffix_len (const char *s, size_t len)
+{
+  for (int i = 0; border_glyphs[i]; i++)
+    {
+      size_t gl = strlen (border_glyphs[i]);
+      if (len >= gl && memcmp (s + len - gl, border_glyphs[i], gl) == 0)
+        return gl;
+    }
+  return 0;
+}
+
+int
+border_filter_is_pure_border_line (const char *line, size_t len)
+{
+  if (len == 0) return 0;
+  size_t i = 0;
+  int has_border = 0;
+  while (i < len)
+    {
+      if (line[i] == ' ' || line[i] == '\t')
+        { i++; continue; }
+      size_t gl = border_prefix_len (line + i, len - i);
+      if (gl)
+        { has_border = 1; i += gl; continue; }
+      return 0; /* non-border content found */
+    }
+  return has_border;
+}
+
+char *
+border_filter_dup (const char *text)
+{
+  if (!text) return NULL;
+  size_t n = strlen (text);
+  char *out = xmalloc (n + 1);
+  size_t oi = 0;
+  size_t i = 0;
+  while (i < n)
+    {
+      size_t line_start = i;
+      size_t line_end = i;
+      while (line_end < n && text[line_end] != '\n')
+        line_end++;
+      size_t line_len = line_end - line_start;
+      int has_nl = (line_end < n && text[line_end] == '\n') ? 1 : 0;
+
+      /* Drop pure border lines (e.g. "┌──────────┐") */
+      if (border_filter_is_pure_border_line (text + line_start, line_len))
+        {
+          /* preserve blank line? Drop entirely but keep newline if it was the only line? */
+          /* For block copy, horizontal borders are not wanted, so drop line including newline */
+          i = line_end + has_nl;
+          /* Avoid collapsing: if this was the only content, keep one newline */
+          if (oi == 0 && i >= n)
+            {
+              /* empty file -> keep empty */
+            }
+          else if (has_nl && oi > 0)
+            {
+              /* keep line break structure: if we drop a line, don't add extra newline */
+            }
+          continue;
+        }
+
+      size_t lo = 0, hi = line_len;
+      size_t pre = border_prefix_len (text + line_start, line_len);
+      if (pre)
+        {
+          lo = pre;
+          if (lo < hi && text[line_start + lo] == ' ')
+            lo++; /* strip one padding space after border */
+        }
+      size_t suf = 0;
+      if (hi > lo)
+        suf = border_suffix_len (text + line_start + lo, hi - lo);
+      if (suf)
+        {
+          size_t new_hi = hi - suf;
+          if (new_hi > lo && text[line_start + new_hi - 1] == ' ')
+            new_hi--; /* strip one padding space before border */
+          hi = new_hi;
+        }
+
+      size_t copy_len = (hi > lo) ? hi - lo : 0;
+      if (copy_len)
+        {
+          memcpy (out + oi, text + line_start + lo, copy_len);
+          oi += copy_len;
+        }
+      if (has_nl)
+        out[oi++] = '\n';
+      i = line_end + has_nl;
+    }
+  out[oi] = '\0';
+  /* Shrink if we dropped a lot (optional) */
+  return out;
+}
+
 int
 utf8_fit_bytes (const char *s, int byte_len, int max_vis, int tab_width,
                 int start_vis)

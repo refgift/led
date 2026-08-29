@@ -37,4 +37,13 @@ int utf8_visual_width(const char *s, int byte_len, int tab_width, int start_vis)
 /* Max bytes of s[0..byte_len) that fit in max_vis display columns (tabs expanded). */
 int utf8_fit_bytes(const char *s, int byte_len, int max_vis, int tab_width, int start_vis);
 
+/* Border filter — removes curses box() artifacts from pasted text.
+ * Xterm block-select in copy mode captures the outer border (|, ─, ┌ etc.)
+ * along with text. This filter strips those per-line so `tr -d '|+'`
+ * is no longer needed. Returns heap-allocated copy (caller free) or NULL.
+ * Pure horizontal border lines (e.g. "┌──────┐") are dropped.
+ */
+char* border_filter_dup(const char *text);
+int   border_filter_is_pure_border_line(const char *line, size_t len);
+
 #endif /* UTILS_H */

@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "editor.h"
 #include "view.h"
+#include "utils.h"
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -450,8 +451,11 @@ static void handle_paste (int ch, InputContext *ctx)
   (void)ch;
   if (*ctx->clipboard && **ctx->clipboard)
     {
-      buffer_insert_text (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, *ctx->clipboard);
-      *ctx->cursor_col += strlen (*ctx->clipboard);
+      char *filtered = border_filter_dup (*ctx->clipboard);
+      const char *to_insert = filtered ? filtered : *ctx->clipboard;
+      buffer_insert_text (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, to_insert);
+      *ctx->cursor_col += strlen (to_insert);
+      if (filtered) free (filtered);
     }
 }
 

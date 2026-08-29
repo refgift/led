@@ -151,16 +151,36 @@ auto_save (Editor *ed)
     }
 }
 void
-editor_draw (WINDOW *win, Editor *ed)
+editor_draw (WINDOW *frame, WINDOW *text, Editor *ed)
 {
   int dummy_y, dummy_x;
-  draw_update (win, &ed->model, &ed->scroll_row, &ed->scroll_col,
+  // If only frame given (text==NULL), try to use frame as both for legacy,
+  // but prefer subwindow path when text is provided.
+  if (frame && !text)
+    {
+      // Legacy single-window call — treat as frame, no text subwindow
+      draw_update (frame, NULL, &ed->model, &ed->scroll_row, &ed->scroll_col,
+                   ed->cursor_line, ed->cursor_col, ed->show_line_numbers,
+                   ed->syntax_highlight, ed->search_mode, ed->search_buffer,
+                   ed->selection_start_line, ed->selection_start_col,
+                   ed->selection_end_line, ed->selection_end_col,
+                   ed->selection_active, &dummy_y, &dummy_x, ed->replace_step,
+                   ed->replace_buffer, &ed->config, ed);
+      return;
+    }
+  draw_update (frame, text, &ed->model, &ed->scroll_row, &ed->scroll_col,
                ed->cursor_line, ed->cursor_col, ed->show_line_numbers,
                ed->syntax_highlight, ed->search_mode, ed->search_buffer,
                ed->selection_start_line, ed->selection_start_col,
                ed->selection_end_line, ed->selection_end_col,
                ed->selection_active, &dummy_y, &dummy_x, ed->replace_step,
                ed->replace_buffer, &ed->config, ed);
+}
+
+void
+editor_draw_compat (WINDOW *win, Editor *ed)
+{
+  editor_draw (win, NULL, ed);
 }
 void
 editor_handle_input (Editor *ed, int ch)
@@ -178,6 +198,14 @@ editor_handle_input (Editor *ed, int ch)
     {
       ed->config.display.word_wrap = !ed->config.display.word_wrap;
       set_status_message (ed, ed->config.display.word_wrap ? "Word wrap: ON" : "Word wrap: OFF");
+      return;
+    }
+  if (ch == KEY_F (4))
+    {
+      ed->config.display.show_border = !ed->config.display.show_border;
+      // Invalidate view so next draw does a full repaint (border appears/disappears)
+      view_invalidate();
+      set_status_message (ed, ed->config.display.show_border ? "Border: ON" : "Border: OFF (xterm copy clean)");
       return;
     }
   if ((ch == 31) && ed->config.search.enabled) /* Ctrl+/ or / */

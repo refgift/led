@@ -78,6 +78,7 @@ typedef struct {
     int tab_width;
     int spaces_for_tab;   /* if true, TAB inserts spaces instead of '\t' */
     int word_wrap;        /* F3 toggle: when true, long lines wrap visually */
+    int show_border;      /* F4 toggle: when false, no box() — prevents xterm copy of border */
 } DisplayConfig;
 typedef struct {
     int max_file_size_mb;

@@ -1,218 +1,68 @@
-# led - Larry's Editor for Linux/Unix Terminal (Version 1.0.6)
-> See [WARNINGS.md](WARNINGS.md) for known limitations and safety notes. 
+# led - Larry's Editor for Linux/Unix Terminal (1.0.6)
+> See WARNINGS.md for known limitations and safety notes.
 
-## Dedication
-This editor is dedicated to the memory of Neal Stephenson, whose vision of a 
-word processor that truly serves authors inspired its development. Stephenson 
-lamented that computer editors delete as easily as they create, unlike paper 
-which preserves every word. This editor strives to provide the safety and 
-reliability of paper in the digital realm, ensuring no work is lost to 
-accidents or crashes.
+Dedicated to Neal Stephenson's vision of paper-like data safety.
 
-## Philosophy
-In the philosophy of software design, code exists as both map and territory. 
-The map is the source code we write; the territory is the executing program 
-that shapes our digital reality. Led embodies this duality by prioritizing 
-constraints that govern the territory of editing: safety, reliability, and user 
-sovereignty.
+## What Works
+- **Data safety**: unlimited undo/redo (10k cap), auto-save with versioned backups, crash recovery, file size/line-length validation.
+- **Editing**: insert, newline, backspace/delete, tabs (spaces or `\t`), word wrap (`F3`), selection, clipboard (`Ctrl+A/C/X/V`), regex search (`Ctrl+/`) and replace (`Ctrl+R`), syntax highlighting (C/C++ nesting, pre-parsed, per-line cache).
+- **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic.
+- **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
+- **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
+- **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
+- **Tests**: 133 tests (buffer, undo, clipboard, autosave, view truncate, change tracking, `view_decide`).
 
-Led invites developers who see software as a craft of reliable tools, not 
-disposable artifacts. Contributors are welcome to extend this vision, ensuring 
-that digital editing respects the user's work as paper once did: permanent, 
-safe, and under their control.
-
-## What's New
-- Added support for Cryllic and other Unicode character sets.
-- **Incremental rendering**: the view no longer redraws the whole screen on
-  every keystroke. Cursor moves now repaint only the status line, single-line
-  edits repaint only the edited row, and syntax highlighting is cached per
-  line (with keyword rules pre-parsed once at startup). Terminal output per
-  keystroke drops by roughly 75x on typical files; the key response meter in
-  the status bar reflects this directly.
-
-## Recent Code Review and Fixes
-
-Following a thorough code review of led version 1.0.0, several critical security vulnerabilities, memory management issues, and reliability problems have been addressed. The review prioritized fixes that prevent data loss, crashes, and security exploits, aligning with the editor's philosophy of data safety.
-
-### Completed Fixes
-
-#### Priority 1 (Critical - Addressed Immediately)
-These fixes prevent data loss, crashes, and security vulnerabilities:
-- **Buffer Overflow in File Loading**: Added pre-loading file size validation using `stat()` and line length limits (10,000 characters) to prevent excessive memory allocation from malformed files.
-- **Memory Exhaustion on Allocation Failure**: Replaced abrupt `exit()` calls with graceful error handling, allowing the editor to continue or prompt for saves instead of losing unsaved work.
-- **Logic Error in Range Deletion**: Added strict range validation to prevent corrupted buffer states during text deletion operations.
-- **Unsafe Regex Usage**: Limited search/replace patterns to 100 characters and added safe compilation flags to prevent DoS attacks from malicious regex patterns.
-
-#### Priority 2 (High/Medium - Addressed for Stability)
-These improvements enhance reliability and performance:
-- **Memory Leak in Undo/Redo Stack**: Capped undo/redo operations at 10,000 entries and fixed memory cleanup to prevent resource exhaustion.
-- **Double-Free Risks**: Confirmed and maintained atomic buffer operations to prevent crashes during complex edits.
-- **Cursor and editing stability**: Improved tab expansion and cursor positioning.
-- **Unsafe String Operations**: Replaced fixed-size buffers with dynamic allocation in syntax highlighting to handle long identifiers correctly.
-- **Config Parsing Vulnerability**: Switched from unsafe `strncpy` to `snprintf` for configuration value copying to prevent buffer overflows.
-
-### Remaining Work
-
-While significant progress has been made, the following items remain pending and are scheduled for future updates:
-
-#### Priority 2 (Medium - Stability Enhancements)
-- **Efficient File Loading**: Implement lazy line loading or memory mapping for better performance with very large files (currently loads entire files into memory).
-- **Configurable Limits**: Move hardcoded limits (file size, line length) to user configuration for flexibility.
-- **Error Handling Standardization**: Improve consistency of error codes and user feedback across all modules.
-- **Global State Removal**: Move undo/redo stacks from global to per-editor instances for better multi-instance support.
-
-#### Priority 3 (Low - Quality Improvements)
-- **Code Duplication Reduction**: Extract common cursor movement logic into utility functions.
-- **Comprehensive Testing**: Add fuzzing tests and coverage for extreme edge cases (empty files, very long lines).
-- **Input Sanitization**: Validate filename arguments to prevent directory traversal attacks.
-- **Performance Optimizations**: Implement color caching for syntax highlighting to reduce recalculations.
-
-### Impact
-These fixes significantly improve led's reliability as a data-safe editor, addressing the core concerns raised in the review while maintaining the editor's performance and feature set. The remaining work focuses on scalability and polish, ensuring led continues to evolve as a robust terminal editor.
-
-This is led version 1.0.0, a powerful and reliable terminal-based text 
-editor for Linux/Unix, developed with the assistance of AI. 
-It features a robust model-view-controller architecture with advanced 
-capabilities including unlimited undo/redo, configurable auto-save with 
-versioned backups, syntax highlighting for C/C++ code with multi-line nesting support, comprehensive error 
-handling for data safety, and a configurable user interface. This release 
-represents a significant advancement in terminal editor technology, balancing 
-performance with user-friendly features inspired by the need for paper-like 
-data preservation in digital editing.
-
-## Key Features
-- **Data Safety First**: Unlimited undo/redo, auto-save with configurable 
-triggers and versioned backups, crash recovery, file validation to prevent data 
-loss.
-- **Advanced Editing**: Syntax highlighting with nesting-based color intensity 
-for C/C++, search and replace with regex support, selection and clipboard 
-operations.
-- **User Experience**: Configurable status bar with version/time/key-response-meter/filename display, extended ASCII support, intuitive keyboard shortcuts, clear error feedback.
-- **Reliability**: Memory error handling with user notifications, graceful 
-degradation under low-memory conditions, robust buffer operations.
-- **Performance**: Efficient rendering for large files (up to 10MB), modular 
-architecture for maintainability.
-- **Test Suite**: Expanded to 95 tests covering edge cases and large files.
+## What Fails
+- **Large files**: whole file loaded into memory, no lazy/mmap, truncates lines >10k.
+- **Hardcoded limits**: file size, line length not yet configurable.
+- **Error handling**: not fully standardized across modules.
+- **No per-buffer undo persistence** across sessions.
+- **No fuzzing / empty-file edge coverage** yet.
+- **Input sanitization**: no directory-traversal check beyond `is_filename_safe`.
+- **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
 
 ## Dependencies
-- The code is in C language and needs a C compiler and build chain.
-- It comes with a Makefile which needs the make utility to use.
-- It uses the libncurses development files to perform TUI work.
-- Uses glibc regex for search and replace operations.
+C compiler, `make` (`gmake` on Unix), `libncursesw`, `glibc regex`.
 
-## Build
-- make has Linux version and UNIX version.
-- for UNIX use the gmake Linux compatible make utility.
-- make has targets: make install, make doc, make lint. 
-- make with target builds the led program from the source code by directing the C ompiler
-  and linker to complete it.
+## Build / Install / Test
+```
+make              # builds ./led
+make install      # installs to /usr/local/bin
+make doc          # installs led.1
+./led file.c
+./led -t          # test mode (stderr, no curses) — also LED_TEST=1 ./led
+man led           # after make doc
+```
 
-## Run
-- ./led filename.c
-- After make install, the ./ can be despensed with.
-
-## Test Mode
-- ./led -t filename.c 
-- Loads file, runs automated tests on model/view/controller, outputs to stderr, exits
-
-## Usage
-- The editor is controlled via keyboard shortcuts and arrow keys.
-- After make doc, the usage can be recalled with: man led 
-
-### Navigation
-- Arrow keys: Move cursor up, down, left, right
-- Home: Move to start of line (press twice for top of file)
-- End: Move to end of line (press twice for bottom of file)
-- Page Up: Scroll up one page
-- Page Down: Scroll down one page
-
-### Editing
-- Type printable characters to insert text
-- Enter: Insert new line
-- Backspace/Delete: Delete character (forward/backward)
-- Ctrl+Z: Undo last operation
-- Ctrl+Y: Redo last undone operation
-
-### File Operations
-- Ctrl+S: Save file
-- Ctrl+Q: Quit editor
-
-### Selection and Clipboard
-- Ctrl+A: Select all text
-- Ctrl+C: Copy selected text (or current line if no selection)
-- Ctrl+X: Cut selected text (or current line if no selection)
-- Ctrl+V: Paste clipboard content
-
-### Search
-- Ctrl+/: Enter search mode (type regex pattern, Enter to search, Esc to cancel)
-
-### Replace
-- Ctrl+R: Enter replace mode (type search regex, Enter, type replace string, 
-Enter to replace all matches, Esc to cancel)
-
-### Display
-- F2: Toggle line number display
-- Key response meter (μs) in status bar (configurable via show_key_meter)
-- Syntax highlighting for meta symbols (;, braces, etc.) with nesting-based 
-color intensity
+## Keybindings
+| Keys | Action |
+|---|---|
+| Arrows, Home/End (×2 top/bottom), PgUp/PgDn | Navigation |
+| Printable, Enter, Backspace/Delete, Tab | Insert / delete |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
+| `Ctrl+S` / `Ctrl+Q` | Save / Quit |
+| `Ctrl+A` / `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Select all / Copy / Cut / Paste (paste is border-filtered) |
+| `Ctrl+/` / `Ctrl+R` | Search / Replace (regex, 100-char limit) |
+| `F2` | Line numbers |
+| `F3` | Word wrap |
+| `F4` | Border on/off (subwindow inset vs full-width; pasted `│` stripped) |
 
 ## Configuration
-The editor supports customizable colors and syntax highlighting via a 
-configuration file located at `~/.config/led/colorization.conf`. This file uses 
-a simple key-value format with one setting per line. Lines starting with `#` 
-are comments. If the file doesn't exist, default settings are used.
+`~/.config/led/colorization.conf` — `key=value`, `#` comments, created on first run.
 
-### Color Options
-Colors are specified using standard ncurses color names: BLACK, RED, GREEN, 
-YELLOW, BLUE, MAGENTA, CYAN, WHITE.
-- `normal_fg` / `normal_bg`: Foreground and background colors for normal text 
-(default: WHITE/BLACK)
-- `selection_fg` / `selection_bg`: Colors for selected text (default: 
-CYAN/BLACK)
-- `semicolon_fg` / `semicolon_bg`: Colors for semicolons (default: RED/BLACK)
-- `meta_level1_fg` / `meta_level1_bg` to `meta_level4_fg` / `meta_level4_bg`: 
-Colors for nested meta-symbols (braces, brackets, parentheses, commas). Level 1 
-is outermost, increasing for deeper nesting (defaults: BLUE/BLACK for level 1, 
-CYAN/BLACK for level 2, GREEN/BLACK for level 3, YELLOW/BLACK for level 4+)
+**Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
 
-### Syntax Highlighting
-- `reserved_words_fg` / `reserved_words_bg`: Colors for reserved words/keywords 
-(default: RED/BLACK)
-- `reserved_words`: Comma-separated list of reserved words to highlight 
-(default: common C keywords)
-- `paired_keywords`: Comma-separated list of keyword/symbol pairs in open-close 
-format (e.g., if-then,begin-end,(,)) to highlight with nesting colors (default: 
-if-then,begin-end,(,))
-- `syntax_extensions`: Comma-separated list of file extensions that enable 
-syntax highlighting (default: .c,.h,.cpp)
+**Display/Border**: `show_border=1` (default on, `0` hides box). Toggled by `F4`.
 
-### Example Configuration
+**Other**: `syntax_extensions=.c,.h,.cpp`, `reserved_words=...`, `paired_keywords=if-then,begin-end,(,)`, `tab_width=8`, `spaces_for_tab=0`, `show_key_meter=1`.
+
+Example:
 ```
-# Color configuration for led editor
-# Colors: BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE
 normal_fg=WHITE
 normal_bg=BLACK
 selection_fg=CYAN
 selection_bg=BLACK
-semicolon_fg=RED
-semicolon_bg=BLACK
-meta_level1_fg=BLUE
-meta_level1_bg=BLACK
-meta_level2_fg=CYAN
-meta_level2_bg=BLACK
-meta_level3_fg=GREEN
-meta_level3_bg=BLACK
-meta_level4_fg=YELLOW
-meta_level4_bg=BLACK
-reserved_words_fg=RED
-reserved_words_bg=BLACK
-reserved_words=int,char,return,if,else,for,while,do,switch,case,default,break,co
-ntinue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatil
-e,const,signed,unsigned,short,long,double,float,void
-paired_keywords=if-then,begin-end,(,)
-syntax_extensions=.c,.h,.cpp
 show_key_meter=1
+show_border=1
+syntax_extensions=.c,.h,.cpp
 ```
-(Note: show_key_meter controls the | Xus response time meter in status bar.)
-Changes take effect the next time you start the editor. The configuration 
-directory `~/.config/led/` is created automatically if it doesn't exist.

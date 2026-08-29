@@ -9,6 +9,119 @@
 #include <string.h>             // For strdup
 // Meta symbols for basic syntax highlighting (braces, semicolons, etc.)
 static const char *meta_symbols = ";,{}()[]";
+
+/* === Subwindow helpers (border isolation) === */
+int
+view_create_text_window (WINDOW *frame, WINDOW **text_out)
+{
+  return view_create_text_window_ex (frame, text_out, 1);
+}
+
+void
+view_resize_windows (WINDOW *frame, WINDOW *text)
+{
+  view_resize_windows_ex (frame, text, 1);
+}
+
+int
+view_create_text_window_ex (WINDOW *frame, WINDOW **text_out, int show_border)
+{
+  if (!frame || !text_out)
+    return -1;
+  int fh, fw;
+  getmaxyx (frame, fh, fw);
+  if (show_border)
+    {
+      if (fh < 3 || fw < 3)
+        {
+          *text_out = NULL;
+          return -1;
+        }
+      *text_out = derwin (frame, fh - 2, fw - 2, 1, 1);
+    }
+  else
+    {
+      /* Border off: text uses full width, leaves 1 row for status bar on frame */
+      if (fh < 2 || fw < 1)
+        {
+          *text_out = NULL;
+          return -1;
+        }
+      *text_out = derwin (frame, fh - 1, fw, 0, 0);
+    }
+  return *text_out ? 0 : -1;
+}
+
+void
+view_resize_windows_ex (WINDOW *frame, WINDOW *text, int show_border)
+{
+  if (!frame || !text)
+    return;
+  int fh, fw;
+  getmaxyx (frame, fh, fw);
+  if (show_border)
+    {
+      if (fh < 3 || fw < 3)
+        return;
+      wresize (text, fh - 2, fw - 2);
+      mvderwin (text, 1, 1);
+    }
+  else
+    {
+      if (fh < 2 || fw < 1)
+        return;
+      wresize (text, fh - 1, fw);
+      mvderwin (text, 0, 0);
+    }
+}
+
+void
+view_recreate_text_window (WINDOW *frame, WINDOW **text, int show_border)
+{
+  if (!frame || !text)
+    return;
+  if (*text)
+    {
+      delwin (*text);
+      *text = NULL;
+    }
+  view_create_text_window_ex (frame, text, show_border);
+  if (*text)
+    wbkgd (*text, COLOR_PAIR(1));
+}
+
+/* Helpers to get text window dimensions safely (fallback to LINES/COLS) */
+static int
+text_win_rows (WINDOW *text)
+{
+  if (text)
+    return getmaxy (text);
+  return (LINES > 2) ? LINES - 2 : 0;
+}
+
+static int
+text_win_cols (WINDOW *text)
+{
+  if (text)
+    return getmaxx (text);
+  return (COLS > 2) ? COLS - 2 : 0;
+}
+
+static int
+frame_win_cols (WINDOW *frame)
+{
+  if (frame)
+    return getmaxx (frame);
+  return COLS;
+}
+
+static int
+frame_win_rows (WINDOW *frame)
+{
+  if (frame)
+    return getmaxy (frame);
+  return LINES;
+}
 // Alias for the pre-parsed config pair type
 typedef SyntaxPair KeywordPair;
 // Calculate the number of digits in a int number (for line numbers)
@@ -588,9 +701,10 @@ ensure_exp_capacity (size_t need)
   return 1;
 }
 
-// Print a highlighted substring of a line
+// Print a highlighted substring of a line into text subwindow tw
+// y,x are tw-relative (0,0 origin). If tw==NULL (headless test), no-op fallback.
 static void
-print_highlighted (int y, int x, const char *full_line, int line_len,
+print_highlighted (WINDOW *tw, int y, int x, const char *full_line, int line_len,
                    int start, int len, int highlight_pair,
                    EditorConfig *config, Buffer *buf, int logical_line)
 {
@@ -655,7 +769,10 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
 
   if (!ensure_exp_capacity ((size_t) max_exp + 1))
     {
-      mvaddnstr (y, x, &full_line[start], end - start);
+      if (tw)
+        mvwaddnstr (tw, y, x, &full_line[start], end - start);
+      else
+        mvaddnstr (y, x, &full_line[start], end - start);
       return;
     }
   char *expanded = g_exp_buf;
@@ -695,35 +812,48 @@ print_highlighted (int y, int x, const char *full_line, int line_len,
 
   if (!colors)
     {
-      mvaddnstr (y, x, expanded, expanded_len);
+      if (tw)
+        mvwaddnstr (tw, y, x, expanded, expanded_len);
+      else
+        mvaddnstr (y, x, expanded, expanded_len);
       return;
     }
 
   /* Print runs of same color as complete UTF-8 sequences */
+  int win_cols = tw ? getmaxx (tw) : COLS;
   int current_x = x;
   int i = 0;
-  while (i < expanded_len && current_x < COLS)
+  while (i < expanded_len && current_x < win_cols)
     {
       int color = colors[exp_src[i]];
       int run_start = i;
       while (i < expanded_len && colors[exp_src[i]] == color)
         i++;
       int run_len = i - run_start;
-      attron (COLOR_PAIR (color));
+      if (tw)
+        wattron (tw, COLOR_PAIR (color));
+      else
+        attron (COLOR_PAIR (color));
       /* Advance by display width of each char in the run */
       int j = run_start;
       int run_x = current_x;
-      while (j < run_start + run_len && run_x < COLS)
+      while (j < run_start + run_len && run_x < win_cols)
         {
           int clen = utf8_char_len (expanded + j, run_start + run_len - j);
           int cw = utf8_char_width (expanded + j, run_start + run_len - j);
-          if (run_x + cw > COLS)
+          if (run_x + cw > win_cols)
             break;
-          mvaddnstr (y, run_x, expanded + j, clen);
+          if (tw)
+            mvwaddnstr (tw, y, run_x, expanded + j, clen);
+          else
+            mvaddnstr (y, run_x, expanded + j, clen);
           run_x += cw;
           j += clen;
         }
-      attroff (COLOR_PAIR (color));
+      if (tw)
+        wattroff (tw, COLOR_PAIR (color));
+      else
+        attroff (COLOR_PAIR (color));
       current_x = run_x;
     }
 }
@@ -765,31 +895,114 @@ handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
       // Update cursor_col += 1;
     }
 }
-// Draw the initial editor view
+// Draw the initial editor view — subwindow-aware
+// frame = border window (box), text = inset derwin(frame) for content
+// Either may be NULL in headless tests; falls back to stdscr/LINES/COLS
 void
-draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
-              int *scroll_col, int cursor_line, int cursor_col,
-              int show_line_numbers, int syntax_highlight,
-              int *cursor_screen_y, int *cursor_screen_x,
-              EditorConfig *config)
+draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
+               int *scroll_col, int cursor_line, int cursor_col,
+               int show_line_numbers, int syntax_highlight,
+               int *cursor_screen_y, int *cursor_screen_x,
+               EditorConfig *config)
 {
-  clear ();
-  box (win, 0, 0);
+  WINDOW *fw = frame ? frame : stdscr;
+  WINDOW *tw = text;
+  // If only one window passed historically (win==stdscr), treat as frame and create fallback
+  if (!tw && fw)
+    {
+      // Legacy: no text subwindow — use fw dimensions with border inset math
+      // Keep old clear/box behaviour for compat
+      if (fw == stdscr)
+        clear ();
+      else
+        {
+          wclear (fw);
+        }
+      if (!config || config->display.show_border)
+        box (fw, 0, 0);
+      int num_digits = calculate_digits (buffer_num_lines (buf));
+      int num_width = show_line_numbers ? num_digits + 1 : 0;
+      int max_lines = (LINES > 2) ? LINES - 2 : 0;
+      for (int i = 0; i < max_lines; i++)
+        {
+          int line_idx = *scroll_row + (int) i;
+          if (line_idx >= buffer_num_lines (buf))
+            break;
+          if (show_line_numbers)
+            {
+              mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
+            }
+          char *line = buffer_get_line (buf, line_idx);
+          int line_len = strlen (line);
+          int start_col = *scroll_col;
+          if (start_col < line_len)
+            {
+              int print_len = line_len - start_col;
+              int max_print = (int) (COLS - 2 - num_width);
+              if (print_len > max_print)
+                print_len = max_print;
+              // fallback tw NULL => uses mv* path
+              print_highlighted (NULL, 1 + i, 1 + num_width, line, line_len, start_col,
+                                 print_len, syntax_highlight ? 4 : 1, config, buf, line_idx);
+            }
+          free(line);
+        }
+      int y_diff = (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
+      int screen_y = 1 + (int) y_diff;
+      char *line = buffer_get_line (buf, cursor_line);
+      int line_len = strlen (line);
+      int vis_scroll = visual_column (line, line_len, *scroll_col, config->display.tab_width);
+      int vis_cursor = visual_column (line, line_len, cursor_col, config->display.tab_width);
+      free(line);
+      int x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
+      int screen_x = 1 + num_width + (int) x_diff;
+      if (screen_x < 1 + num_width)
+        screen_x = 1 + num_width;
+      if (screen_x > COLS - 1)
+        screen_x = COLS - 1;
+      if (cursor_screen_y) *cursor_screen_y = (int) screen_y;
+      if (cursor_screen_x) *cursor_screen_x = (int) screen_x;
+      move (screen_y, screen_x);
+      if (fw == stdscr)
+        refresh ();
+      else
+        wrefresh (fw);
+      view_invalidate ();
+      return;
+    }
+
+  // Subwindow path: frame owns border, text owns content
+  // Clear/erase only text; box only frame (never cleared in STATUS_ONLY/LINES paths)
+  int do_border = !config || config->display.show_border;
+  if (fw)
+    {
+      werase (fw);
+      if (do_border)
+        box (fw, 0, 0);
+      // Ensure text subwindow background matches
+      if (tw)
+        werase (tw);
+    }
+  else if (tw)
+    {
+      werase (tw);
+    }
+
   int num_digits = calculate_digits (buffer_num_lines (buf));
   int num_width = show_line_numbers ? num_digits + 1 : 0;
-  int max_lines = (LINES > 2) ? LINES - 2 : 0;
+  int max_lines = text_win_rows (tw);
+  int text_cols = text_win_cols (tw);
   for (int i = 0; i < max_lines; i++)
     {
-		
-
-
-
       int line_idx = *scroll_row + (int) i;
       if (line_idx >= buffer_num_lines (buf))
         break;
       if (show_line_numbers)
         {
-          mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
+          if (tw)
+            mvwprintw (tw, i, 0, "%*u ", num_digits, line_idx + 1);
+          else
+            mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
         }
       char *line = buffer_get_line (buf, line_idx);
       int line_len = strlen (line);
@@ -797,57 +1010,108 @@ draw_initial (WINDOW *win, Buffer *buf, int *scroll_row,
       if (start_col < line_len)
         {
           int print_len = line_len - start_col;
-          int max_print = (int) (COLS - 2 - num_width);
+          int max_print = text_cols - num_width;
           if (print_len > max_print)
             print_len = max_print;
-          print_highlighted (1 + i, 1 + num_width, line, line_len, start_col,
-                             print_len, syntax_highlight ? 4 : 1, config, buf, line_idx);
+          if (tw)
+            print_highlighted (tw, i, num_width, line, line_len, start_col,
+                               print_len, syntax_highlight ? 4 : 1, config, buf, line_idx);
+          else
+            print_highlighted (NULL, 1 + i, 1 + num_width, line, line_len, start_col,
+                               print_len, syntax_highlight ? 4 : 1, config, buf, line_idx);
         }
       free(line);
     }
-  // Calculate cursor screen position
-  int y_diff =
-    (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
+  // Calculate cursor screen position (stdscr coords for caller, tw-relative for wmove)
+  int y_diff = (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
   int screen_y = 1 + (int) y_diff;
   char *line = buffer_get_line (buf, cursor_line);
-  int line_len = strlen (line);
-  int vis_scroll =
-    visual_column (line, line_len, *scroll_col, config->display.tab_width);
-  int vis_cursor =
-    visual_column (line, line_len, cursor_col, config->display.tab_width);
+  int line_len2 = strlen (line);
+  int vis_scroll = visual_column (line, line_len2, *scroll_col, config->display.tab_width);
+  int vis_cursor = visual_column (line, line_len2, cursor_col, config->display.tab_width);
   free(line);
-  int x_diff =
-    (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
+  int x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   int screen_x = 1 + num_width + (int) x_diff;
-  // Clamp to screen bounds
+  // Clamp to text window bounds (text_cols is tw width, last valid stdscr x is 1+text_cols)
+  // Clamp screen_x which is stdscr coords (1-based)
   if (screen_x < 1 + num_width)
     screen_x = 1 + num_width;
-  if (screen_x > COLS - 1)
-    screen_x = COLS - 1;
-  *cursor_screen_y = (int) screen_y;
-  *cursor_screen_x = (int) screen_x;
-  move (screen_y, screen_x);
-  refresh ();
+  if (tw)
+    {
+      // tw cols is text area; max stdscr x is 1+tw_cols (since border at 0)
+      int max_sx = 1 + text_cols;
+      if (screen_x > max_sx)
+        screen_x = max_sx;
+    }
+  else
+    {
+      if (screen_x > COLS - 1)
+        screen_x = COLS - 1;
+    }
+  if (cursor_screen_y) *cursor_screen_y = (int) screen_y;
+  if (cursor_screen_x) *cursor_screen_x = (int) screen_x;
+  // Move cursor inside text window
+  if (tw)
+    {
+      int wy = screen_y - 1;
+      int wx = screen_x - 1;
+      // clamp to tw bounds
+      int tw_rows = text_win_rows (tw);
+      int tw_cols = text_win_cols (tw);
+      if (wy < 0) wy = 0;
+      if (wy >= tw_rows) wy = tw_rows - 1;
+      if (wx < 0) wx = 0;
+      if (wx >= tw_cols) wx = tw_cols - 1;
+      wmove (tw, wy, wx);
+      if (fw)
+        {
+          wnoutrefresh (fw);
+          wnoutrefresh (tw);
+          doupdate ();
+        }
+      else
+        wrefresh (tw);
+    }
+  else
+    {
+      move (screen_y, screen_x);
+      if (fw == stdscr)
+        refresh ();
+      else if (fw)
+        wrefresh (fw);
+    }
   view_invalidate ();
 }
 // Repaint one content row in truncate (no-wrap) mode, erasing stale cells
+// tw is the inset text subwindow (NULL => fallback to stdscr for headless tests)
 static void
-render_content_row (int visual_row, int logical_line, Buffer *buf,
-                    int *scroll_col, int available_width, int num_digits,
-                    int num_width, int show_line_numbers,
-                    int syntax_highlight,
-                    int sel_start_line, int sel_start_col,
-                    int sel_end_line, int sel_end_col, int selection_active,
-                    EditorConfig *config)
+render_content_row (WINDOW *tw, int visual_row, int logical_line, Buffer *buf,
+                     int *scroll_col, int available_width, int num_digits,
+                     int num_width, int show_line_numbers,
+                     int syntax_highlight,
+                     int sel_start_line, int sel_start_col,
+                     int sel_end_line, int sel_end_col, int selection_active,
+                     EditorConfig *config)
 {
-  move (1 + visual_row, 1);
-  clrtoeol ();
+  if (tw)
+    {
+      wmove (tw, visual_row, 0);
+      wclrtoeol (tw);
+    }
+  else
+    {
+      move (1 + visual_row, 1);
+      clrtoeol ();
+    }
   char *line = NULL;
   int len = 0;
 
   if (show_line_numbers)
     {
-      mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+      if (tw)
+        mvwprintw (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
+      else
+        mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
     }
 
   line = buffer_get_line (buf, logical_line);
@@ -866,7 +1130,7 @@ render_content_row (int visual_row, int logical_line, Buffer *buf,
         (logical_line == sel_end_line) ? sel_end_col : len;
     }
 
-  int x = 1 + num_width;
+  int x = tw ? num_width : 1 + num_width;
   int tab_w = config ? config->display.tab_width : 8;
 
   // Print before selection
@@ -877,70 +1141,98 @@ render_content_row (int visual_row, int logical_line, Buffer *buf,
       int max_print = available_width;
       int fit = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
       print_len = fit;
-      print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+      int px = tw ? x : x;
+      int py = tw ? visual_row : 1 + visual_row;
+      print_highlighted (tw, py, px, line, len, pos, print_len,
                          syntax_highlight ? 4 : 1, config, buf, logical_line);
       x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
       pos += print_len;
     }
   // Print selection
-  if (pos < sel_end && (x - 1 - num_width) < available_width)
+  if (pos < sel_end && (x - (tw ? num_width : 1 + num_width)) < available_width)
     {
       int end = sel_end;
       int print_len = end - pos;
-      int max_print = available_width - (x - 1 - num_width);
+      int max_print = available_width - (x - (tw ? num_width : 1 + num_width));
       print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-      if (syntax_highlight)
-        attron (COLOR_PAIR (2));
-      mvaddnstr (1 + visual_row, x, &line[pos], print_len);
-      if (syntax_highlight)
-        attroff (COLOR_PAIR (2));
+      if (tw)
+        {
+          if (syntax_highlight)
+            wattron (tw, COLOR_PAIR (2));
+          mvwaddnstr (tw, visual_row, x, &line[pos], print_len);
+          if (syntax_highlight)
+            wattroff (tw, COLOR_PAIR (2));
+        }
+      else
+        {
+          if (syntax_highlight)
+            attron (COLOR_PAIR (2));
+          mvaddnstr (1 + visual_row, x, &line[pos], print_len);
+          if (syntax_highlight)
+            attroff (COLOR_PAIR (2));
+        }
       x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
       pos += print_len;
     }
   // Print after selection
-  if (pos < len && (x - 1 - num_width) < available_width)
+  if (pos < len && (x - (tw ? num_width : 1 + num_width)) < available_width)
     {
       int print_len = len - pos;
-      int max_print = available_width - (x - 1 - num_width);
+      int max_print = available_width - (x - (tw ? num_width : 1 + num_width));
       print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-      print_highlighted (1 + visual_row, x, line, len, pos, print_len,
+      int px = tw ? x : x;
+      int py = tw ? visual_row : 1 + visual_row;
+      print_highlighted (tw, py, px, line, len, pos, print_len,
                          syntax_highlight ? 4 : 1, config, buf, logical_line);
     }
 
   free (line);
 }
 
-// Rebuild and repaint the bottom status line
+// Rebuild and repaint the bottom status line onto frame's bottom row
+// frame is border window (stdscr), bottom row is frame's LINES-1
 static void
-render_status_bar (Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
+render_status_bar (WINDOW *frame, Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
                    int search_mode, char *search_buffer, int replace_step,
                    char *replace_buffer, EditorConfig *config)
 {
-  move (LINES - 1, 1);
-  clrtoeol ();
-  char status_line[COLS + 1];
+  int fcols = frame_win_cols (frame);
+  int frows = frame_win_rows (frame);
+  // Clear bottom row of frame (status line)
+  if (frame)
+    {
+      wmove (frame, frows - 1, 1);
+      wclrtoeol (frame);
+    }
+  else
+    {
+      move (LINES - 1, 1);
+      clrtoeol ();
+    }
+  char status_line[1024];
+  if ((int) sizeof(status_line) > fcols + 1) { /* ensure fits */ }
   // Temporary message prefix
-  char message_prefix[COLS];
+  char message_prefix[1024];
   message_prefix[0] = 0;
   if (ed && ed->status_message[0]
       && (time (NULL) - ed->status_message_time) < 5)
     {
-      snprintf (message_prefix, COLS, "%s | ",
+      snprintf (message_prefix, sizeof(message_prefix), "%s | ",
                 ed->status_message);
     }
   if (replace_step == 1)
     {
-      snprintf (status_line, COLS, "Replace search: %s",
+      snprintf (status_line, sizeof(status_line), "Replace search: %s",
                 search_buffer ? search_buffer : "");
     }
   else if (replace_step == 2)
     {
-      snprintf (status_line, COLS, "Replace with: %s",
+      snprintf (status_line, sizeof(status_line), "Replace with: %s",
                 replace_buffer ? replace_buffer : "");
     }
   else if (search_mode)
     {
-      snprintf (status_line, COLS, "Search: %s",
+      snprintf (status_line, sizeof(status_line), "Search: %s",
                 search_buffer ? search_buffer : "");
     }
   else
@@ -987,25 +1279,27 @@ render_status_bar (Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
           int total_len =
             (int) (strlen (version_str) + strlen (filename_display) +
                    strlen (pos_str) + strlen (time_str) + 6);
-          int start_pos = (COLS - total_len) / 2;
+          int start_pos = (fcols - total_len) / 2;
           if (start_pos < 1)
             start_pos = 1;
-           snprintf (status_line, COLS, "%*s%s %s %s %s%s",
+           snprintf (status_line, sizeof(status_line), "%*s%s %s %s %s%s",
                      start_pos - 1, "", version_str, filename_display, pos_str,
                      time_str, meter_str);
         }
       else
         {                       // Balanced
           int remaining =
-            COLS - 2 - (int) (strlen (pos_str) + strlen (filename_display) +
+            fcols - 2 - (int) (strlen (pos_str) + strlen (filename_display) +
                               strlen (meter_str) + 1);
           int left_space = remaining / 2;
           int right_space = remaining - left_space;
-          char left[COLS / 2 + 1];
-          char right[COLS / 2 + 1];
+          char left[1024];
+          char right[1024];
+          int half = fcols / 2 + 16;
+          if (half > 1023) half = 1023;
           if (left_space > 0)
             {
-              snprintf (left, COLS / 2 + 1, "%*s%s",
+              snprintf (left, sizeof(left), "%*s%s",
                         left_space - (int) strlen (version_str), "",
                         version_str);
             }
@@ -1015,27 +1309,30 @@ render_status_bar (Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
             }
           if (right_space > 0)
             {
-              snprintf (right, COLS / 2 + 1, "%s%*s", time_str,
+              snprintf (right, sizeof(right), "%s%*s", time_str,
                         right_space - (int) strlen (time_str), "");
             }
           else
             {
               right[0] = '\0';
             }
-           snprintf (status_line, COLS, "%s%s %s%s%s", left,
+           snprintf (status_line, sizeof(status_line), "%s%s %s%s%s", left,
                      filename_display, pos_str, right, meter_str);
         }
     }
   // Prepend message
   if (message_prefix[0])
     {
-      char temp[COLS + 1];
-      snprintf (temp, COLS, "%s%s", message_prefix, status_line);
-      strncpy (status_line, temp, COLS - 1);
-      status_line[COLS - 1] = '\0';
+      char temp[1024];
+      snprintf (temp, sizeof(temp), "%s%s", message_prefix, status_line);
+      strncpy (status_line, temp, sizeof(status_line) - 1);
+      status_line[sizeof(status_line) - 1] = '\0';
     }
-  // Prepend message
-  mvprintw (LINES - 1, 1, "%s", status_line);
+  // Draw status onto frame bottom row
+  if (frame)
+    mvwprintw (frame, frows - 1, 1, "%s", status_line);
+  else
+    mvprintw (LINES - 1, 1, "%s", status_line);
 }
 
 RenderPlan
@@ -1089,21 +1386,31 @@ view_invalidate (void)
 }
 
 // Draw an updated editor view (with scrolling, selection, status bar)
+// frame = border window (box), text = inset derwin(frame) for content
 void
-draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
-             int cursor_line, int cursor_col, int show_line_numbers,
-             int syntax_highlight, int search_mode, char *search_buffer,
-             int selection_start_line, int selection_start_col,
-             int selection_end_line, int selection_end_col,
-             int selection_active, int *cursor_screen_y,
-             int *cursor_screen_x, int replace_step, char *replace_buffer,
-             EditorConfig *config, Editor *ed)
+draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scroll_col,
+              int cursor_line, int cursor_col, int show_line_numbers,
+              int syntax_highlight, int search_mode, char *search_buffer,
+              int selection_start_line, int selection_start_col,
+              int selection_end_line, int selection_end_col,
+              int selection_active, int *cursor_screen_y,
+              int *cursor_screen_x, int replace_step, char *replace_buffer,
+              EditorConfig *config, Editor *ed)
 {
+  WINDOW *fw = frame ? frame : stdscr;
+  WINDOW *tw = text;
+  int eff_rows = tw ? getmaxy (tw) : ((LINES > 2) ? LINES - 2 : 0);
+  int eff_cols = tw ? getmaxx (tw) : ((COLS > 2) ? COLS - 2 : 0);
+  int frame_rows = fw ? getmaxy (fw) : LINES;
+  int frame_cols = fw ? getmaxx (fw) : COLS;
   // Adjust scroll to keep cursor visible (no word wrap)
-  int max_lines = (LINES > 2) ? LINES - 2 : 0;
+  int max_lines = tw ? getmaxy (tw) : ((LINES > 2) ? LINES - 2 : 0);
+  // For legacy fallback when tw==NULL, max_lines is as above
+  (void) eff_rows; (void) eff_cols; (void) frame_rows; (void) frame_cols;
   int num_digits = calculate_digits (buffer_num_lines (buf));
   int num_width = show_line_numbers ? num_digits + 1 : 0;
-  int available_width = COLS - 2 - num_width;
+  int available_width = (tw ? getmaxx (tw) : COLS - 2) - num_width;
+  if (available_width < 1) available_width = 1;
 
   // Simple scroll adjustment (no word wrap)
   if (cursor_line < *scroll_row) {
@@ -1118,8 +1425,8 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   ViewFrameState cur;
   memset (&cur, 0, sizeof (cur));
   cur.valid = 1;
-  cur.term_lines = LINES;
-  cur.term_cols = COLS;
+  cur.term_lines = fw ? getmaxy (fw) : LINES;
+  cur.term_cols = fw ? getmaxx (fw) : COLS;
   cur.generation = buf->edit_generation;
   cur.num_lines = buffer_num_lines (buf);
   cur.changed_first = buf->changed_first;
@@ -1142,8 +1449,9 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
 
   if (plan.kind == LED_PLAN_STATUS_ONLY)
     {
-      render_status_bar (ed, buf, cursor_line, cursor_col, search_mode,
+      render_status_bar (fw, ed, buf, cursor_line, cursor_col, search_mode,
                          search_buffer, replace_step, replace_buffer, config);
+      // Defer refresh to final cursor handling to avoid double refresh
     }
   else if (plan.kind == LED_PLAN_LINES)
     {
@@ -1155,23 +1463,36 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
       if (last > last_visible)
         last = last_visible;
       for (int l = first; l <= last && l < buffer_num_lines (buf); l++)
-        render_content_row (l - *scroll_row, l, buf, scroll_col,
+        render_content_row (tw, l - *scroll_row, l, buf, scroll_col,
                             available_width, num_digits, num_width,
                             show_line_numbers, syntax_highlight,
                             selection_start_line, selection_start_col,
                             selection_end_line, selection_end_col,
                             selection_active, config);
-      render_status_bar (ed, buf, cursor_line, cursor_col, search_mode,
+      render_status_bar (fw, ed, buf, cursor_line, cursor_col, search_mode,
                          search_buffer, replace_step, replace_buffer, config);
     }
   else
     {
-      for (int r = 1; r <= LINES - 2; r++)
+      // FULL repaint: box frame, clear text subwindow only
+      // Frame owns border; text window owns content. Clearing frame first
+      // then text avoids overwriting child's content with parent's erase.
+      if (fw)
         {
-          move (r, 1);
-          clrtoeol ();
+          werase (fw);
+          if (!config || config->display.show_border)
+            box (fw, 0, 0);
         }
-      box (win, 0, 0);
+      if (tw)
+        werase (tw);
+      else
+        {
+          for (int r = 1; r <= LINES - 2; r++)
+            {
+              move (r, 1);
+              clrtoeol ();
+            }
+        }
       
   int visual_row = 0;  // Current row on screen
   int logical_line = *scroll_row;  // Current logical line in buffer
@@ -1212,7 +1533,10 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
               // Show line number only on first visual row of this logical line
               if (show_line_numbers && pos == 0)
                 {
-                  mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+                  if (tw)
+                    mvwprintw (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
+                  else
+                    mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
                 }
               
               // Use helper for word-aware breaking (correctly handles tabs)
@@ -1242,7 +1566,7 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                   segment_len = len - pos;
                 }
               
-              int x = 1 + num_width;
+              int x = tw ? num_width : 1 + num_width;
               int tab_w = config ? config->display.tab_width : 8;
               
               // Print segment (respecting selection)
@@ -1253,8 +1577,12 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                 {
                   int end = (sel_start < seg_end) ? sel_start : seg_end;
                   int print_len = end - pos;
-                  print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                     syntax_highlight ? 4 : 1, config, buf, logical_line);
+                  if (tw)
+                    print_highlighted (tw, visual_row, x, line, len, pos, print_len,
+                                       syntax_highlight ? 4 : 1, config, buf, logical_line);
+                  else
+                    print_highlighted (NULL, 1 + visual_row, x, line, len, pos, print_len,
+                                       syntax_highlight ? 4 : 1, config, buf, logical_line);
                   x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
                   pos += print_len;
                 }
@@ -1264,11 +1592,18 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
                 {
                   int end = (sel_end < seg_end) ? sel_end : seg_end;
                   int print_len = end - pos;
-                  if (syntax_highlight)
-                    attron (COLOR_PAIR (2));
-                  mvaddnstr (1 + visual_row, x, &line[pos], print_len);
-                  if (syntax_highlight)
-                    attroff (COLOR_PAIR (2));
+                  if (tw)
+                    {
+                      if (syntax_highlight) wattron (tw, COLOR_PAIR (2));
+                      mvwaddnstr (tw, visual_row, x, &line[pos], print_len);
+                      if (syntax_highlight) wattroff (tw, COLOR_PAIR (2));
+                    }
+                  else
+                    {
+                      if (syntax_highlight) attron (COLOR_PAIR (2));
+                      mvaddnstr (1 + visual_row, x, &line[pos], print_len);
+                      if (syntax_highlight) attroff (COLOR_PAIR (2));
+                    }
                   x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
                   pos += print_len;
                 }
@@ -1277,8 +1612,12 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
               if (pos < seg_end)
                 {
                   int print_len = seg_end - pos;
-                  print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                     syntax_highlight ? 4 : 1, config, buf, logical_line);
+                  if (tw)
+                    print_highlighted (tw, visual_row, x, line, len, pos, print_len,
+                                       syntax_highlight ? 4 : 1, config, buf, logical_line);
+                  else
+                    print_highlighted (NULL, 1 + visual_row, x, line, len, pos, print_len,
+                                       syntax_highlight ? 4 : 1, config, buf, logical_line);
                   pos += print_len;
                 }
               
@@ -1287,13 +1626,16 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
         }
       else
         {
-          // Word wrap disabled: truncate (original behavior)
+          // Word wrap disabled: truncate (original behavior) — subwindow aware
           if (show_line_numbers)
             {
-              mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+              if (tw)
+                mvwprintw (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
+              else
+                mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
             }
           
-          int x = 1 + num_width;
+          int x = tw ? num_width : 1 + num_width;
           int tab_w = config ? config->display.tab_width : 8;
           
           // Print before selection
@@ -1304,34 +1646,49 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
               int max_print = available_width;
               int fit = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
               print_len = fit;
-              print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                 syntax_highlight ? 4 : 1, config, buf, logical_line);
+              if (tw)
+                print_highlighted (tw, visual_row, x, line, len, pos, print_len,
+                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
+              else
+                print_highlighted (NULL, 1 + visual_row, x, line, len, pos, print_len,
+                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
               x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
               pos += print_len;
             }
           // Print selection
-          if (pos < sel_end && (x - 1 - num_width) < available_width)
+          if (pos < sel_end && (x - (tw ? num_width : 1 + num_width)) < available_width)
             {
               int end = sel_end;
               int print_len = end - pos;
-              int max_print = available_width - (x - 1 - num_width);
+              int max_print = available_width - (x - (tw ? num_width : 1 + num_width));
               print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-              if (syntax_highlight)
-                attron (COLOR_PAIR (2));
-              mvaddnstr (1 + visual_row, x, &line[pos], print_len);
-              if (syntax_highlight)
-                attroff (COLOR_PAIR (2));
+              if (tw)
+                {
+                  if (syntax_highlight) wattron (tw, COLOR_PAIR (2));
+                  mvwaddnstr (tw, visual_row, x, &line[pos], print_len);
+                  if (syntax_highlight) wattroff (tw, COLOR_PAIR (2));
+                }
+              else
+                {
+                  if (syntax_highlight) attron (COLOR_PAIR (2));
+                  mvaddnstr (1 + visual_row, x, &line[pos], print_len);
+                  if (syntax_highlight) attroff (COLOR_PAIR (2));
+                }
               x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
               pos += print_len;
             }
           // Print after selection
-          if (pos < len && (x - 1 - num_width) < available_width)
+          if (pos < len && (x - (tw ? num_width : 1 + num_width)) < available_width)
             {
               int print_len = len - pos;
-              int max_print = available_width - (x - 1 - num_width);
+              int max_print = available_width - (x - (tw ? num_width : 1 + num_width));
               print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-              print_highlighted (1 + visual_row, x, line, len, pos, print_len,
-                                 syntax_highlight ? 4 : 1, config, buf, logical_line);
+              if (tw)
+                print_highlighted (tw, visual_row, x, line, len, pos, print_len,
+                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
+              else
+                print_highlighted (NULL, 1 + visual_row, x, line, len, pos, print_len,
+                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
             }
           
           visual_row++;
@@ -1341,8 +1698,21 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
       free(line);
     }
 
-      render_status_bar (ed, buf, cursor_line, cursor_col, search_mode,
+      render_status_bar (fw, ed, buf, cursor_line, cursor_col, search_mode,
                          search_buffer, replace_step, replace_buffer, config);
+      // For FULL, border and text already staged; refresh both
+      if (fw && tw)
+        {
+          wnoutrefresh (fw);
+          wnoutrefresh (tw);
+          doupdate ();
+        }
+      else if (tw)
+        wrefresh (tw);
+      else if (fw)
+        wrefresh (fw);
+      else
+        refresh ();
     }
 
   g_last_frame = cur;
@@ -1356,17 +1726,85 @@ draw_update (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
   int x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   free(line);
   int screen_x = 1 + num_width + (int) x_diff;
-  // Clamp cursor
+  // Clamp cursor to visible area (use frame/text sizes if available)
+  int frows = fw ? getmaxy (fw) : LINES;
+  int fcols = fw ? getmaxx (fw) : COLS;
+  int tcols = tw ? getmaxx (tw) : COLS - 2;
+  (void) fcols; (void) tcols;
   if (screen_y < 1)
     screen_y = 1;
-  if (screen_y > LINES - 1)
-    screen_y = LINES - 1;
+  if (screen_y > frows - 1)
+    screen_y = frows - 1;
   if (screen_x < 1 + num_width)
     screen_x = 1 + num_width;
-  if (screen_x > COLS - 2)
-    screen_x = COLS - 2;
-  *cursor_screen_y = (int) screen_y;
-  *cursor_screen_x = (int) screen_x;
-  move (screen_y, screen_x);
-  refresh ();
+  int max_sx = tw ? (1 + tcols) : (COLS - 2);
+  if (screen_x > max_sx)
+    screen_x = max_sx;
+  if (cursor_screen_y) *cursor_screen_y = (int) screen_y;
+  if (cursor_screen_x) *cursor_screen_x = (int) screen_x;
+  // Move cursor inside text subwindow (if present) else stdscr
+  if (tw)
+    {
+      int wy = screen_y - 1;
+      int wx = screen_x - 1;
+      int tw_rows = getmaxy (tw);
+      int tw_cols = getmaxx (tw);
+      if (wy < 0) wy = 0;
+      if (wy >= tw_rows) wy = tw_rows - 1;
+      if (wx < 0) wx = 0;
+      if (wx >= tw_cols) wx = tw_cols - 1;
+      wmove (tw, wy, wx);
+      if (fw)
+        {
+          wnoutrefresh (tw);
+          wnoutrefresh (fw);
+          // Ensure cursor is on tw
+          wnoutrefresh (tw);
+          doupdate ();
+          // Move hardware cursor via wmove already; set after doupdate
+          wmove (tw, wy, wx);
+          wrefresh (tw);
+        }
+      else
+        wrefresh (tw);
+    }
+  else
+    {
+      move (screen_y, screen_x);
+      if (fw == stdscr)
+        refresh ();
+      else if (fw)
+        wrefresh (fw);
+      else
+        refresh ();
+    }
+}
+
+/* === Compat wrappers for headless tests (single window == stdscr) === */
+void
+draw_initial_compat (WINDOW *win, Buffer *buf, int *scroll_row,
+               int *scroll_col, int cursor_line, int cursor_col,
+               int show_line_numbers, int syntax_highlight,
+               int *cursor_screen_y, int *cursor_screen_x,
+               EditorConfig *config)
+{
+  draw_initial (win, NULL, buf, scroll_row, scroll_col, cursor_line, cursor_col,
+                show_line_numbers, syntax_highlight, cursor_screen_y, cursor_screen_x, config);
+}
+
+void
+draw_update_compat (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
+              int cursor_line, int cursor_col, int show_line_numbers,
+              int syntax_highlight, int search_mode, char *search_buffer,
+              int selection_start_line, int selection_start_col,
+              int selection_end_line, int selection_end_col,
+              int selection_active, int *cursor_screen_y,
+              int *cursor_screen_x, int replace_step, char *replace_buffer,
+              EditorConfig *config, Editor *ed)
+{
+  draw_update (win, NULL, buf, scroll_row, scroll_col, cursor_line, cursor_col,
+               show_line_numbers, syntax_highlight, search_mode, search_buffer,
+               selection_start_line, selection_start_col, selection_end_line, selection_end_col,
+               selection_active, cursor_screen_y, cursor_screen_x, replace_step, replace_buffer,
+               config, ed);
 }

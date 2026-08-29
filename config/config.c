@@ -84,6 +84,7 @@ set_default_config (EditorConfig *config)
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 0;
   config->display.word_wrap = 0;  /* default off for stability */
+  config->display.show_border = 1; /* default on; set 0 or LED_NO_BORDER=1 to hide for xterm copy */
   // Performance
   config->performance.max_file_size_mb = 10;
   config->performance.memory_limit_mb = 50;
@@ -91,6 +92,17 @@ set_default_config (EditorConfig *config)
   config->search.enabled = 1;
   config->search.max_pattern_length = 100;
 }
+static void
+config_apply_env_overrides (EditorConfig *config)
+{
+  const char *v = getenv ("LED_NO_BORDER");
+  if (v && *v && strcmp (v, "0") != 0 && strcmp (v, "false") != 0)
+    config->display.show_border = 0;
+  v = getenv ("LED_SHOW_BORDER");
+  if (v)
+    config->display.show_border = atoi (v) ? 1 : 0;
+}
+
 void
 config_parse_syntax (EditorConfig *config)
 {
@@ -208,6 +220,7 @@ load_editor_config (EditorConfig *config)
   if (!home)
     {
       config_parse_syntax (config);
+      config_apply_env_overrides (config);
       return CONFIG_SUCCESS;
     }
   char path[512];
@@ -216,6 +229,7 @@ load_editor_config (EditorConfig *config)
   if (!file)
     {
       config_parse_syntax (config);
+      config_apply_env_overrides (config);
       return CONFIG_SUCCESS;     // use defaults
     }
   char line[256];
@@ -292,10 +306,13 @@ load_editor_config (EditorConfig *config)
         config->display.tab_width = atoi (value);
       else if (strcmp (key, "spaces_for_tab") == 0)
         config->display.spaces_for_tab = atoi (value);
+      else if (strcmp (key, "show_border") == 0)
+        config->display.show_border = atoi (value);
       else if (strcmp (key, "show_key_meter") == 0)
         config->statusbar.show_key_meter = atoi (value);
     }
   fclose (file);
   config_parse_syntax (config);
+  config_apply_env_overrides (config);
   return CONFIG_SUCCESS;
 }
