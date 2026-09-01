@@ -84,7 +84,7 @@ set_default_config (EditorConfig *config)
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 0;
   config->display.word_wrap = 0;  /* default off for stability */
-  config->display.show_border = 1; /* default on; set 0 or LED_NO_BORDER=1 to hide for xterm copy */
+  config->display.show_border = 0; /* default on; set 0 or LED_NO_BORDER=1 to hide for xterm copy */
   // Performance
   config->performance.max_file_size_mb = 10;
   config->performance.memory_limit_mb = 50;
