@@ -1,25 +1,28 @@
 # led - Larry's Editor for Linux/Unix Terminal (1.0.6)
-> See WARNINGS.md for known limitations and safety notes.
 
 Dedicated to Neal Stephenson's vision of paper-like data safety.
 
 ## What Works
-- **Data safety**: unlimited undo/redo (10k cap), auto-save with versioned backups, crash recovery, file size/line-length validation.
+- **Data safety**: unlimited undo/redo (10k cap), auto-save with versioned backups, crash recovery. Rejects files >10MB or with null bytes; validates line length.
 - **Editing**: insert, newline, backspace/delete, tabs (spaces or `\t`), word wrap (`F3`), selection, clipboard (`Ctrl+A/C/X/V`), regex search (`Ctrl+/`) and replace (`Ctrl+R`), syntax highlighting (C/C++ nesting, pre-parsed, per-line cache).
 - **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic.
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
-- **Tests**: 133 tests (buffer, undo, clipboard, autosave, view truncate, change tracking, `view_decide`).
+- **Tests**: 133 tests (buffer, undo, clipboard, autosave, view truncate, change tracking, `view_decide`). `./led -t` on your machine.
 
 ## What Fails
-- **Large files**: whole file loaded into memory, no lazy/mmap, truncates lines >10k.
-- **Hardcoded limits**: file size, line length not yet configurable.
+- **Large files**: whole file loaded into memory, no lazy/mmap. Past about 30000 lines it hogs the system and you may have to kill the process. Split huge files first.
+- **Long lines**: truncates past 10k characters; those lines skip highlighting and use basic rendering.
+- **Hardcoded limits**: file size and line length are not configurable yet.
+- **Language support**: highlighting and parsing are built for C/C++; other languages may be incomplete. Turn highlighting off in config if a file fights you.
 - **Error handling**: not fully standardized across modules.
 - **No per-buffer undo persistence** across sessions.
 - **No fuzzing / empty-file edge coverage** yet.
 - **Input sanitization**: no directory-traversal check beyond `is_filename_safe`.
 - **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
+
+Bugs: size and type (`file`, `head` sample), or a `gdb ./led` backtrace, at https://github.com/refgift/led/issues
 
 ## Dependencies
 C compiler, `make` (`gmake` on Unix), `libncursesw`, `glibc regex`.
