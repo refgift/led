@@ -21,7 +21,7 @@ Integrate cleaning into scripts or hooks:
 - **Code Changes**: Follow MVC structure (model.c for data, view.c for rendering, controller.c for input).
 - **Bug Fixes**: Reproduce issues, fix in relevant files (e.g., controller.c for input crashes), add tests in test_*.c.
 - **Commit Standards**: Use descriptive messages (e.g., "Fix Ctrl-X crash on last line"). Run `make clean && make` before committing.
-- **Handling Features**: For disabled features like word wrap, document in WARNINGS.md and spec in WORDWRAP_SPEC.md.
+- **Handling Features**: For known limits, document in README.md (What Works / What Fails). Word wrap spec lives in WORDWRAP_SPEC.md.
 - **Large Files**: Test with largefile.txt to avoid crashes in editing/word wrap.
 
 ## Testing
@@ -51,7 +51,7 @@ Current baseline (as of recent measurement): **38.0F** directory average.
 The goal is steady, measurable improvement in the average temperature, with special attention paid to the temperatures of all `.h` files.
 
 ## Documentation and Release
-- Update README.md for overviews, WARNINGS.md for issues.
+- Update README.md (What Works / What Fails) for overviews and known issues.
 - Man Page: Edit led.1 and run `make doc` to install.
 - Release: Tag versions in Git, update VERSION in code.
 
