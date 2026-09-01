@@ -52,7 +52,7 @@ man led           # after make doc
 
 **Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
 
-**Display/Border**: `show_border=1` (default on, `0` hides box). Toggled by `F4`.
+**Display/Border**: `show_border=0` (default off, `1` shows box). Toggled by `F4`.
 
 **Other**: `syntax_extensions=.c,.h,.cpp`, `reserved_words=...`, `paired_keywords=if-then,begin-end,(,)`, `tab_width=8`, `spaces_for_tab=0`, `show_key_meter=1`.
 
@@ -63,6 +63,6 @@ normal_bg=BLACK
 selection_fg=CYAN
 selection_bg=BLACK
 show_key_meter=1
-show_border=1
+show_border=0
 syntax_extensions=.c,.h,.cpp
 ```
