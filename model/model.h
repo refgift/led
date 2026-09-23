@@ -87,6 +87,13 @@ void buffer_init(Buffer* buf);
 void buffer_free(Buffer* buf);
 
 int buffer_load_from_file(Buffer* buf, const char* filename, long max_bytes, int max_line_len);
+
+/** Write the buffer to filename.
+ *  When the directory is writable, the bytes go to a temp file in that
+ *  directory and replace filename via rename, so a crash mid-write leaves
+ *  the previous file intact. Existing permission bits are kept.
+ *  Returns 0 on success, -1 on error (the previous file is then unchanged
+ *  unless the temp file could not be created and the direct write was used). */
 int buffer_save_to_file(const Buffer* buf, const char* filename);
 
 /** Returns a newly allocated copy of the line. Caller must free(). */

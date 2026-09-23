@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <regex.h>
 #include <sys/stat.h>
+#include <unistd.h>
 /* Fallback default; caller should pass a limit from EditorConfig. */
 #define DEFAULT_MAX_FILE_BYTES (10L * 1024 * 1024)
 #define DEFAULT_MAX_LINE_LENGTH 10000
@@ -727,33 +728,76 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
     _buffer_mark_change (buf, touched_first, touched_last, structural);
   return 0;
 }
-int
-buffer_save_to_file (const Buffer *buf, const char *filename)
+static int
+write_buffer_fp (const Buffer *buf, FILE *fp)
+{
+  for (int i = 0; i < buf->num_lines; i++)
+    {
+      char *text = (char *) gap_buffer_get_text (buf->lines[i]);
+      if (!text)
+        return -1;
+      if (fputs (text, fp) == EOF)
+        {
+          free (text);
+          return -1;
+        }
+      free (text);
+      if (i < buf->num_lines - 1 && fputc ('\n', fp) == EOF)
+        return -1;
+    }
+  return ferror (fp) ? -1 : 0;
+}
+
+/* Direct write. Used only when a sibling temp file cannot be created
+ * (path too long, or the directory itself is not writable). */
+static int
+buffer_save_inplace (const Buffer *buf, const char *filename)
 {
   FILE *fp = fopen (filename, "wb");
   if (!fp)
+    return -1;
+  int rc = write_buffer_fp (buf, fp);
+  if (rc != 0)
     {
+      fclose (fp);
       return -1;
     }
-  for (int i = 0; i < buf->num_lines; i++)
+  if (fflush (fp) != 0 || fclose (fp) != 0)
+    return -1;
+  return 0;
+}
+
+int
+buffer_save_to_file (const Buffer *buf, const char *filename)
+{
+  if (!buf || !filename || !*filename)
+    return -1;
+
+  char tmp[PATH_MAX];
+  int nw = snprintf (tmp, sizeof tmp, "%s.ledtmp.%d", filename, (int) getpid ());
+  if (nw < 0 || (size_t) nw >= sizeof tmp)
+    return buffer_save_inplace (buf, filename);
+
+  FILE *fp = fopen (tmp, "wb");
+  if (!fp)
+    return buffer_save_inplace (buf, filename);
+
+  struct stat st;
+  int have_mode = stat (filename, &st) == 0;
+  if (have_mode)
+    (void) fchmod (fileno (fp), st.st_mode & 07777);
+
+  if (write_buffer_fp (buf, fp) != 0 || fflush (fp) != 0
+      || fsync (fileno (fp)) != 0 || fclose (fp) != 0)
     {
-		
-
-
-
-      char *text = (char*)gap_buffer_get_text(buf->lines[i]);
-      if (!text) {
-        fclose(fp);
-        return -1;
-      }
-      fputs (text, fp);
-      free(text);
-      if (i < buf->num_lines - 1)
-        {
-          fputc ('\n', fp);
-        }
+      unlink (tmp);
+      return -1;
     }
-  fclose (fp);
+  if (rename (tmp, filename) != 0)
+    {
+      unlink (tmp);
+      return -1;
+    }
   return 0;
 }
 void

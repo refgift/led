@@ -16,7 +16,7 @@
 #include <ncurses.h>
 #include <time.h>
 
-#define VERSION "1.0.6"
+#define VERSION "1.0.7"
 
 #define LED_MAX_SYNTAX_PAIRS 10
 /**
@@ -79,6 +79,7 @@ typedef struct {
     int spaces_for_tab;   /* if true, TAB inserts spaces instead of '\t' */
     int word_wrap;        /* F3 toggle: when true, long lines wrap visually */
     int show_border;      /* F4 toggle: when false, no box() — prevents xterm copy of border */
+    int line_numbers_configured; /* 1 if show_line_numbers was set in the config file */
 } DisplayConfig;
 typedef struct {
     int max_file_size_mb;

@@ -48,6 +48,8 @@ main (int argc, char *argv[])
     }
   Editor ed;
   editor_init (&ed, argc, argv);
+  if (!test_mode)
+    editor_bind_terminal_keys (&ed);
   WINDOW *text_win = NULL;
   if (!test_mode)
     {
@@ -123,11 +125,11 @@ main (int argc, char *argv[])
                             ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
               continue;
             }
-          if (ch == 17)
-            break;              // Ctrl+Q
           {
             int old_border = ed.config.display.show_border;
-            editor_handle_input (&ed, ch);
+            if (editor_handle_input (&ed, ch))
+              break;            /* Ctrl+Q */
+
             if (old_border != ed.config.display.show_border)
               {
                 // F4 toggled border: recreate text window with new geometry

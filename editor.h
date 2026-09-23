@@ -111,6 +111,23 @@ struct Editor {
     /* Timing / double-key detection */
     int last_key_us;
     int prev_key;   /* used for double-Home / double-End */
+
+    /* Go-to-line prompt (Ctrl+G). goto_buffer holds "line" or "line:col". */
+    int goto_mode;
+    char goto_buffer[64];
+
+    /* Set after Ctrl+Q when the buffer is modified. A second Ctrl+Q quits. */
+    int quit_armed;
+
+    /* Esc was pressed; the next key is a word motion (b / f / Backspace). */
+    int meta_pending;
+
+    /* Terminal key codes for Ctrl+Left / Ctrl+Right. 0 if unknown. */
+    int key_word_left;
+    int key_word_right;
+
+    /* Owns the filename when it was peeled from "path:line". */
+    char filename_storage[512];
 };
 
 /* === Public API === */
@@ -124,8 +141,22 @@ void editor_draw(WINDOW* frame, WINDOW* text, Editor* ed);
 /* Compat: single-window wrapper (frame==text==stdscr legacy) */
 void editor_draw_compat(WINDOW* win, Editor* ed);
 
-/** Process one keypress. This is the main input dispatcher. */
-void editor_handle_input(Editor* ed, int ch);
+/** Process one keypress. Returns 1 when the session should end (Ctrl+Q). */
+int editor_handle_input(Editor* ed, int ch);
+
+/** Bind Ctrl+Left / Ctrl+Right from terminfo. Call after initscr and keypad. */
+void editor_bind_terminal_keys(Editor* ed);
+
+/** "+142" -> 142. Returns 1 on success. */
+int led_parse_plus_line(const char* arg, int* line);
+
+/** Peel a trailing ":line" or ":line:col" (both 1-based) off arg.
+ *  Does not look at the filesystem. Returns 1 when a suffix was peeled. */
+int led_parse_file_location(const char* arg, char* path, size_t path_sz,
+                            int* line, int* col);
+
+/** Move the cursor to a 1-based "line" or "line:col". Returns 0 on success. */
+int editor_apply_goto(Editor* ed, const char* spec);
 
 /** Release all resources owned by the Editor. */
 void editor_cleanup(Editor* ed);

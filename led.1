@@ -1,12 +1,18 @@
-.TH LED 1 "2026-03-20" "1.0.6" "User Commands"
+.TH LED 1 "2026-09-22" "1.0.7" "User Commands"
 .SH NAME
 led \- Larry's Editor, a terminal-based text editor
 .SH SYNOPSIS
 .B led
-[\fIoptions\fR] [\fIfile\fR]
+[\fIoptions\fR] [\fI+line\fR] [\fIfile\fR[\fI:line\fR[\fI:col\fR]]]
 .SH DESCRIPTION
 .B led
-is a terminal-based editor with unlimited undo/redo, auto-save/backups, syntax highlighting, and incremental rendering. Text lives in a subwindow; border only on full repaint.
+is a terminal-based editor for C and C++ with unlimited undo/redo, auto-save/backups, syntax highlighting, and incremental rendering. Text lives in a subwindow; border only on full repaint.
+Open at a compiler location with
+.B led +142 file.c
+or
+.B led file.c:142:8
+(1-based).
+A name that already exists, colon and all, is opened as itself.
 .SH OPTIONS
 .TP
 .B \-t
@@ -16,14 +22,28 @@ Test mode: run model/view/controller tests to stderr, exit.
 .TP
 .B Arrows, Home/End (×2 top/bottom), PgUp/PgDn
 Move and scroll.
+.TP
+.B Ctrl+Left / Ctrl+Right, Esc b / Esc f
+Previous / next word. Ctrl+W deletes the previous word.
+.TP
+.B Ctrl+]
+Jump to the matching parenthesis, bracket, or brace. Strings, comments, and C++ raw strings are skipped.
+.TP
+.B Ctrl+G
+Go to a 1-based line, or line:col. Esc cancels.
 .SS Editing
 .TP
-.B Printable, Enter, Backspace/Delete, Tab, Ctrl+Z/Y
-Insert, newline, delete, tab, undo/redo.
+.B Printable, Enter, Backspace/Delete, Tab, Shift+Tab, Ctrl+Z/Y
+Insert, newline, delete, tab, outdent, undo/redo.
+Enter at the end of a line copies that line's indent, and adds one level after an opening brace or parenthesis.
+.TP
+.B Ctrl+K
+Toggle a // comment on the current line.
 .SS File
 .TP
 .B Ctrl+S / Ctrl+Q
-Save / Quit.
+Save / Quit. Save replaces the file by rename and keeps its mode.
+Ctrl+Q on a modified buffer asks for a second Ctrl+Q.
 .SS Selection
 .TP
 .B Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V
@@ -31,7 +51,7 @@ Select all / Copy / Cut / Paste (paste filtered).
 .SS Search
 .TP
 .B Ctrl+/ / Ctrl+R
-Search / Replace (regex).
+Search / Replace (regex, wraps to the top).
 .SS Display
 .TP
 .B F2
@@ -50,7 +70,7 @@ Editing, selection, clipboard, regex search/replace, syntax highlight, Unicode, 
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-133 tests.
+193 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap; lines >10k truncated.
@@ -69,6 +89,8 @@ xterm copy still sees screen cells — use F4 off.
 .BR emacs (1),
 .BR nano (1)
 .SH AUTHOR
-Grok-code-fast-1 assisted.
+Larry Bruce Daniel
+.PP
+Assistance from Grok (xAI): grok-code-fast-1 on earlier versions, Grok 4.7 on 1.0.7.
 .SH BUGS
 https://github.com/refgift/led/issues

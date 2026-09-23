@@ -1220,7 +1220,12 @@ render_status_bar (WINDOW *frame, Editor *ed, Buffer *buf, int cursor_line, int 
       snprintf (message_prefix, sizeof(message_prefix), "%s | ",
                 ed->status_message);
     }
-  if (replace_step == 1)
+  if (ed && ed->goto_mode)
+    {
+      snprintf (status_line, sizeof (status_line), "Go to line[:col]: %s",
+                ed->goto_buffer);
+    }
+  else if (replace_step == 1)
     {
       snprintf (status_line, sizeof(status_line), "Replace search: %s",
                 search_buffer ? search_buffer : "");

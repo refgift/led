@@ -41,5 +41,9 @@ int handle_input (int ch, Buffer * buf, int *scroll_row, int *scroll_col,
 
 /* === Search === */
 
-void search_next (Buffer * buf, int *cursor_line, int *cursor_col,
-                  const char *pattern);
+/** Find the next regex match at or after the cursor, skipping a match that
+ *  starts exactly on the cursor. Wraps to the top of the buffer once.
+ *  Returns 1 if found, 2 if found after wrapping, 0 if absent, -1 if the
+ *  pattern is empty, too long, or not a valid extended regex. */
+int search_next (Buffer * buf, int *cursor_line, int *cursor_col,
+                 const char *pattern);

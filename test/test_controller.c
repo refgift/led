@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include "model.h"
 #include "controller.h"
 #include "view.h"
@@ -330,9 +331,21 @@ test_search_functionality ()
   // Search not found
   cursor_line = 0;
   cursor_col = 0;
-  search_next (&buf, &cursor_line, &cursor_col, "notfound");
-  test_assert (cursor_line == 0
+  int missing = search_next (&buf, &cursor_line, &cursor_col, "notfound");
+  test_assert (missing == 0 && cursor_line == 0
                && cursor_col == 0, "search no match stays put");
+
+  cursor_line = 1;
+  cursor_col = 14;              /* the last "hello"; next search must wrap */
+  int wrapped = search_next (&buf, &cursor_line, &cursor_col, "hello");
+  test_assert (wrapped == 2 && cursor_line == 0 && cursor_col == 0,
+               "search wraps to the first match");
+
+  cursor_line = 0;
+  cursor_col = 0;
+  test_assert (search_next (&buf, &cursor_line, &cursor_col, "[") == -1
+               && cursor_line == 0 && cursor_col == 0,
+               "invalid regex does not move the cursor");
 
   buffer_free (&buf);
   fprintf (stderr, "Search functionality test completed\n");
@@ -921,6 +934,458 @@ test_tab_key (void)
   fprintf (stderr, "TAB key handling test completed\n");
 }
 
+static char *
+read_whole (const char *path)
+{
+  FILE *fp = fopen (path, "rb");
+  if (!fp)
+    return NULL;
+  if (fseek (fp, 0, SEEK_END) != 0)
+    {
+      fclose (fp);
+      return NULL;
+    }
+  long n = ftell (fp);
+  if (n < 0)
+    {
+      fclose (fp);
+      return NULL;
+    }
+  rewind (fp);
+  char *buf = malloc ((size_t) n + 1);
+  if (!buf)
+    {
+      fclose (fp);
+      return NULL;
+    }
+  size_t got = fread (buf, 1, (size_t) n, fp);
+  fclose (fp);
+  buf[got] = '\0';
+  return buf;
+}
+
+static int
+col_of (Buffer *buf, int line, char ch, int which)
+{
+  char *s = buffer_get_line (buf, line);
+  if (!s)
+    return -1;
+  int seen = 0;
+  int col = -1;
+  for (int i = 0; s[i]; i++)
+    {
+      if (s[i] == ch && ++seen == which)
+        {
+          col = i;
+          break;
+        }
+    }
+  free (s);
+  return col;
+}
+
+void
+test_programmer_motions (void)
+{
+  fprintf (stderr, "Running programmer motion tests\n");
+  TestContext ctx;
+  test_init (&ctx);
+
+  buffer_insert_line (&ctx.buf, 0, "    foo;");
+  ctx.cursor_col = buffer_get_line_length (&ctx.buf, 0);
+  test_handle_input (&ctx, '\n');
+  char *line = buffer_get_line (&ctx.buf, 1);
+  test_assert (line && strcmp (line, "    ") == 0 && ctx.cursor_col == 4
+               && ctx.cursor_line == 1,
+               "Enter at end of line copies the indent");
+  free (line);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  ctx.ed.config.display.tab_width = 4;
+  ctx.ed.config.display.spaces_for_tab = 1;
+  buffer_insert_line (&ctx.buf, 0, "    if (x) {");
+  ctx.cursor_col = buffer_get_line_length (&ctx.buf, 0);
+  test_handle_input (&ctx, '\n');
+  line = buffer_get_line (&ctx.buf, 1);
+  test_assert (line && strcmp (line, "        ") == 0 && ctx.cursor_col == 8,
+               "Enter after { adds one indent level");
+  free (line);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  ctx.ed.config.display.tab_width = 4;
+  ctx.ed.config.display.spaces_for_tab = 1;
+  buffer_insert_line (&ctx.buf, 0, "    call(");
+  ctx.cursor_col = buffer_get_line_length (&ctx.buf, 0);
+  test_handle_input (&ctx, '\n');
+  line = buffer_get_line (&ctx.buf, 1);
+  test_assert (line && strcmp (line, "        ") == 0,
+               "Enter after ( adds one indent level");
+  free (line);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  buffer_insert_line (&ctx.buf, 0, "\tif (x) {");
+  ctx.cursor_col = buffer_get_line_length (&ctx.buf, 0);
+  test_handle_input (&ctx, '\n');
+  line = buffer_get_line (&ctx.buf, 1);
+  test_assert (line && strcmp (line, "\t\t") == 0,
+               "Enter after { inserts a tab when spaces_for_tab is off");
+  free (line);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  buffer_insert_line (&ctx.buf, 0, "    Hello world");
+  ctx.cursor_col = 9;
+  test_handle_input (&ctx, '\n');
+  line = buffer_get_line (&ctx.buf, 0);
+  char *line1 = buffer_get_line (&ctx.buf, 1);
+  test_assert (line && line1 && strcmp (line, "    Hello") == 0
+               && strcmp (line1, " world") == 0 && ctx.cursor_col == 0,
+               "Enter in the middle of a line does not auto-indent");
+  free (line);
+  free (line1);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  const char *src[] = {
+    "void g() {",
+    "  char *s = \"}\";",
+    "  // }",
+    "  if (x) {",
+    "    return;",
+    "  }",
+    "  const char *r = R\"foo( } )foo\";",
+    "}"
+  };
+  for (int i = 0; i < 8; i++)
+    buffer_insert_line (&ctx.buf, i, src[i]);
+  ctx.cursor_line = 0;
+  ctx.cursor_col = col_of (&ctx.buf, 0, '{', 1);
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == 7 && ctx.cursor_col == 0,
+               "Ctrl+] on { jumps to the closing brace");
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == 0
+               && ctx.cursor_col == col_of (&ctx.buf, 0, '{', 1),
+               "Ctrl+] on } jumps back to the opening brace");
+
+  ctx.cursor_line = 3;
+  ctx.cursor_col = col_of (&ctx.buf, 3, '{', 1);
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == 5 && ctx.cursor_col == 2,
+               "Ctrl+] matches the inner brace, not the outer one");
+
+  int stay_l = 1;
+  int stay_c = col_of (&ctx.buf, 1, '}', 1);
+  ctx.cursor_line = stay_l;
+  ctx.cursor_col = stay_c;
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == stay_l && ctx.cursor_col == stay_c
+               && strstr (ctx.ed.status_message, "No match") != NULL,
+               "brace inside a string is not a match");
+
+  stay_c = col_of (&ctx.buf, 2, '}', 1);
+  ctx.cursor_line = 2;
+  ctx.cursor_col = stay_c;
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == 2 && ctx.cursor_col == stay_c,
+               "brace inside a // comment is not a match");
+
+  stay_c = col_of (&ctx.buf, 6, '}', 1);
+  ctx.cursor_line = 6;
+  ctx.cursor_col = stay_c;
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == 6 && ctx.cursor_col == stay_c,
+               "brace inside a C++ raw string is not a match");
+
+  ctx.cursor_line = 0;
+  ctx.cursor_col = col_of (&ctx.buf, 0, '(', 1);
+  test_handle_input (&ctx, 29);
+  test_assert (ctx.cursor_line == 0
+               && ctx.cursor_col == col_of (&ctx.buf, 0, ')', 1),
+               "Ctrl+] matches parentheses");
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  buffer_insert_line (&ctx.buf, 0, "int foo_bar;");
+  ctx.ed.key_word_right = 3001;
+  ctx.ed.key_word_left = 3000;
+  test_handle_input (&ctx, 3001);
+  test_assert (ctx.cursor_col == 4, "Ctrl+Right lands on the next word");
+  test_handle_input (&ctx, 3001);
+  test_assert (ctx.cursor_col == 12, "Ctrl+Right from the last word reaches the end");
+  test_handle_input (&ctx, 3000);
+  test_assert (ctx.cursor_col == 4, "Ctrl+Left lands on the start of the word");
+  test_handle_input (&ctx, 3000);
+  test_assert (ctx.cursor_col == 0, "Ctrl+Left reaches the first word");
+  ctx.cursor_col = 12;
+  test_handle_input (&ctx, 23);
+  line = buffer_get_line (&ctx.buf, 0);
+  test_assert (line && strcmp (line, "int ") == 0 && ctx.cursor_col == 4,
+               "Ctrl+W deletes the previous word");
+  free (line);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  buffer_insert_line (&ctx.buf, 0, "int foo");
+  test_handle_input (&ctx, 27);
+  test_handle_input (&ctx, 'f');
+  test_assert (ctx.cursor_col == 4 && ctx.ed.meta_pending == 0,
+               "Esc then f moves to the next word");
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  buffer_insert_line (&ctx.buf, 0, "    int x;");
+  ctx.cursor_col = 6;
+  test_handle_input (&ctx, 11);
+  line = buffer_get_line (&ctx.buf, 0);
+  test_assert (line && strcmp (line, "    // int x;") == 0 && ctx.cursor_col == 9,
+               "Ctrl+K comments the line");
+  free (line);
+  test_handle_input (&ctx, 11);
+  line = buffer_get_line (&ctx.buf, 0);
+  test_assert (line && strcmp (line, "    int x;") == 0 && ctx.cursor_col == 6,
+               "Ctrl+K again removes the comment");
+  free (line);
+
+  test_cleanup (&ctx);
+  test_init (&ctx);
+  ctx.ed.config.display.tab_width = 4;
+  buffer_insert_line (&ctx.buf, 0, "        x");
+  ctx.cursor_col = 8;
+  test_handle_input (&ctx, KEY_BTAB);
+  line = buffer_get_line (&ctx.buf, 0);
+  test_assert (line && strcmp (line, "    x") == 0 && ctx.cursor_col == 4,
+               "Shift-Tab removes one indent level of spaces");
+  free (line);
+  buffer_free (&ctx.buf);
+  buffer_init (&ctx.buf);
+  buffer_insert_line (&ctx.buf, 0, "\tx");
+  ctx.cursor_line = 0;
+  ctx.cursor_col = 1;
+  test_handle_input (&ctx, KEY_BTAB);
+  line = buffer_get_line (&ctx.buf, 0);
+  test_assert (line && strcmp (line, "x") == 0 && ctx.cursor_col == 0,
+               "Shift-Tab removes a leading tab");
+  free (line);
+  test_cleanup (&ctx);
+
+  Editor ed;
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "aaaa");
+  buffer_insert_line (&ed.model, 1, "bbbb");
+  buffer_insert_line (&ed.model, 2, "cccc");
+  test_assert (editor_handle_input (&ed, 7) == 0 && ed.goto_mode == 1,
+               "Ctrl+G opens the go-to prompt");
+  editor_handle_input (&ed, '2');
+  editor_handle_input (&ed, ':');
+  editor_handle_input (&ed, '3');
+  test_assert (editor_handle_input (&ed, '\n') == 0 && ed.goto_mode == 0
+               && ed.cursor_line == 1 && ed.cursor_col == 2,
+               "Go to line:col lands on that character");
+  test_assert (editor_apply_goto (&ed, "99") == 0 && ed.cursor_line == 2,
+               "a line past the end clamps to the last line");
+  test_assert (editor_apply_goto (&ed, "0") == -1, "line 0 is rejected");
+  test_assert (editor_apply_goto (&ed, "1:0") == -1, "column 0 is rejected");
+
+  ed.file_modified = 0;
+  test_assert (editor_handle_input (&ed, 17) == 1,
+               "Ctrl+Q quits immediately when nothing is modified");
+  ed.file_modified = 1;
+  ed.quit_armed = 0;
+  test_assert (editor_handle_input (&ed, 17) == 0 && ed.quit_armed == 1,
+               "Ctrl+Q on a modified buffer asks for a second press");
+  test_assert (editor_handle_input (&ed, 'x') == 0 && ed.quit_armed == 0,
+               "another key disarms quit");
+  ed.file_modified = 1;
+  editor_handle_input (&ed, 17);
+  test_assert (editor_handle_input (&ed, 17) == 1,
+               "second Ctrl+Q quits");
+  editor_cleanup (&ed);
+
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "int foo_bar");
+  editor_handle_input (&ed, 27);
+  test_assert (editor_handle_input (&ed, 'f') == 0 && ed.cursor_col == 4
+               && ed.file_modified == 0,
+               "a word motion does not mark the buffer modified");
+  editor_cleanup (&ed);
+
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "hi");
+  ed.filename = "/tmp/no_such_led_dir/out.txt";
+  ed.file_modified = 1;
+  ed.auto_save_threshold = 100000;
+  ed.auto_save_timeout = 0;
+  editor_handle_input (&ed, 19);
+  test_assert (ed.file_modified == 1
+               && strstr (ed.status_message, "Save failed") != NULL,
+               "a failed save stays modified and says so");
+  editor_cleanup (&ed);
+
+  fprintf (stderr, "Programmer motion tests completed\n");
+}
+
+void
+test_open_location (void)
+{
+  fprintf (stderr, "Running open-at-location tests\n");
+  const char *path = "/tmp/led_jump_test.c";
+  unlink ("/tmp/led_jump_test.c.recovery");
+  FILE *fp = fopen (path, "wb");
+  test_assert (fp != NULL, "location fixture can be written");
+  if (fp)
+    {
+      fputs ("alpha\nbeta\ngamma\ndelta\n", fp);
+      fclose (fp);
+    }
+  char arg[] = "/tmp/led_jump_test.c:3:2";
+  char *av[] = { "led", arg };
+  Editor ed;
+  editor_init (&ed, 2, av);
+  char *l0 = buffer_get_line (&ed.model, 0);
+  test_assert (l0 && strcmp (l0, "alpha") == 0, "file:line opens the file, not the colon name");
+  free (l0);
+  test_assert (ed.cursor_line == 2 && ed.cursor_col == 1,
+               "file:line:col places the cursor");
+  test_assert (ed.filename && strstr (ed.filename, ":3") == NULL,
+               "the stored filename does not keep the :line suffix");
+  if (ed.syntax_highlight && !ed.config.display.line_numbers_configured)
+    test_assert (ed.show_line_numbers == 1,
+                 "a C file shows line numbers unless config turns them off");
+  editor_cleanup (&ed);
+
+  char *avplus[] = { "led", "+2", "/tmp/led_jump_test.c" };
+  editor_init (&ed, 3, avplus);
+  test_assert (ed.cursor_line == 1 && ed.cursor_col == 0,
+               "led +N file opens at that line");
+  editor_cleanup (&ed);
+
+  const char *colon = "/tmp/led_colon:1";
+  unlink ("/tmp/led_colon:1.recovery");
+  fp = fopen (colon, "wb");
+  if (fp)
+    {
+      fputs ("keep\n", fp);
+      fclose (fp);
+    }
+  char carg[] = "/tmp/led_colon:1";
+  char *avc[] = { "led", carg };
+  editor_init (&ed, 2, avc);
+  l0 = buffer_get_line (&ed.model, 0);
+  test_assert (l0 && strcmp (l0, "keep") == 0 && ed.cursor_line == 0
+               && ed.cursor_col == 0,
+               "an existing name that contains :line is opened as itself");
+  free (l0);
+  editor_cleanup (&ed);
+
+  char pathbuf[64];
+  int line = 0;
+  int col = 0;
+  test_assert (led_parse_plus_line ("+20", &line) == 1 && line == 20,
+               "+N parses a line number");
+  test_assert (led_parse_plus_line ("+0", &line) == 0, "+0 is not a line");
+  test_assert (led_parse_plus_line ("+20a", &line) == 0, "+N rejects trailing junk");
+  test_assert (led_parse_file_location ("src/file.c:142", pathbuf, sizeof pathbuf,
+                                        &line, &col) == 1
+               && strcmp (pathbuf, "src/file.c") == 0 && line == 142 && col == 0,
+               "path:line peels the line");
+  test_assert (led_parse_file_location ("src/file.c:142:8", pathbuf, sizeof pathbuf,
+                                        &line, &col) == 1
+               && line == 142 && col == 8,
+               "path:line:col peels both");
+  test_assert (led_parse_file_location ("foo:bar:12", pathbuf, sizeof pathbuf,
+                                        &line, &col) == 1
+               && strcmp (pathbuf, "foo:bar") == 0 && line == 12,
+               "only a numeric suffix is a location");
+  test_assert (led_parse_file_location ("archive.tar.gz", pathbuf, sizeof pathbuf,
+                                        &line, &col) == 0,
+               "a name without :line is left whole");
+
+  unlink (path);
+  unlink (colon);
+  fprintf (stderr, "Open-at-location tests completed\n");
+}
+
+void
+test_save_replaces_cleanly (void)
+{
+  fprintf (stderr, "Running atomic save tests\n");
+  const char *path = "/tmp/led_mode_test.txt";
+  unlink (path);
+  FILE *fp = fopen (path, "wb");
+  test_assert (fp != NULL, "mode fixture can be written");
+  if (fp)
+    {
+      fputs ("old\n", fp);
+      fclose (fp);
+    }
+  chmod (path, 0600);
+
+  Buffer buf;
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "new line");
+  buffer_insert_line (&buf, 1, "two");
+  test_assert (buffer_save_to_file (&buf, path) == 0, "save succeeds");
+  struct stat st;
+  test_assert (stat (path, &st) == 0 && (st.st_mode & 0777) == 0600,
+               "save keeps the file mode");
+  char *body = read_whole (path);
+  test_assert (body && strcmp (body, "new line\ntwo") == 0,
+               "save writes the buffer without an extra trailing newline");
+  free (body);
+  char tmp[128];
+  snprintf (tmp, sizeof tmp, "%s.ledtmp.%d", path, (int) getpid ());
+  test_assert (access (tmp, F_OK) != 0, "save leaves no temp file behind");
+
+  buffer_free (&buf);
+  buffer_init (&buf);
+  buffer_insert_line (&buf, 0, "line1");
+  buffer_insert_line (&buf, 1, "line2");
+  buffer_insert_line (&buf, 2, "");
+  test_assert (buffer_save_to_file (&buf, path) == 0, "save of a trailing newline succeeds");
+  body = read_whole (path);
+  test_assert (body && strcmp (body, "line1\nline2\n") == 0,
+               "a final empty line is a trailing newline on disk");
+  free (body);
+  buffer_free (&buf);
+  unlink (path);
+  fprintf (stderr, "Atomic save tests completed\n");
+}
+
+void
+test_default_cpp_keywords (void)
+{
+  fprintf (stderr, "Running default C/C++ keyword tests\n");
+  const char *old_home = getenv ("HOME");
+  char *home_copy = old_home ? strdup (old_home) : NULL;
+  setenv ("HOME", "/tmp/led-no-home-config", 1);
+  EditorConfig cfg;
+  memset (&cfg, 0, sizeof cfg);
+  load_editor_config (&cfg);
+  test_assert (config_is_reserved_word (&cfg, "class") == 1, "class is a default keyword");
+  test_assert (config_is_reserved_word (&cfg, "constexpr") == 1,
+               "constexpr is a default keyword");
+  test_assert (config_is_reserved_word (&cfg, "restrict") == 1,
+               "restrict is a default keyword");
+  test_assert (strstr (cfg.syntax.extensions, ".hpp") != NULL
+               && strstr (cfg.syntax.extensions, ".cc") != NULL,
+               "default extensions cover C and C++");
+  if (home_copy)
+    {
+      setenv ("HOME", home_copy, 1);
+      free (home_copy);
+    }
+  else
+    unsetenv ("HOME");
+  fprintf (stderr, "Default C/C++ keyword tests completed\n");
+}
+
 void
 run_comprehensive_tests (void)
 {
@@ -993,7 +1458,19 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   test_tab_key ();
   fprintf (stderr, "Test %d: autosave_comprehensive - Auto-save and backups\n",
              ++test_number);
-  test_autosave_comprehensive (); 
+  test_autosave_comprehensive ();
+  fprintf (stderr, "Test %d: programmer_motions - indent, braces, words, goto, quit\n",
+           ++test_number);
+  test_programmer_motions ();
+  fprintf (stderr, "Test %d: open_location - file:line and +N\n",
+           ++test_number);
+  test_open_location ();
+  fprintf (stderr, "Test %d: save_replaces_cleanly - atomic save\n",
+           ++test_number);
+  test_save_replaces_cleanly ();
+  fprintf (stderr, "Test %d: default_cpp_keywords - C and C++ defaults\n",
+           ++test_number);
+  test_default_cpp_keywords (); 
   
   fprintf (stderr, "\n");
   run_view_tests();

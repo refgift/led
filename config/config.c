@@ -64,9 +64,10 @@ set_default_config (EditorConfig *config)
   config->colors.reserved_words_fg = COLOR_RED;
   config->colors.reserved_words_bg = COLOR_BLACK;
   // Syntax
-  strcpy (config->syntax.extensions, ".c,.h,.cpp");
+  strcpy (config->syntax.extensions,
+          ".c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx");
   strcpy (config->syntax.reserved_words,
-          "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void");
+          "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void,restrict,bool,true,false,nullptr,class,namespace,template,typename,public,private,protected,virtual,new,delete,try,catch,throw,using,operator,friend,inline,explicit,constexpr,noexcept,override,this,wchar_t,static_assert,concept,requires,co_await,co_return,co_yield,export,import,module,mutable,typeid,decltype");
   strcpy (config->syntax.paired_keywords, "if-then,begin-end,(,)");
   // Auto-save
   config->autosave.timeout = 80000000;
@@ -80,6 +81,7 @@ set_default_config (EditorConfig *config)
   config->statusbar.style = 1;  // balanced
   // Display
   config->display.show_line_numbers = 0;
+  config->display.line_numbers_configured = 0;
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 0;
@@ -308,6 +310,11 @@ load_editor_config (EditorConfig *config)
         config->display.spaces_for_tab = atoi (value);
       else if (strcmp (key, "show_border") == 0)
         config->display.show_border = atoi (value);
+      else if (strcmp (key, "show_line_numbers") == 0)
+        {
+          config->display.show_line_numbers = atoi (value);
+          config->display.line_numbers_configured = 1;
+        }
       else if (strcmp (key, "show_key_meter") == 0)
         config->statusbar.show_key_meter = atoi (value);
     }
