@@ -174,14 +174,6 @@ free_undo_stacks (UndoStack *undo, UndoStack *redo)
     }
 }
 
-/* Legacy shim to keep older test code compiling during migration.
-   New code should use free_undo_stacks or test_reset_undo(&ed). */
-void
-free_undo (void)
-{
-  /* no-op */
-}
-
 /* === Simple dispatch table (KISS) === */
 typedef struct {
     Buffer   *buf;

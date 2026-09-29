@@ -1508,26 +1508,23 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
 
 
 
-      char *line = buffer_get_line (buf, logical_line);
-      int len = strlen (line);
-      int pos = *scroll_col ? *scroll_col : 0;
-      
-      // Handle selection
-      int sel_start = len;
-      int sel_end = len;
-      if (selection_active && logical_line >= selection_start_line
-          && logical_line <= selection_end_line)
-        {
-          sel_start =
-            (logical_line == selection_start_line) ? selection_start_col : 0;
-          sel_end =
-            (logical_line == selection_end_line) ? selection_end_col : len;
-        }
-      
-      // Render line — choose wrap vs truncate based on config
-      // IMPORTANT: The truncate path below (the else) must remain untouched.
+      /* Wrap paints segments here. Truncate uses the same row painter
+         as an incremental update, so the two paths cannot drift. */
       if (config && config->display.word_wrap)
         {
+          char *line = buffer_get_line (buf, logical_line);
+          int len = strlen (line);
+          int pos = *scroll_col ? *scroll_col : 0;
+          int sel_start = len;
+          int sel_end = len;
+          if (selection_active && logical_line >= selection_start_line
+              && logical_line <= selection_end_line)
+            {
+              sel_start =
+                (logical_line == selection_start_line) ? selection_start_col : 0;
+              sel_end =
+                (logical_line == selection_end_line) ? selection_end_col : len;
+            }
           // Word wrap ON: break long logical lines across multiple visual rows.
           while (pos < len && visual_row < max_lines)
             {
@@ -1628,79 +1625,20 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
               
               visual_row++;
             }
+          free (line);
         }
       else
         {
-          // Word wrap disabled: truncate (original behavior) — subwindow aware
-          if (show_line_numbers)
-            {
-              if (tw)
-                mvwprintw (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
-              else
-                mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
-            }
-          
-          int x = tw ? num_width : 1 + num_width;
-          int tab_w = config ? config->display.tab_width : 8;
-          
-          // Print before selection
-          if (pos < sel_start)
-            {
-              int end = (sel_start < len) ? sel_start : len;
-              int print_len = end - pos;
-              int max_print = available_width;
-              int fit = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-              print_len = fit;
-              if (tw)
-                print_highlighted (tw, visual_row, x, line, len, pos, print_len,
-                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
-              else
-                print_highlighted (NULL, 1 + visual_row, x, line, len, pos, print_len,
-                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
-              x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
-              pos += print_len;
-            }
-          // Print selection
-          if (pos < sel_end && (x - (tw ? num_width : 1 + num_width)) < available_width)
-            {
-              int end = sel_end;
-              int print_len = end - pos;
-              int max_print = available_width - (x - (tw ? num_width : 1 + num_width));
-              print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-              if (tw)
-                {
-                  if (syntax_highlight) wattron (tw, COLOR_PAIR (2));
-                  mvwaddnstr (tw, visual_row, x, &line[pos], print_len);
-                  if (syntax_highlight) wattroff (tw, COLOR_PAIR (2));
-                }
-              else
-                {
-                  if (syntax_highlight) attron (COLOR_PAIR (2));
-                  mvaddnstr (1 + visual_row, x, &line[pos], print_len);
-                  if (syntax_highlight) attroff (COLOR_PAIR (2));
-                }
-              x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
-              pos += print_len;
-            }
-          // Print after selection
-          if (pos < len && (x - (tw ? num_width : 1 + num_width)) < available_width)
-            {
-              int print_len = len - pos;
-              int max_print = available_width - (x - (tw ? num_width : 1 + num_width));
-              print_len = utf8_fit_bytes (&line[pos], print_len, max_print, tab_w, 0);
-              if (tw)
-                print_highlighted (tw, visual_row, x, line, len, pos, print_len,
-                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
-              else
-                print_highlighted (NULL, 1 + visual_row, x, line, len, pos, print_len,
-                                   syntax_highlight ? 4 : 1, config, buf, logical_line);
-            }
-          
+          render_content_row (tw, visual_row, logical_line, buf, scroll_col,
+                              available_width, num_digits, num_width,
+                              show_line_numbers, syntax_highlight,
+                              selection_start_line, selection_start_col,
+                              selection_end_line, selection_end_col,
+                              selection_active, config);
           visual_row++;
         }
 
       logical_line++;
-      free(line);
     }
 
       render_status_bar (fw, ed, buf, cursor_line, cursor_col, search_mode,

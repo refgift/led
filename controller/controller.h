@@ -23,9 +23,6 @@ void redo_operation (Buffer * buf, UndoStack *undo, UndoStack *redo, int *cursor
 void clear_redo (UndoStack *redo);
 void free_undo_stacks (UndoStack *undo, UndoStack *redo);
 
-/* Legacy no-op for tests not yet updated to per-Editor stacks. */
-void free_undo (void);
-
 /* === Main input dispatcher === */
 
 /**

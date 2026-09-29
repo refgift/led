@@ -12,7 +12,7 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 193 tests (buffer, undo, clipboard, autosave, view, search wrap, indent, braces, save). `./led -t` on your machine.
+- **Tests**: 192 tests (buffer, undo, clipboard, autosave, view, search wrap, indent, braces, save). `./led -t` on your machine.
 
 ## What Fails
 - **Large files**: whole file loaded into memory, no lazy/mmap. Past about 30000 lines it hogs the system and you may have to kill the process. Split huge files first.

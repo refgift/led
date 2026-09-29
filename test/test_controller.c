@@ -356,7 +356,6 @@ test_buffer_replace_all ()
 {
   fprintf (stderr, "Running buffer replace test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world");
   buffer_insert_line (&buf, 1, "hello again");
@@ -370,8 +369,6 @@ test_buffer_replace_all ()
 
   // Test multiple replacements in one line
   buffer_free (&buf);
-  free_undo ();
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "foo foo foo");
   buffer_replace_all (&buf, "foo", "bar");
@@ -380,8 +377,6 @@ test_buffer_replace_all ()
 
   // Test empty replacement
   buffer_free (&buf);
-  free_undo ();
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "abcdef");
   buffer_replace_all (&buf, "cd", "");
@@ -403,7 +398,6 @@ void test_clipboard_comprehensive ()
   fprintf (stderr, "Running clipboard comprehensive tests\n");
   Buffer buf;
   char *clipboard = NULL;
-  free_undo ();
   buffer_init (&buf);
   
   // Test 1: select all empty
@@ -416,7 +410,6 @@ void test_clipboard_comprehensive ()
   
   // Test 2: select all single line
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello");
   sel_start_line = 0;
@@ -426,7 +419,6 @@ void test_clipboard_comprehensive ()
   
   // Test 3: select all multiline
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "line1");
   buffer_insert_line (&buf, 1, "line2");
@@ -437,7 +429,6 @@ void test_clipboard_comprehensive ()
   
   // Test 4: copy current line
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "foo");
   buffer_insert_line (&buf, 1, "bar");
@@ -448,7 +439,6 @@ void test_clipboard_comprehensive ()
   
   // Test 5: copy selection
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world");
   if (clipboard) free (clipboard);
@@ -472,7 +462,6 @@ void test_clipboard_comprehensive ()
   
   // Test 7: cut and clipboard
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello world");
   if (clipboard) free (clipboard);
@@ -485,7 +474,6 @@ void test_clipboard_comprehensive ()
   
   // Test 8: paste
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "hello");
   if (clipboard) free (clipboard);
@@ -496,7 +484,6 @@ void test_clipboard_comprehensive ()
   
   // Test 9: paste multiple
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "");
   if (clipboard) free (clipboard);
@@ -508,7 +495,6 @@ void test_clipboard_comprehensive ()
   
   // Test 10: empty clipboard
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "test");
   if (clipboard) free (clipboard);
@@ -517,7 +503,6 @@ void test_clipboard_comprehensive ()
   
   // Test 11: copy line no selection
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "line1");
   buffer_insert_line (&buf, 1, "line2");
@@ -527,7 +512,6 @@ void test_clipboard_comprehensive ()
   
 // Test 12: cut line no selection
 buffer_free (&buf);
-free_undo ();
   buffer_init (&buf);
 buffer_insert_line (&buf, 0, "line1");
 buffer_insert_line (&buf, 1, "line2");
@@ -539,7 +523,6 @@ test_assert (strcmp (clipboard, "line3") == 0 && buffer_num_lines (&buf) == 2, "
 
 // Test 13: cut last line when only one line
 buffer_free (&buf);
-free_undo ();
   buffer_init (&buf);
 buffer_insert_line (&buf, 0, "onlyline");
 if (clipboard) free (clipboard);
@@ -608,7 +591,6 @@ test_enter_key_newline_insertion (void)
 {
   fprintf (stderr, "Running enter key newline insertion test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "Hello world");
   int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 5; // Cursor at "Hello| world"
@@ -635,7 +617,6 @@ test_delete_key (void)
 {
   fprintf (stderr, "Running delete key test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "Hello world");
   int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 5; // Cursor between "Hello| world"
@@ -686,7 +667,6 @@ test_backspace_key (void)
 {
   fprintf (stderr, "Running backspace key test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "Hello world");
   int scroll_row = 0, scroll_col = 0, cursor_line = 0, cursor_col = 6;
@@ -715,7 +695,6 @@ test_backspace_key (void)
                "Redo after Backspace re-applies the deletion");
 
   /* ASCII 8 (BS / Ctrl+H) */
-  free_undo ();
   clear_redo (&ed.redo_stack);
   buffer_free (&buf);
   buffer_init (&buf);
@@ -738,7 +717,6 @@ test_backspace_key (void)
                "Backspace (KEY_BACKSPACE) removes char before cursor");
 
   /* Line merge: backspace at column 0 joins with previous line */
-  free_undo ();
   clear_redo (&ed.redo_stack);
   buffer_free (&buf);
   buffer_init (&buf);
@@ -763,7 +741,6 @@ test_cursor_newline_undo_redo_bug (void)
 {
   fprintf (stderr, "Running cursor newline undo/redo bug test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   Editor ed = {0}; // Dummy
   ed.config.display.tab_width = 8;
@@ -830,7 +807,6 @@ test_right_arrow_repeat_navigation (void)
 {
   fprintf (stderr, "Running right arrow repeat navigation test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   // Create a multi-line document with a very long line
   buffer_insert_line (&buf, 0, "Line one");
@@ -882,7 +858,6 @@ test_tab_key (void)
 {
   fprintf (stderr, "Running TAB key handling test\n");
   Buffer buf;
-  free_undo ();
   buffer_init (&buf);
   Editor ed = {0};
   ed.config.display.tab_width = 4;
@@ -907,7 +882,6 @@ test_tab_key (void)
 
   // Test 2: spaces_for_tab = 0 → insert literal tab char
   buffer_free (&buf);
-  free_undo ();
   buffer_init (&buf);
   buffer_insert_line (&buf, 0, "x");
   cursor_line = 0;
