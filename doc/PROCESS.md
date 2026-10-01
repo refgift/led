@@ -29,24 +29,67 @@ Integrate cleaning into scripts or hooks:
 - Add unit tests: For new fixes (e.g., crash in controller.c, add to test_controller.c).
 - Stress Testing: Use test_performance_stress() for large inputs.
 
-## Quality Measurement (Software Thermometer)
+## Quality Measurement (Software Thermometer + Jev contract battery)
 
-A new mandatory step in the development process:
+Two mandatory steps in the development process. They measure different
+things and disagree on purpose — read them together, never either alone.
 
-- After any meaningful change (especially before committing):  
-  ```bash
-  make clean && make && ./led -t && quality .
-  ```
+### 1. Deterministic gate (fast loop)
 
-- `quality .` runs the Software Thermometer on the current directory and reports:
-  - Per-file quality "temperature" (in °F).
-  - **Directory average quality temperature** (the key number we track over time).
+After any meaningful change (especially before committing):
+```bash
+make clean && make && ./led -t
+for f in $(git ls-files '*.c' '*.h'); do quality "$f"; done
+```
+
+Scope to tracked sources: bare `quality .` also scans
+`.opencode/node_modules` and pollutes the number. `quality` is instant,
+offline, and free — it is the tight 1-change loop gate. Observed: it
+rewards density and taxes added lines, so documenting a header can *lower*
+its temperature (model.h: 73.1 → 70.0 → 59.0 across two doc-only
+iterations). That is information about the metric, not a veto on the change.
+
+### 2. Semantic review (header contracts)
+
+`tools/quality_jev.py` pairs each header's temperature with Jev judgments
+it cannot see: undocumented API, misleading comments, naming, interface
+bloat, plus an excellence score and a primary concern. Needs
+`TYPESAFE_API_KEY`; stdlib only.
+
+Find the next thing to work on:
+```bash
+python3 tools/quality_jev.py score            # rank all tracked headers
+```
+
+Sort by `health` ascending. Lowest health with a high-confidence concern
+is the next change. Then, one change at a time:
+```bash
+python3 tools/quality_jev.py score --save /tmp/opencode/hdr_base.json
+# ... make exactly one change, checked against the implementation, not the declaration ...
+make clean && make && ./led -t
+python3 tools/quality_jev.py score --compare /tmp/opencode/hdr_base.json
+```
+
+Rules learned the hard way:
+- Verify every new comment against the implementation before measuring.
+  A wrong comment is worse than silence — it passes tests and lies to
+  readers. (`buffer_delete_range` swaps reversed points; `get_line_length`
+  has no truncation marker. Both were caught this way.)
+- Low-confidence verdicts route to `review`: go read the file yourself.
+- Unanimous verdicts describe the codebase's era, not a ranking. The
+  numbers that discriminate are `health` and `excellence`, not the label.
+- Expect run-to-run jitter (~±0.016 health). Use wide bands, thin
+  thresholds lose.
 
 **Core Philosophy for this project**:
 - **.h header files are "hot"** — they are the public contracts, types, and interfaces. They have the highest leverage on overall quality and maintainability. Prioritize making every `.h` file excellent (high comment density, clean declarations, minimal duplication, no dead includes).
 - **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented.
 
-Current baseline (as of recent measurement): **38.0F** directory average.
+Measured 2026-10-01 over 21 tracked `*.c/*.h`: average **-163.9°F**.
+Headers run warm (25–85°F, `utils.h` highest); large implementations run
+arctic (`view.c`, `controller.c`). The old 38.0°F figure predates this
+scoping. Weak rank-alignment between temperature and Jev health
+(Spearman ≈ 0.21, n=8) confirms they track different qualities.
 
 The goal is steady, measurable improvement in the average temperature, with special attention paid to the temperatures of all `.h` files.
 
