@@ -71,14 +71,23 @@ typedef struct {
 
 /* === GapBuffer operations (low-level) === */
 
+/** Creates an empty gap buffer. Caller must free with gap_buffer_free(). */
 GapBuffer* gap_buffer_create(void);
+/** Frees the gap buffer and its storage. Passing NULL is safe. */
 void gap_buffer_free(GapBuffer* gb);
+/** Inserts c at logical position pos. pos must be within [0, text_len]. */
 void gap_buffer_insert(GapBuffer* gb, int pos, char c);
+/** Deletes the character at logical position pos. */
 void gap_buffer_delete(GapBuffer* gb, int pos);
+/** Returns the character at logical position pos. */
 char gap_buffer_get_char(const GapBuffer* gb, int pos);
+/** Returns the logical text (gap excluded). Pointer is owned by gb. */
 const char* gap_buffer_get_text(const GapBuffer* gb);
+/** Returns the logical length (text_len, gap excluded). */
 int gap_buffer_length(const GapBuffer* gb);
+/** Moves the gap so it starts at logical position pos. */
 void gap_buffer_move_gap(GapBuffer* gb, int pos);
+/** Inserts n chars from s at logical position pos. s is borrowed. */
 void gap_buffer_insert_many(GapBuffer* gb, int pos, const char* s, int n);
 
 /* === High-level Buffer operations === */
