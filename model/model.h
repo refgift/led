@@ -92,9 +92,14 @@ void gap_buffer_insert_many(GapBuffer* gb, int pos, const char* s, int n);
 
 /* === High-level Buffer operations === */
 
+/** Initializes an empty buffer. buf must point to valid storage. */
 void buffer_init(Buffer* buf);
+/** Frees all lines and metadata. buf itself is borrowed, not freed. */
 void buffer_free(Buffer* buf);
 
+/** Loads filename into buf, rejecting files over max_bytes (or the default
+ *  when max_bytes <= 0) and truncating lines past max_line_len.
+ *  Returns 0 on success, -1 on error. */
 int buffer_load_from_file(Buffer* buf, const char* filename, long max_bytes, int max_line_len);
 
 /** Write the buffer to filename.
@@ -108,16 +113,26 @@ int buffer_save_to_file(const Buffer* buf, const char* filename);
 /** Returns a newly allocated copy of the line. Caller must free(). */
 char* buffer_get_line(const Buffer* buf, int line);
 
+/** Returns the logical length of line, or 0 if line is out of range. */
 int buffer_get_line_length(const Buffer* buf, int line);
+/** Returns the number of logical lines in buf. */
 int buffer_num_lines(const Buffer* buf);
+/** Returns the character at (line, col). */
 char buffer_get_char(const Buffer* buf, int line, int col);
 
+/** Inserts content as a new line at index line. Returns 0 on success, -1 on error. */
 int buffer_insert_line(Buffer* buf, int line, const char* content);
+/** Deletes the line at index line. Returns 0 on success, -1 on error. */
 int buffer_delete_line(Buffer* buf, int line);
+/** Inserts c at (line, col). Returns 0 on success, -1 on error. */
 int buffer_insert_char(Buffer* buf, int line, int col, char c);
+/** Deletes the character at (line, col). Returns 0 on success, -1 on error. */
 int buffer_delete_char(Buffer* buf, int line, int col);
+/** Deletes the range between the two points; reversed points are swapped. Returns 0 on success, -1 on error. */
 int buffer_delete_range(Buffer* buf, int start_line, int start_col, int end_line, int end_col);
+/** Inserts text at (line, col), splitting lines on '\n'. Returns 0 on success, -1 on error. */
 int buffer_insert_text(Buffer* buf, int line, int col, const char* text);
+/** Replaces every regex match of search_regex with replace_str, all lines. */
 void buffer_replace_all(Buffer* buf, const char* search_regex, const char* replace_str);
 
 /** Clears the per-draw change range (changed_first/last/structure_changed).
