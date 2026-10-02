@@ -4,9 +4,11 @@
 # meters where they were taken; older entries predate the meters and say so.
 # Format:
 # YYYY-MM-DD | <commit> | <files> | <what> | qual <b>-><a> | health <b>-><a> | tests <pass>/<fail>
+# A day that lands no change still appends. Commit is `-`. Meters not taken are `n/a`.
 2026-09-22 | 2599239 | README,config,controller,editor | 1.0.7: open on the compiler's line, edit C in place | meters predate the loop | tests unknown
 2026-09-29 | e61babd | controller,view,test,README | deletions: controller/view/test cleanup (+23/-122) | meters predate the loop | tests unknown
 2026-10-01 | 85e00d7 | model/model.h | GapBuffer ops documented, first pass (+9) | qual unknown->73.1 | health unknown | tests 192/192
 2026-10-01 | ca92f86 | model/model.h | GapBuffer block finished; Buffer ops documented (+15) | qual 73.1->70.0->59.0 | health 0.39->0.46->0.59 | tests 192/192
 2026-10-01 | c15706f | doc/PROCESS.md | dual-meter process: thermometer gate + Jev battery (+53/-10) | qual 53.9->42.1 | semantic check by hand | tests n/a (prose)
 2026-10-01 | uncommitted | path.log | log itself created: the model path begins | qual baseline below | n/a | n/a
+2026-10-02 | - | test/test_controller.h | fail: change left the module or touched too many files | qual 83.7->n/a | health 0.363->n/a | tests n/a

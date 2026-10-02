@@ -103,7 +103,7 @@ The temperature goal is steady, measurable improvement, with special attention p
 - `review`: `grok -p` reads the file and the implementation (opencode if Grok fails). It must name one verified change or decline. Only a named change is worked.
 - `excellent`: leave it.
 
-Then `make && ./led -t`. A failed test is reverted and not logged. A pass appends one `path.log` line and pushes. That line is the day. A missed day is the failure this process exists to prevent.
+Then `make && ./led -t`. A failed test is reverted. Pass or fail, one `path.log` line is appended and pushed: the change, or why it did not land. That line is the day. A silent day is the failure this process exists to prevent.
 
 `quality` rates any text. `quality_jev.py` keeps the header-contract battery for `*.h` and rates other text on purpose, claims, terms, and bulk. No-args `score` still ranks tracked headers, which is what the daily pick uses.
 

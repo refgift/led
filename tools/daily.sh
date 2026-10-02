@@ -42,12 +42,51 @@ log() {
   printf '%s %s\n' "$(date -Is)" "$*" | tee -a "$STATE/run.log" >&2
 }
 
+commit_path_log() {
+  local msg="$1"
+  if [[ "$(git branch --show-current)" != "master" ]]; then
+    log "path.log not committed: not on master"
+    return 0
+  fi
+  if git diff --quiet -- path.log && git diff --cached --quiet -- path.log; then
+    return 0
+  fi
+  git commit -m "$msg" -- path.log
+  git rev-parse HEAD >"$STATE/pending-push"
+  if git push origin HEAD; then
+    rm -f "$STATE/pending-push"
+  else
+    log "fail: push path.log"
+  fi
+}
+
+record_day() {
+  local why="$1" files qb hb
+  [[ "$mode" == "run" ]] || return 0
+  [[ "$day_logged" == 1 ]] && return 0
+  why="$(printf '%s' "$why" | tr '|' '/' | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+  [[ -n "$why" ]] || why="fail: no outcome"
+  why="${why:0:120}"
+  if ! grep -q "^${today} |" path.log; then
+    files="${target:--}"
+    qb="${qual_before:-n/a}"
+    hb="${health_before:-n/a}"
+    printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a\n' \
+      "$today" "$files" "$why" "$qb" "$hb" >>path.log
+  fi
+  day_logged=1
+  commit_path_log "path.log: ${today} ${why}" || log "fail: commit path.log"
+}
+
 cd "$REPO"
 
 today="$(date +%F)"
 HEAD=""
 agent_started=0
 committed=0
+day_claimed=0
+day_logged=0
+outcome=""
 
 restore_tools() {
   if [[ -f "$STATE/script.bak" ]]; then
@@ -91,26 +130,40 @@ undo_agent_files() {
   rm -f "$WHAT_FILE"
 }
 
-trap 'rc=$?; if [[ "$agent_started" == 1 && "$committed" != 1 && "$rc" != 0 ]]; then undo_agent_files || true; fi' EXIT
+trap 'rc=$?; if [[ "$agent_started" == 1 && "$committed" != 1 && "$rc" != 0 ]]; then undo_agent_files || true; fi; if [[ "$day_claimed" == 1 && "$day_logged" != 1 ]]; then record_day "${outcome:-fail: exit ${rc}}" || true; fi' EXIT
+
+if [[ "$mode" == "run" ]]; then
+  day_claimed=1
+fi
 
 if [[ "$mode" == "run" && -f "${HOME}/.config/led/daily.pause" ]]; then
   log "skip: pause file present"
+  outcome="fail: paused"
   exit 0
 fi
 
 if [[ "$(git branch --show-current)" != "master" ]]; then
   log "skip: not on master"
+  outcome="fail: not on master"
   exit 0
 fi
 
 if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  if grep -q "^${today} |" path.log; then
+    commit_path_log "path.log: ${today}" || true
+    day_logged=1
+    day_claimed=0
+    log "skip: path.log already has ${today}"
+    exit 0
+  fi
   log "skip: tracked tree dirty"
+  outcome="fail: tracked tree dirty"
   exit 0
 fi
 
 if [[ -f "$STATE/pending-push" ]]; then
   want="$(cat "$STATE/pending-push")"
-  git fetch origin master || { log "fail: fetch while retrying push"; exit 1; }
+  git fetch origin master || { log "fail: fetch while retrying push"; outcome="fail: fetch while retrying push"; exit 1; }
   if [[ "$(git rev-parse HEAD)" == "$want" ]] && ! git merge-base --is-ancestor "$want" origin/master; then
     git push origin HEAD
     rm -f "$STATE/pending-push"
@@ -120,6 +173,7 @@ fi
 
 if [[ "$mode" == "run" ]] && grep -q "^${today} |" path.log; then
   log "skip: path.log already has ${today}"
+  day_claimed=0
   exit 0
 fi
 
@@ -137,15 +191,17 @@ if [[ "$mode" == "run" && "$in_window" == 0 ]]; then
   fi
   if [[ "$idle" != "yes" ]]; then
     log "skip: catch-up while session is active"
+    day_claimed=0
     exit 0
   fi
 fi
 
-git fetch origin master || { log "fail: fetch"; exit 1; }
+git fetch origin master || { log "fail: fetch"; outcome="fail: fetch"; exit 1; }
 ahead="$(git rev-list --count origin/master..HEAD)"
 behind="$(git rev-list --count HEAD..origin/master)"
 if [[ "$ahead" != "0" ]]; then
   log "skip: ${ahead} unpushed commit(s) on master"
+  outcome="fail: ${ahead} unpushed commit(s) on master"
   exit 0
 fi
 if [[ "$behind" != "0" ]]; then
@@ -154,16 +210,19 @@ fi
 
 if [[ "$mode" == "run" ]] && grep -q "^${today} |" path.log; then
   log "skip: path.log already has ${today} after pull"
+  day_claimed=0
   exit 0
 fi
 
 if [[ -z "${TYPESAFE_API_KEY:-}" ]]; then
   log "skip: TYPESAFE_API_KEY unset (put it in ${ENV_FILE})"
+  outcome="fail: TYPESAFE_API_KEY unset"
   exit 0
 fi
 
 if ! timeout 300 python3 tools/quality_jev.py score --save "$STATE/baseline.json" >"$STATE/score.txt"; then
   log "fail: header score"
+  outcome="fail: header score"
   exit 1
 fi
 set +e
@@ -217,10 +276,12 @@ pick_rc=$?
 set -e
 if [[ "$pick_rc" == "2" ]]; then
   log "skip: no header to work or review"
+  outcome="fail: no header to work or review"
   exit 0
 fi
 if [[ "$pick_rc" != "0" ]]; then
   log "fail: could not pick a target"
+  outcome="fail: could not pick a target"
   exit 1
 fi
 
@@ -243,6 +304,7 @@ if [[ ! -x "$OPENCODE" ]]; then
 fi
 if [[ -z "$OPENCODE" || ! -x "$OPENCODE" ]]; then
   log "fail: opencode not found"
+  outcome="fail: opencode not found"
   exit 1
 fi
 
@@ -285,6 +347,7 @@ EOF
   review_line="$(grep -E '^(SKIP|CHANGE:)' "$STATE/review.txt" | tail -1 || true)"
   if [[ -z "$review_line" || "$review_line" == "SKIP" ]]; then
     log "skip: review declined ${target} ${concern}"
+    outcome="fail: review declined ${target} ${concern}"
     reject_target "$target" "$concern"
     exit 0
   fi
@@ -330,6 +393,7 @@ log "opencode exit ${agent_rc}"
 
 if [[ "$(git branch --show-current)" != "master" ]]; then
   log "fail: agent left master; not forcing a checkout"
+  outcome="fail: agent left master"
   exit 1
 fi
 if [[ "$(git rev-parse HEAD)" != "$HEAD" ]]; then
@@ -340,17 +404,19 @@ rm -f "$WHAT_FILE.tmp"
 
 if [[ -f "$WHAT_FILE" ]] && grep -qx 'SKIP' "$WHAT_FILE"; then
   log "skip: agent declined ${target} ${concern}"
+  outcome="fail: agent declined ${target} ${concern}"
   reject_target "$target" "$concern"
   undo_agent_files
   agent_started=0
   exit 0
 fi
 
-git diff --name-only HEAD >"$STATE/agent-files"
+git diff --name-only HEAD | grep -vxF '.led-daily-what' >"$STATE/agent-files" || true
 git ls-files --others --exclude-standard | LC_ALL=C sort >"$STATE/untracked.after"
-comm -13 "$STATE/untracked.before" "$STATE/untracked.after" >>"$STATE/agent-files"
+comm -13 "$STATE/untracked.before" "$STATE/untracked.after" | grep -vxF '.led-daily-what' >>"$STATE/agent-files" || true
 if [[ ! -s "$STATE/agent-files" ]]; then
   log "skip: agent made no change"
+  outcome="fail: agent made no change"
   agent_started=0
   exit 0
 fi
@@ -385,6 +451,7 @@ done <"$STATE/agent-files"
 
 if [[ "$bad" != 0 || "$file_count" -gt "$MAX_FILES" ]]; then
   log "reject: change left the module or touched too many files"
+  outcome="fail: change left the module or touched too many files"
   reject_target "$target" "$concern"
   undo_agent_files
   agent_started=0
@@ -398,6 +465,7 @@ done | awk '{a+=$1} END {print a+0}')"
 lines=$((lines + new_lines))
 if [[ "$lines" -gt "$MAX_LINES" ]]; then
   log "reject: diff is ${lines} lines"
+  outcome="fail: diff is ${lines} lines"
   reject_target "$target" "$concern"
   undo_agent_files
   agent_started=0
@@ -406,6 +474,7 @@ fi
 
 if git diff | grep -E 'TYPESAFE_API_KEY[[:space:]]*=[[:space:]]*[^[:space:]]|BEGIN (OPENSSH|RSA|PRIVATE) KEY|AKIA[0-9A-Z]{16}' >/dev/null; then
   log "reject: diff looks like a secret"
+  outcome="fail: diff looks like a secret"
   reject_target "$target" "$concern"
   undo_agent_files
   agent_started=0
@@ -414,6 +483,7 @@ fi
 
 if ! make -j1 clean || ! make -j1; then
   log "fail: build failed"
+  outcome="fail: build failed"
   undo_agent_files
   agent_started=0
   exit 1
@@ -427,6 +497,7 @@ passed="$(sed -n 's/Test summary: \([0-9][0-9]*\) passed, \([0-9][0-9]*\) failed
 failed="$(sed -n 's/Test summary: \([0-9][0-9]*\) passed, \([0-9][0-9]*\) failed/\2/p' <<<"$summary")"
 if [[ -z "$passed" || -z "$failed" || "$failed" != "0" ]] || ! grep -q 'ALL TESTS PASSED' "$STATE/test.log"; then
   log "fail: tests ${summary:-missing}"
+  outcome="fail: tests ${summary:-missing}"
   undo_agent_files
   agent_started=0
   exit 1
@@ -443,6 +514,7 @@ while IFS= read -r f; do
 done < <(git diff --name-only HEAD)
 if [[ -n "$extra" ]]; then
   log "fail: extra tracked edit ${extra}; not committing"
+  outcome="fail: extra tracked edit ${extra}"
   undo_agent_files
   agent_started=0
   exit 1
@@ -493,6 +565,7 @@ printf '%s | %s | %s | %s | qual %s->%s | health %s->%s | tests %s/%s\n' \
   "$today" "$code_hash" "$files" "$what" \
   "$qual_before" "$qual_after" "$health_before" "$health_after" \
   "$passed" "$ran" >>path.log
+day_logged=1
 git add path.log
 git commit -m "path.log: ${today} ${what}"
 committed=1
