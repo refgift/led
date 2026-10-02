@@ -1544,30 +1544,7 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
               // Use helper for word-aware breaking (correctly handles tabs)
               int segment_len = get_wrap_break (line, pos, len, available_width,
                                                 config ? config->display.tab_width : 8);
-              // (old naive word-break logic removed — using get_wrap_break above)
-              if (0) { /* old block disabled - safe to delete */
-                  int break_at = segment_len;
-                  for (int i = segment_len; i > 0; i--)
-                    {
-		
 
-
-
-                      if (line[pos + i] == ' ')
-                        {
-                          break_at = i;
-                          break;
-                        }
-                    }
-                  segment_len = break_at;
-                  if (segment_len == 0)
-                    segment_len = available_width;  // No space found, break hard
-                }
-              else
-                {
-                  segment_len = len - pos;
-                }
-              
               int x = tw ? num_width : 1 + num_width;
               int tab_w = config ? config->display.tab_width : 8;
               

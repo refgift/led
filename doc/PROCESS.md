@@ -51,6 +51,24 @@ rewards density and taxes added lines, so documenting a header can *lower*
 its temperature (model.h: 73.1 → 70.0 → 59.0 across two doc-only
 iterations). That is information about the metric, not a veto on the change.
 
+The summary line is the path, the temperature, then a verse. The verse is
+a table lookup on the integer degree, so every header at that degree
+shares it. It only works for a `.h`. A C header is the hot contract and
+lands in the table (this tree, about 25–85°F). A `.c` is the cold
+implementation and falls below the table, so `quality` prints
+`Out of range`. That split is the language: the declaration stays small
+and commented, and the definition carries the entropy. Do not look for a
+verse on a `.c`, and do not try to warm one into the table.
+
+The day's pick still comes from Jev `health` on a header. A change to
+that header is major. A change that leaves the header untouched and
+edits the `.c` is minor: the contract is the same, and the running
+program can still differ. When a day is compared, read the header's
+verse with its temperature. Held means the integer degree did not move,
+which is the usual reading of a minor day. Warmed or cooled means the
+degree moved, which is a major day that reached the contract. Do not
+edit in order to chase a verse.
+
 ### 2. Semantic review (header contracts)
 
 `tools/quality_jev.py` pairs each header's temperature with Jev judgments
@@ -84,8 +102,8 @@ Rules learned the hard way:
   thresholds lose.
 
 **Core Philosophy for this project**:
-- **.h header files are "hot"** — they are the public contracts, types, and interfaces. They have the highest leverage on overall quality and maintainability. Prioritize making every `.h` file excellent (high comment density, clean declarations, minimal duplication, no dead includes).
-- **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented.
+- **.h header files are "hot"** — they are the public contracts, types, and interfaces. A change here is major. Prioritize making every `.h` file excellent (high comment density, clean declarations, minimal duplication, no dead includes).
+- **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented. Their thermometer line is `Out of range`. A change here is minor. The verse is a header instrument.
 
 Measured 2026-10-01 over 21 tracked `*.c/*.h`: average **-163.9°F**.
 Headers run warm (25–85°F, `utils.h` highest); large implementations run
@@ -99,13 +117,15 @@ The temperature goal is steady, measurable improvement, with special attention p
 
 `tools/daily.sh` is the automated loop. A user timer runs it once a day. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
 
-- `needs_work` or `poor`, high confidence: one edit, checked against the implementation.
-- `review`: `grok -p` reads the file and the implementation (opencode if Grok fails). It must name one verified change or decline. Only a named change is worked.
+- `needs_work` or `poor`, high confidence: one edit, checked against the implementation. A header edit is major. A `.c` edit that leaves the header untouched is minor.
+- `review`: `grok -p` reads the header and the implementation (opencode if Grok fails). It must name one verified change, major or minor, or decline. Only a named change is worked.
 - `excellent`: leave it.
+
+A matching `.c` and a focused test may accompany a major change. A minor day is a verified behavior change in the `.c` with the header left as it is. The loop marks the `path.log` line `major` when the header is in the diff, and `minor` when it is not.
 
 Then `make && ./led -t`. A failed test is reverted. Pass or fail, one `path.log` line is appended and pushed: the change, or why it did not land. That line is the day. A silent day is the failure this process exists to prevent.
 
-`quality` rates any text. `quality_jev.py` keeps the header-contract battery for `*.h` and rates other text on purpose, claims, terms, and bulk. No-args `score` still ranks tracked headers, which is what the daily pick uses.
+`quality` rates any text. The verse is kept for `*.h` only. `quality_jev.py` pairs that verse with the header-contract battery, and rates other text on purpose, claims, terms, and bulk without a verse. No-args `score` still ranks tracked headers, which is what the daily pick uses. `--compare`, the daily run log, and the `path.log` verse field say whether a header's verse held, warmed, or cooled.
 
 Hold the loop with `~/.config/led/daily.pause`. `TYPESAFE_API_KEY` lives in `~/.config/led/daily.env`, not in the repo.
 

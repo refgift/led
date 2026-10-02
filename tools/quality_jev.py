@@ -15,6 +15,7 @@ Usage:
   python3 tools/quality_jev.py score --dry-run tools/daily.sh
   python3 tools/quality_jev.py score --save /tmp/opencode/hdr_base.json
   python3 tools/quality_jev.py score --compare /tmp/opencode/hdr_base.json
+    # delta includes whether the quality verse held, warmed, or cooled
 """
 
 import json
@@ -223,20 +224,72 @@ def compose_verdict(answers, problem_ids):
             "action": action}
 
 
-def quality_temp(path):
-    """Run the deterministic utility; separate service failure from verdict."""
+def quality_reading(path):
+    """Return (temp °F, verse, error). A summary line is ``path temp verse``.
+
+    The verse labels the integer degree. The number is the token after the
+    path, and the rest of that line is the verse. A line that does not
+    start with the path still uses its last token, so a bare number works.
+    """
     try:
         out = subprocess.run([QUALITY_BIN, path], capture_output=True,
                              text=True, timeout=60)
     except Exception as e:
-        return None, f"quality exec failure: {e}"
+        return None, "", f"quality exec failure: {e}"
     txt = (out.stdout or "").strip()
     if not txt:
-        return None, (out.stderr or "quality: no output").strip()
+        return None, "", (out.stderr or "quality: no output").strip()
+    lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+    token = ""
+    verse = ""
+    for line in lines:
+        if line.startswith(path) and (len(line) == len(path)
+                                       or line[len(path)].isspace()):
+            rest = line[len(path):].lstrip()
+            parts = rest.split(None, 1)
+            token = parts[0] if parts else ""
+            verse = parts[1].strip() if len(parts) > 1 else ""
+            break
+    if not token and lines:
+        token = lines[-1].split()[-1]
     try:
-        return float(txt.split()[-1]), None
+        return float(token), verse, None
     except ValueError:
-        return None, f"quality unparseable: {txt[:120]}"
+        return None, "", f"quality unparseable: {txt[:120]}"
+
+
+def header_path(path):
+    """A verse is a header reading. C puts the hot contract in the .h."""
+    return path.endswith(".h") or path.endswith(".H")
+
+
+def verse_move(before, after, temp_before, temp_after):
+    """Say whether a header's degree-label held, warmed, or cooled.
+
+    The same words mean the integer degree did not change. A higher
+    temperature with different words warmed; a lower one cooled. The
+    table is the hot band, about 0.1°F to 100°F, which is where a .h
+    lands. A .c is cold and is not given a verse to compare.
+    """
+    b = (before or "").strip()
+    a = (after or "").strip()
+    if not b and not a:
+        return "absent"
+    if b == a:
+        if (a == "Out of range" and temp_before is not None
+                and temp_after is not None and temp_before != temp_after):
+            return f"held out of range: {a}"
+        return f"held: {a or b}"
+    if temp_before is not None and temp_after is not None:
+        if temp_after > temp_before:
+            direction = "warmed"
+        elif temp_after < temp_before:
+            direction = "cooled"
+        else:
+            direction = "relabeled"
+    else:
+        direction = "moved"
+    return f"{direction}: {b or '(none)'} -> {a or '(none)'}"
 
 
 def tracked_headers():
@@ -287,20 +340,24 @@ def score_file(path, dry=False):
     if b"\x00" in raw:
         return {"file": path, "quality_error": "null bytes"}
     body = raw.decode("utf-8", errors="replace")
-    temp, qerr = quality_temp(path)
+    temp, verse, qerr = quality_reading(path)
+    if not header_path(path):
+        verse = ""
     state = build_state(path, body, kind)
     if dry or not os.environ.get("TYPESAFE_API_KEY"):
-        return {"file": path, "quality_F": temp, "quality_error": qerr,
+        return {"file": path, "quality_F": temp, "interpretation": verse,
+                "quality_error": qerr,
                 "dry_request": {"state": state, "model": MODEL,
                                 "questions": questions}}
     try:
         resp = call_systemone(state, questions)
     except Exception as e:
-        return {"file": path, "quality_F": temp, "quality_error": qerr,
-                "service_error": str(e)[:200]}
+        return {"file": path, "quality_F": temp, "interpretation": verse,
+                "quality_error": qerr, "service_error": str(e)[:200]}
     v = compose_verdict(resp.get("answers", {}),
                         HEADER_PROBLEMS if kind == "c-header" else TEXT_PROBLEMS)
-    return {"file": path, "kind": kind, "quality_F": temp, "quality_error": qerr,
+    return {"file": path, "kind": kind, "quality_F": temp,
+            "interpretation": verse, "quality_error": qerr,
             **v, "usage": resp.get("usage")}
 
 
@@ -380,6 +437,11 @@ def main(argv):
             print(f"{r['file']:32} dQual={dq:+.1f}F "
                   f"dHealth={r['health'] - b['health']:+.3f} "
                   f"{b.get('action', '?')}->{r['action']}")
+            if header_path(r["file"]):
+                print("  verse "
+                      + verse_move(b.get("interpretation"),
+                                   r.get("interpretation"),
+                                   b.get("quality_F"), r.get("quality_F")))
     return 0
 
 

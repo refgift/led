@@ -61,7 +61,7 @@ commit_path_log() {
 }
 
 record_day() {
-  local why="$1" files qb hb
+  local why="$1" files qb hb vb
   [[ "$mode" == "run" ]] || return 0
   [[ "$day_logged" == 1 ]] && return 0
   why="$(printf '%s' "$why" | tr '|' '/' | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
@@ -71,8 +71,15 @@ record_day() {
     files="${target:--}"
     qb="${qual_before:-n/a}"
     hb="${health_before:-n/a}"
-    printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a\n' \
-      "$today" "$files" "$why" "$qb" "$hb" >>path.log
+    vb="${verse_before:-}"
+    if [[ -n "$vb" ]]; then
+      vb="$(printf '%s' "$vb" | tr '|' '/' | tr -d '\r')"
+      printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a | verse %s -> n/a\n' \
+        "$today" "$files" "$why" "$qb" "$hb" "$vb" >>path.log
+    else
+      printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a\n' \
+        "$today" "$files" "$why" "$qb" "$hb" >>path.log
+    fi
   fi
   day_logged=1
   commit_path_log "path.log: ${today} ${why}" || log "fail: commit path.log"
@@ -271,6 +278,7 @@ print(f"{float(r['health']):.3f}".rstrip("0").rstrip("."))
 q = r.get("quality_F")
 print("" if q is None else f"{float(q):.1f}")
 print(r.get("action") or "")
+print((r.get("interpretation") or "").replace("\n", " ").strip())
 PY
 pick_rc=$?
 set -e
@@ -291,10 +299,12 @@ conf="$(sed -n '3p' "$STATE/target")"
 health_before="$(sed -n '4p' "$STATE/target")"
 qual_before="$(sed -n '5p' "$STATE/target")"
 action="$(sed -n '6p' "$STATE/target")"
+verse_before="$(sed -n '7p' "$STATE/target")"
 [[ -n "$qual_before" ]] || qual_before="unknown"
+verse_move=""
 review_line=""
 
-log "target ${target} action ${action} concern ${concern} health ${health_before} qual ${qual_before}"
+log "target ${target} action ${action} concern ${concern} health ${health_before} qual ${qual_before} verse ${verse_before:-absent}"
 if [[ "$mode" == "dry" ]]; then
   exit 0
 fi
@@ -316,6 +326,8 @@ Read ${REPO}/${target} and the implementation it describes. Do not edit any file
 
 Jev marked this file action=review, concern=${concern}, confidence=${conf}. The verdict is too uncertain to edit from the score alone.
 
+A change to the header is major. A change to the .c that leaves the header as it is is minor.
+Name the major change when the contract is wrong. Name the minor change when the contract is true and the behavior is wrong.
 If you cannot verify one safe change against the implementation, print exactly:
 SKIP
 Otherwise print exactly one line and nothing else:
@@ -374,11 +386,13 @@ quality temperature now: ${qual_before}
 ${review_line:+Review assigned this one change, and only this change: ${review_line}}
 
 Follow doc/PROCESS.md:
-- One change only, aimed at that concern on that header.
+- One change only, aimed at that concern. A header edit is major. A .c edit that leaves the header untouched is minor.
+- Make the major change when the header itself is wrong. Make the minor change when the contract is true and the behavior is wrong.
 - Verify every new or edited comment against the implementation, not the declaration. A wrong comment is worse than silence. If you cannot verify it, do not edit.
+- A matching .c and a focused test may accompany a major change.
 - Do not refactor, rename broadly, reformat, or touch unrelated code.
 - Do not commit, push, amend, tag, or edit path.log, tools/, .git, or any secret or env file.
-- Stay inside the target's module. A matching .c and a focused test are allowed. Nothing else.
+- Stay inside the target's module. Nothing else.
 - If the honest fix cannot be one verified edit under ${MAX_LINES} lines, do not edit. Write exactly SKIP to ${WHAT_FILE} and stop.
 - Otherwise write one line to ${WHAT_FILE}: what changed, no pipe characters, under 100 characters. Then stop.
 EOF
@@ -458,6 +472,12 @@ if [[ "$bad" != 0 || "$file_count" -gt "$MAX_FILES" ]]; then
   exit 0
 fi
 
+change_class="minor"
+while IFS= read -r f; do
+  [[ "$f" == "$target" ]] && change_class="major"
+done <"$STATE/agent-files"
+log "change is ${change_class}"
+
 lines="$(git diff --numstat -- $(git diff --name-only) | awk '{a+=$1+$2} END {print a+0}')"
 new_lines="$(git ls-files --others --exclude-standard | comm -13 "$STATE/untracked.before" - | while IFS= read -r f; do
   [[ -f "$f" ]] && wc -l <"$f"
@@ -521,24 +541,43 @@ if [[ -n "$extra" ]]; then
 fi
 
 timeout 180 python3 tools/quality_jev.py score "$target" --save "$STATE/after.json" >"$STATE/score-after.txt" || true
-read -r qual_after health_after < <(python3 - "$STATE/after.json" "$target" "$qual_before" "$health_before" <<'PY'
-import json, sys
-path, target, qb, hb = sys.argv[1:]
+{
+  read -r qual_after
+  read -r health_after
+  read -r verse_move
+} < <(python3 - "$STATE/after.json" "$target" "$qual_before" "$health_before" "$verse_before" <<'PY'
+import importlib.util
+import json
+import sys
+path, target, qb, hb, vb = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("qj", "tools/quality_jev.py")
+qj = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(qj)
 try:
     results = json.load(open(path)).get("results", [])
 except Exception:
     results = []
 hit = next((r for r in results if r.get("file") == target), None)
+
+def num(text):
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
 if not hit:
-    print(qb, hb)
+    print(qb)
+    print(hb)
+    print(qj.verse_move(vb, "", num(qb), None).replace("\n", " "))
     raise SystemExit
 q = hit.get("quality_F")
 h = hit.get("health")
-qs = qb if q is None else f"{float(q):.1f}"
-hs = hb if h is None else f"{float(h):.3f}".rstrip("0").rstrip(".")
-print(qs, hs)
+print(qb if q is None else f"{float(q):.1f}")
+print(hb if h is None else f"{float(h):.3f}".rstrip("0").rstrip("."))
+print(qj.verse_move(vb, hit.get("interpretation"), num(qb), q).replace("\n", " "))
 PY
 )
+log "verse ${verse_move:-absent}"
 
 what="one measured change"
 if [[ -f "$WHAT_FILE" ]]; then
@@ -547,7 +586,11 @@ fi
 if [[ -z "$what" || "$what" == "SKIP" ]]; then
   what="one measured change in ${target}"
 fi
-what="${what:0:100}"
+what="${what:0:90}"
+case "$what" in
+  major:*|minor:*) ;;
+  *) what="${change_class}: ${what}" ;;
+esac
 stat="$(git diff --numstat | awk '{a+=$1;b+=$2} END {printf "(+%d/-%d)", a+0, b+0}')"
 case "$what" in
   *"(+"*) ;;
@@ -561,10 +604,18 @@ git add --pathspec-from-file="$STATE/agent-files"
 git commit -m "$what"
 code_hash="$(git rev-parse --short HEAD)"
 
-printf '%s | %s | %s | %s | qual %s->%s | health %s->%s | tests %s/%s\n' \
-  "$today" "$code_hash" "$files" "$what" \
-  "$qual_before" "$qual_after" "$health_before" "$health_after" \
-  "$passed" "$ran" >>path.log
+verse_field="$(printf '%s' "${verse_move:-}" | tr '|' '/' | tr -d '\r')"
+if [[ -n "$verse_field" ]]; then
+  printf '%s | %s | %s | %s | qual %s->%s | health %s->%s | tests %s/%s | verse %s\n' \
+    "$today" "$code_hash" "$files" "$what" \
+    "$qual_before" "$qual_after" "$health_before" "$health_after" \
+    "$passed" "$ran" "$verse_field" >>path.log
+else
+  printf '%s | %s | %s | %s | qual %s->%s | health %s->%s | tests %s/%s\n' \
+    "$today" "$code_hash" "$files" "$what" \
+    "$qual_before" "$qual_after" "$health_before" "$health_after" \
+    "$passed" "$ran" >>path.log
+fi
 day_logged=1
 git add path.log
 git commit -m "path.log: ${today} ${what}"

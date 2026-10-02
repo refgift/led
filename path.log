@@ -3,7 +3,8 @@
 # newest appended at the bottom, never rewritten. Each entry carries the
 # meters where they were taken; older entries predate the meters and say so.
 # Format:
-# YYYY-MM-DD | <commit> | <files> | <what> | qual <b>-><a> | health <b>-><a> | tests <pass>/<fail>
+# YYYY-MM-DD | <commit> | <files> | <what> | qual <b>-><a> | health <b>-><a> | tests <pass>/<fail> | verse <held|warmed|cooled: before -> after>
+# The verse field starts 2026-10-02 and is for a .h. A landed day is major when that header is in the diff, and minor when only the .c moved. Older lines omit the verse and the class.
 # A day that lands no change still appends. Commit is `-`. Meters not taken are `n/a`.
 2026-09-22 | 2599239 | README,config,controller,editor | 1.0.7: open on the compiler's line, edit C in place | meters predate the loop | tests unknown
 2026-09-29 | e61babd | controller,view,test,README | deletions: controller/view/test cleanup (+23/-122) | meters predate the loop | tests unknown
