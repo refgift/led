@@ -3,6 +3,8 @@
 ## Introduction
 This document outlines the standard development workflow for the led text editor project. It ensures consistency, stability, and best practices like cleaning stale files, testing, and documentation updates. Follow these guidelines to contribute effectively.
 
+The goal is automated software development with an unbroken daily log. Daily progress is the key. One measured change per day, appended to `path.log`, beats a burst and beats a silent day.
+
 ## Setup and Environment
 - **Clone the Repository**: `git clone <repo-url>` (assuming remote exists).
 - **Dependencies**: Install ncurses (e.g., `sudo apt install libncurses5-dev` on Ubuntu).
@@ -61,8 +63,8 @@ Find the next thing to work on:
 python3 tools/quality_jev.py score            # rank all tracked headers
 ```
 
-Sort by `health` ascending. Lowest health with a high-confidence concern
-is the next change. Then, one change at a time:
+Sort by `health` ascending. The next change is the lowest-health header
+whose action is `needs_work`, `poor`, or `review`. Then, one change at a time:
 ```bash
 python3 tools/quality_jev.py score --save /tmp/opencode/hdr_base.json
 # ... make exactly one change, checked against the implementation, not the declaration ...
@@ -75,7 +77,7 @@ Rules learned the hard way:
   A wrong comment is worse than silence — it passes tests and lies to
   readers. (`buffer_delete_range` swaps reversed points; `get_line_length`
   has no truncation marker. Both were caught this way.)
-- Low-confidence verdicts route to `review`: go read the file yourself.
+- Low-confidence verdicts route to `review`. Do not edit from the score alone. The daily loop sends `review` to a reader first; a person may still read the file.
 - Unanimous verdicts describe the codebase's era, not a ranking. The
   numbers that discriminate are `health` and `excellence`, not the label.
 - Expect run-to-run jitter (~±0.016 health). Use wide bands, thin
@@ -91,7 +93,21 @@ arctic (`view.c`, `controller.c`). The old 38.0°F figure predates this
 scoping. Weak rank-alignment between temperature and Jev health
 (Spearman ≈ 0.21, n=8) confirms they track different qualities.
 
-The goal is steady, measurable improvement in the average temperature, with special attention paid to the temperatures of all `.h` files.
+The temperature goal is steady, measurable improvement, with special attention paid to every `.h` file. That number is a meter. The process goal is the unbroken day.
+
+## Daily progress
+
+`tools/daily.sh` is the automated loop. A user timer runs it once a day. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
+
+- `needs_work` or `poor`, high confidence: one edit, checked against the implementation.
+- `review`: `grok -p` reads the file and the implementation (opencode if Grok fails). It must name one verified change or decline. Only a named change is worked.
+- `excellent`: leave it.
+
+Then `make && ./led -t`. A failed test is reverted and not logged. A pass appends one `path.log` line and pushes. That line is the day. A missed day is the failure this process exists to prevent.
+
+`quality` rates any text. `quality_jev.py` keeps the header-contract battery for `*.h` and rates other text on purpose, claims, terms, and bulk. No-args `score` still ranks tracked headers, which is what the daily pick uses.
+
+Hold the loop with `~/.config/led/daily.pause`. `TYPESAFE_API_KEY` lives in `~/.config/led/daily.env`, not in the repo.
 
 ## Documentation and Release
 - Update README.md (What Works / What Fails) for overviews and known issues.
