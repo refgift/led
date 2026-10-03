@@ -11,9 +11,6 @@ void run_comprehensive_tests(void);
 extern int tests_passed;
 extern int tests_failed;
 
-/* Legacy alias */
-void run_all_tests(void);
-
 /* Individual test groups */
 void test_buffer_init_free(void);
 void test_buffer_load_save(void);
