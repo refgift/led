@@ -1,5 +1,10 @@
 led
 *.bak.c
 *.bak.txt.*
+*.bak.*
 *.o
+__pycache__/
+*.py[cod]
 AGENTS.md
+.opencode/
+/SKILL.md
