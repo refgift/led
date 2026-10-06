@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO="/home/lbd/Projects/led"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/led-daily"
+MAIL_TO="larry@refusetoown.com"
 ENV_FILE="${HOME}/.config/led/daily.env"
 OPENCODE="/home/lbd/.local/share/mise/installs/opencode/latest/opencode"
 WHAT_FILE="${REPO}/.led-daily-what"
@@ -83,6 +84,33 @@ record_day() {
   fi
   day_logged=1
   commit_path_log "path.log: ${today} ${why}" || log "fail: commit path.log"
+  mail_day
+}
+
+mail_day() {
+  local line unit
+  [[ "$mode" == "run" ]] || return 0
+  line="$(grep "^${today} |" path.log | tail -n 1 || true)"
+  [[ -n "$line" ]] || { log "fail: no path.log line to mail"; return 0; }
+  if ! command -v xdg-email >/dev/null 2>&1; then
+    log "fail: xdg-email missing"
+    return 0
+  fi
+  unit="led-daily-mail-$(date +%Y%m%d%H%M%S)"
+  # A new user unit keeps the composer alive after this oneshot exits.
+  if systemd-run --user --quiet --collect --unit="$unit" \
+      ${DISPLAY:+--setenv=DISPLAY="$DISPLAY"} \
+      ${WAYLAND_DISPLAY:+--setenv=WAYLAND_DISPLAY="$WAYLAND_DISPLAY"} \
+      ${XDG_RUNTIME_DIR:+--setenv=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"} \
+      xdg-email --utf8 \
+        --subject "led daily ${today}" \
+        --body "$line" \
+        "$MAIL_TO"
+  then
+    log "mailed path.log line to ${MAIL_TO}"
+  else
+    log "fail: xdg-email"
+  fi
 }
 
 cd "$REPO"
@@ -620,6 +648,7 @@ day_logged=1
 git add path.log
 git commit -m "path.log: ${today} ${what}"
 committed=1
+mail_day
 rm -f "$WHAT_FILE"
 
 git rev-parse HEAD >"$STATE/pending-push"
