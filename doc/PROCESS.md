@@ -103,7 +103,7 @@ Rules learned the hard way:
 
 **Core Philosophy for this project**:
 - **.h header files are "hot"** — they are the public contracts, types, and interfaces. A change here is major. Prioritize making every `.h` file excellent (high comment density, clean declarations, minimal duplication, no dead includes).
-- **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented. Their thermometer line is `Out of range`. A change here is minor. The verse is a header instrument.
+- **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented. Their thermometer line is `Out of range`. A change here is minor. The verse is a header instrument. A user interface may need to be humane, near room temperature. The inner workings may be demonic.
 
 Measured 2026-10-01 over 21 tracked `*.c/*.h`: average **-163.9°F**.
 Headers run warm (25–85°F, `utils.h` highest); large implementations run
