@@ -76,6 +76,14 @@ void view_resize_windows(WINDOW* frame, WINDOW* text);
 /* Border-aware variant: text window geometry depends on show_border */
 int view_create_text_window_ex(WINDOW* frame, WINDOW** text_out, int show_border);
 void view_resize_windows_ex(WINDOW* frame, WINDOW* text, int show_border);
+
+/**
+ * view_recreate_text_window - replace the text subwindow for show_border.
+ * No-op if frame or text is NULL. If *text is set, delwin it and clear
+ * the pointer. Always then creates via view_create_text_window_ex.
+ * On success, sets the new window background to COLOR_PAIR(1);
+ * failure leaves *text NULL.
+ */
 void view_recreate_text_window(WINDOW* frame, WINDOW** text, int show_border);
 
 /* === Main rendering entry points ===
