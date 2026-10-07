@@ -88,28 +88,29 @@ record_day() {
 }
 
 mail_day() {
-  local line unit
+  local line body compose unit
   [[ "$mode" == "run" ]] || return 0
   line="$(grep "^${today} |" path.log | tail -n 1 || true)"
   [[ -n "$line" ]] || { log "fail: no path.log line to mail"; return 0; }
-  if ! command -v xdg-email >/dev/null 2>&1; then
-    log "fail: xdg-email missing"
+  if ! command -v thunderbird >/dev/null 2>&1; then
+    log "fail: thunderbird missing"
     return 0
   fi
+  # -compose takes one comma-separated option string. The body stays in
+  # single quotes so a comma in the log line is not the next field.
+  body="${line//\'/’}"
+  compose="to='${MAIL_TO}',subject='led daily ${today}',body='${body}',format=text"
   unit="led-daily-mail-$(date +%Y%m%d%H%M%S)"
   # A new user unit keeps the composer alive after this oneshot exits.
   if systemd-run --user --quiet --collect --unit="$unit" \
       ${DISPLAY:+--setenv=DISPLAY="$DISPLAY"} \
       ${WAYLAND_DISPLAY:+--setenv=WAYLAND_DISPLAY="$WAYLAND_DISPLAY"} \
       ${XDG_RUNTIME_DIR:+--setenv=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"} \
-      xdg-email --utf8 \
-        --subject "led daily ${today}" \
-        --body "$line" \
-        "$MAIL_TO"
+      thunderbird -compose "$compose"
   then
-    log "mailed path.log line to ${MAIL_TO}"
+    log "opened thunderbird compose for ${MAIL_TO}"
   else
-    log "fail: xdg-email"
+    log "fail: thunderbird -compose"
   fi
 }
 
