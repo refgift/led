@@ -129,4 +129,10 @@ void get_starting_levels(Buffer *buf, int start_line,
                          int *kw_level, int *kw_top, int kw_stack[],
                          EditorConfig *config);
 
+/**
+ * visual_column - display column of byte offset logical_pos.
+ * line is borrowed. Returns 0 if line is NULL or logical_pos <= 0.
+ * logical_pos past len is clamped to len. tab_width <= 0 is treated as 8.
+ * Tabs advance to the next stop; other bytes use UTF-8 display width.
+ */
 int visual_column (const char *line, int len, int logical_pos, int tab_width);
