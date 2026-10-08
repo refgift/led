@@ -172,7 +172,7 @@ visual_column (const char *line, int len, int logical_pos,
               vis += logical_pos - i;
               break;
             }
-          vis += utf8_char_width (line + i, len - i);
+          vis += utf8_char_width (line + i, logical_pos - i);
           i += clen;
         }
     }
