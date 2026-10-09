@@ -122,6 +122,10 @@ void draw_update_compat(WINDOW* win, Buffer* buf, int* scroll_row, int* scroll_c
 
 /* === Utility functions === */
 
+/**
+ * calculate_digits - line-number digit width.
+ * Returns 1 if n <= 0, else the decimal digit count.
+ */
 int calculate_digits(int n);
 
 void get_starting_levels(Buffer *buf, int start_line,
