@@ -128,6 +128,13 @@ void draw_update_compat(WINDOW* win, Buffer* buf, int* scroll_row, int* scroll_c
  */
 int calculate_digits(int n);
 
+/**
+ * get_starting_levels - brace and keyword nesting entering start_line.
+ * If nesting_cache is set, start_line > 0, and the previous entry is
+ * valid, copies that state (brace_stack 256 ints, kw_stack 100) and
+ * returns. Otherwise sets both levels to 1 and tops to 0, then folds
+ * each earlier line using config syntax pairs. Never writes the cache.
+ */
 void get_starting_levels(Buffer *buf, int start_line,
                          int *brace_level, int *brace_top, int brace_stack[],
                          int *kw_level, int *kw_top, int kw_stack[],
