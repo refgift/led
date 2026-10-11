@@ -9,9 +9,6 @@
  *
  * This is a "hot" header. It defines the controller layer that sits
  * between raw key input and mutations to the Buffer model.
- *
- * Note: The global undo/redo stacks are currently a legacy artifact.
- * They should eventually move into the Editor struct.
  */
 
 /* === Undo / Redo primitives (operate on per-Editor stacks) === */
