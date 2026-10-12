@@ -15,6 +15,7 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 - **Tests**: 192 tests (buffer, undo, clipboard, autosave, view, search wrap, indent, braces, save). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
 ## What Fails
+- **Search with ctrl-/ is ignored.
 - **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
 - **Long lines**: a line past `max_line_length` (default 10000) is cut on load. The status line says `Long line truncated`. Cut lines skip highlighting and use basic rendering.
 - **Limits**: `max_file_size_mb` (1–100, default 10), `memory_limit_mb` (1–200, default 50), and `max_line_length` (80–100000, default 10000) are keys in `colorization.conf`. A value outside its range keeps the default.
