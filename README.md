@@ -25,6 +25,7 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 - **Input sanitization**: no directory-traversal check beyond `is_filename_safe`.
 - **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
 - Unknown languages like Python. Add the .py instead .c,.cpp.h in the colorization.conf file and the file will render.
+- Work around, if the data gets corrupted, turning on line numbers with F2 will render correctly
 
 Bugs: size and type (`file`, `head` sample), or a `gdb ./led` backtrace, at https://github.com/refgift/led/issues
 
