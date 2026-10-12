@@ -317,6 +317,24 @@ load_editor_config (EditorConfig *config)
         }
       else if (strcmp (key, "show_key_meter") == 0)
         config->statusbar.show_key_meter = atoi (value);
+      else if (strcmp (key, "max_file_size_mb") == 0)
+        {
+          int v = atoi (value);
+          if (v >= 1 && v <= 100)
+            config->performance.max_file_size_mb = v;
+        }
+      else if (strcmp (key, "memory_limit_mb") == 0)
+        {
+          int v = atoi (value);
+          if (v >= 1 && v <= 200)
+            config->performance.memory_limit_mb = v;
+        }
+      else if (strcmp (key, "max_line_length") == 0)
+        {
+          int v = atoi (value);
+          if (v >= 80 && v <= 100000)
+            config->performance.max_line_length = v;
+        }
     }
   fclose (file);
   config_parse_syntax (config);

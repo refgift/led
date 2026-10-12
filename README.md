@@ -5,7 +5,7 @@ Dedicated to Neal Stephenson's vision of paper-like data safety.
 Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earlier versions, Grok 4.7 on 1.0.7.
 
 ## What Works
-- **Data safety**: unlimited undo/redo (10k cap), auto-save with versioned backups, crash recovery. Rejects files >10MB or with null bytes; validates line length.
+- **Data safety**: unlimited undo/redo (10k cap), auto-save with versioned backups, crash recovery. Rejects files over `max_file_size_mb` (default 10MB) or with null bytes, and files whose line cache would pass `memory_limit_mb`. Cuts lines at `max_line_length`.
 - **Editing**: insert, newline, backspace/delete, tabs (spaces or `\t`), word wrap (`F3`), selection, clipboard (`Ctrl+A/C/X/V`), regex search (`Ctrl+/`) and replace (`Ctrl+R`), syntax highlighting (C/C++ nesting, pre-parsed, per-line cache).
 - **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic.
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
@@ -15,13 +15,13 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 - **Tests**: 192 tests (buffer, undo, clipboard, autosave, view, search wrap, indent, braces, save). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
 ## What Fails
-- **Large files**: whole file loaded into memory, no lazy/mmap. Past about 30000 lines it hogs the system and you may have to kill the process. Split huge files first.
-- **Long lines**: truncates past 10k characters; those lines skip highlighting and use basic rendering.
-- **Hardcoded limits**: file size and line length are not configurable yet.
+- **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
+- **Long lines**: a line past `max_line_length` (default 10000) is cut on load. The status line says `Long line truncated`. Cut lines skip highlighting and use basic rendering.
+- **Limits**: `max_file_size_mb` (1–100, default 10), `memory_limit_mb` (1–200, default 50), and `max_line_length` (80–100000, default 10000) are keys in `colorization.conf`. A value outside its range keeps the default.
 - **Language support**: highlighting and parsing are built for C/C++; other languages may be incomplete. Turn highlighting off in config if a file fights you.
 - **Error handling**: not fully standardized across modules.
 - **No per-buffer undo persistence** across sessions.
-- **No fuzzing / empty-file edge coverage** yet.
+- **No fuzzing harness** yet. Empty-file, size, null-byte, truncation, and memory-ceiling loads are tested.
 - **Input sanitization**: no directory-traversal check beyond `is_filename_safe`.
 - **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
 - Unknown languages like Python. Add the .py instead .c,.cpp.h in the colorization.conf file and the file will render.
@@ -71,6 +71,8 @@ man led           # after make doc
 **Display/Border**: `show_border=0` (default off, `1` shows box). Toggled by `F4`.
 
 **Other**: `syntax_extensions=.c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx`, `reserved_words=...` (C and C++ keywords), `paired_keywords=if-then,begin-end,(,)`, `tab_width=8`, `spaces_for_tab=0`, `show_key_meter=1`, `show_line_numbers=0`.
+
+**Limits**: `max_file_size_mb=10` (1–100), `memory_limit_mb=50` (1–200), `max_line_length=10000` (80–100000). A file over the size or memory ceiling is not opened. A longer line is cut and the status line says `Long line truncated`. A null byte is refused with `Binary file`.
 
 Source files (those extensions) show line numbers unless `show_line_numbers` is set in the config. `Ctrl+S` replaces the file by rename and keeps its permission bits. Search wraps to the top and says so.
 

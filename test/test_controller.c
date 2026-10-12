@@ -84,7 +84,7 @@ test_buffer_load_save ()
   Buffer buf;
   buffer_init (&buf);
   // Load non-existent file (should fail gracefully)
-  int load_result = buffer_load_from_file (&buf, "/nonexistent", 0, 0);
+  int load_result = buffer_load_from_file (&buf, "/nonexistent", 0, 0, 0);
   test_assert (load_result == -1,
                "buffer_load_from_file returns -1 for non-existent file");
   test_assert (buffer_num_lines (&buf) == 0,
@@ -98,7 +98,7 @@ test_buffer_load_save ()
       fputs ("line1\nline2\n", wfp);
       fclose (wfp);
       // Load the temp file
-      load_result = buffer_load_from_file (&buf, temp_file, 0, 0);
+      load_result = buffer_load_from_file (&buf, temp_file, 0, 0, 0);
       test_assert (load_result == 0,
                    "buffer_load_from_file succeeds for valid file");
       test_assert (buffer_num_lines (&buf) == 3,
@@ -120,6 +120,152 @@ test_buffer_load_save ()
       unlink (save_file);
     }
   buffer_free (&buf);
+}
+
+void
+test_load_limits (void)
+{
+  fprintf (stderr, "Running load limit tests\n");
+  Buffer buf;
+  char path[] = "/tmp/led_load_XXXXXX";
+  int fd = mkstemp (path);
+  test_assert (fd >= 0, "load limit temp file");
+  if (fd < 0)
+    return;
+  close (fd);
+
+  buffer_init (&buf);
+  int rc = buffer_load_from_file (&buf, path, 0, 0, 0);
+  test_assert (rc == BUFFER_LOAD_OK, "empty file loads");
+  test_assert (buffer_num_lines (&buf) == 1, "empty file is one empty line");
+  test_assert (buffer_get_line_length (&buf, 0) == 0,
+               "empty file line is empty");
+  buffer_free (&buf);
+
+  FILE *fp = fopen (path, "wb");
+  if (fp)
+    {
+      fputs ("abcd\n", fp);
+      fclose (fp);
+    }
+  buffer_init (&buf);
+  rc = buffer_load_from_file (&buf, path, 4, 0, 0);
+  test_assert (rc == BUFFER_LOAD_TOO_BIG, "one byte over max_bytes is too big");
+  test_assert (buffer_num_lines (&buf) == 0,
+               "too-big load leaves the buffer empty");
+  buffer_free (&buf);
+
+  fp = fopen (path, "wb");
+  if (fp)
+    {
+      char raw[4] = { 'a', '\0', 'b', '\n' };
+      fwrite (raw, 1, 4, fp);
+      fclose (fp);
+    }
+  buffer_init (&buf);
+  rc = buffer_load_from_file (&buf, path, 0, 0, 0);
+  test_assert (rc == BUFFER_LOAD_BINARY, "null byte is a binary file");
+  test_assert (buffer_num_lines (&buf) == 0,
+               "binary load leaves the buffer empty");
+  buffer_free (&buf);
+
+  fp = fopen (path, "wb");
+  if (fp)
+    {
+      fputs ("abcdefghijklmnopqrst\n", fp);
+      fclose (fp);
+    }
+  buffer_init (&buf);
+  rc = buffer_load_from_file (&buf, path, 0, 10, 0);
+  test_assert (rc == BUFFER_LOAD_TRUNCATED, "long line reports truncation");
+  test_assert (buffer_get_line_length (&buf, 0) == 10,
+               "stored line is the limit");
+  char *got = buffer_get_line (&buf, 0);
+  test_assert (got != NULL && strcmp (got, "abcdefghij") == 0,
+               "stored line keeps the head");
+  free (got);
+  test_assert (buffer_get_line_length (&buf, 1) == 0,
+               "tail of a cut line is not kept");
+  buffer_free (&buf);
+
+  fp = fopen (path, "wb");
+  if (fp)
+    {
+      for (int i = 0; i < 30; i++)
+        fputs ("x\n", fp);
+      fclose (fp);
+    }
+  long mem = (long) INITIAL_LINES_CAPACITY * (long) sizeof (NestingCache) + 100;
+  buffer_init (&buf);
+  rc = buffer_load_from_file (&buf, path, 0, 0, mem);
+  test_assert (rc == BUFFER_LOAD_OVER_MEMORY,
+               "line growth past the memory ceiling is refused");
+  test_assert (buffer_num_lines (&buf) == 0,
+               "over-memory load does not keep a prefix");
+  buffer_free (&buf);
+  unlink (path);
+
+  const char *old_home = getenv ("HOME");
+  char *home_copy = old_home ? strdup (old_home) : NULL;
+  char home[] = "/tmp/led_cfg_XXXXXX";
+  char *made = mkdtemp (home);
+  test_assert (made != NULL, "config home directory");
+  if (made)
+    {
+      char dir[256];
+      char conf[300];
+      snprintf (dir, sizeof dir, "%s/.config", home);
+      mkdir (dir, 0700);
+      snprintf (dir, sizeof dir, "%s/.config/led", home);
+      mkdir (dir, 0700);
+      snprintf (conf, sizeof conf, "%s/.config/led/colorization.conf", home);
+      fp = fopen (conf, "w");
+      if (fp)
+        {
+          fputs ("max_file_size_mb=20\nmemory_limit_mb=80\nmax_line_length=4000\n",
+                 fp);
+          fclose (fp);
+        }
+      setenv ("HOME", home, 1);
+      EditorConfig cfg;
+      memset (&cfg, 0, sizeof cfg);
+      load_editor_config (&cfg);
+      test_assert (cfg.performance.max_file_size_mb == 20,
+                   "max_file_size_mb is read");
+      test_assert (cfg.performance.memory_limit_mb == 80,
+                   "memory_limit_mb is read");
+      test_assert (cfg.performance.max_line_length == 4000,
+                   "max_line_length is read");
+
+      fp = fopen (conf, "w");
+      if (fp)
+        {
+          fputs ("max_file_size_mb=0\nmemory_limit_mb=500\nmax_line_length=7\n",
+                 fp);
+          fclose (fp);
+        }
+      load_editor_config (&cfg);
+      test_assert (cfg.performance.max_file_size_mb == 10,
+                   "out-of-range file size keeps 10");
+      test_assert (cfg.performance.memory_limit_mb == 50,
+                   "out-of-range memory keeps 50");
+      test_assert (cfg.performance.max_line_length == 10000,
+                   "out-of-range line length keeps 10000");
+      unlink (conf);
+      snprintf (dir, sizeof dir, "%s/.config/led", home);
+      rmdir (dir);
+      snprintf (dir, sizeof dir, "%s/.config", home);
+      rmdir (dir);
+      rmdir (home);
+    }
+  if (home_copy)
+    {
+      setenv ("HOME", home_copy, 1);
+      free (home_copy);
+    }
+  else
+    unsetenv ("HOME");
+  fprintf (stderr, "Load limit tests completed\n");
 }
 
 void
@@ -1438,6 +1584,9 @@ run_comprehensive_tests (void)
   fprintf (stderr, "Test %d: buffer_load_save - File I/O operations\n",
            ++test_number);
   test_buffer_load_save ();
+  fprintf (stderr, "Test %d: load_limits - ceilings, empty file, config keys\n",
+           ++test_number);
+  test_load_limits ();
   fprintf (stderr,
            "Test %d: buffer_manipulation - Line and character operations\n",
            ++test_number);

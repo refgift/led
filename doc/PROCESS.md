@@ -22,6 +22,7 @@ Integrate cleaning into scripts or hooks:
 ## Development Best Practices
 - **Code Changes**: Follow MVC structure (model.c for data, view.c for rendering, controller.c for input).
 - **Bug Fixes**: Reproduce issues, fix in relevant files (e.g., controller.c for input crashes), add tests in test_*.c.
+- **Read the README.md for "What Fails" section for thing to fix and known error should be added there and if fixed edit "What Works"
 - **Commit Standards**: Use descriptive messages (e.g., "Fix Ctrl-X crash on last line"). Run `make clean && make` before committing.
 - **Handling Features**: For known limits, document in README.md (What Works / What Fails). Word wrap spec lives in WORDWRAP_SPEC.md.
 - **Large Files**: Test with largefile.txt to avoid crashes in editing/word wrap.

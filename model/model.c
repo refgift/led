@@ -9,6 +9,7 @@
 /* Fallback default; caller should pass a limit from EditorConfig. */
 #define DEFAULT_MAX_FILE_BYTES (10L * 1024 * 1024)
 #define DEFAULT_MAX_LINE_LENGTH 10000
+#define DEFAULT_MEMORY_LIMIT_BYTES (50L * 1024 * 1024)
 
 // GapBuffer implementation
 GapBuffer*
@@ -244,40 +245,51 @@ _invalidate_cache_from (Buffer *buf, int line)
     buf->dirty=true;
 }
 
+static void
+load_abandon (Buffer *buf)
+{
+  buffer_free (buf);
+  buffer_init (buf);
+}
+
+/* Nesting-cache bytes at the capacity the next insert will grow to,
+ * plus text already stored, plus this line. */
+static long
+load_next_bytes (const Buffer *buf, long text_stored, int line_len)
+{
+  int next_cap = buf->capacity;
+  if (buf->num_lines >= buf->capacity)
+    next_cap = (buf->capacity == 0) ? INITIAL_LINES_CAPACITY : buf->capacity * 2;
+  return (long) next_cap * (long) sizeof (NestingCache)
+         + text_stored + (long) line_len;
+}
+
 int
-buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes, int max_line_len)
+buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
+                       int max_line_len, long memory_limit_bytes)
 {
   struct stat st;
   if (stat (filename, &st) != 0)
-    {
-      return -1;
-    }
+    return BUFFER_LOAD_NOT_FOUND;
   long limit = (max_bytes > 0 ? max_bytes : DEFAULT_MAX_FILE_BYTES);
+  long mem_limit = (memory_limit_bytes > 0
+                    ? memory_limit_bytes : DEFAULT_MEMORY_LIMIT_BYTES);
   if (st.st_size > limit)
-    {
-      return -1;                  // File too large
-    }
+    return BUFFER_LOAD_TOO_BIG;
   FILE *fp = fopen (filename, "rb");
   if (!fp)
-    {
-      return -1;
-    }
-  // Read entire file into temp buffer
+    return BUFFER_LOAD_NOT_FOUND;
   int temp_cap = 1024;
   char *temp = malloc (temp_cap);
   if (!temp)
     {
       fclose (fp);
-      return -1;
+      return BUFFER_LOAD_NOMEM;
     }
   int pos = 0;
   int c;
   while ((c = fgetc (fp)) != EOF)
     {
-		
-
-
-
       if (pos >= temp_cap)
         {
           temp_cap *= 2;
@@ -286,62 +298,77 @@ buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes, int ma
             {
               free (temp);
               fclose (fp);
-              return -1;
+              return BUFFER_LOAD_NOMEM;
             }
           temp = new_temp;
         }
-      temp[pos++] = c;
+      temp[pos++] = (char) c;
     }
   fclose (fp);
+  if (pos >= temp_cap)
+    {
+      char *new_temp = realloc (temp, (size_t) temp_cap + 1);
+      if (!new_temp)
+        {
+          free (temp);
+          return BUFFER_LOAD_NOMEM;
+        }
+      temp = new_temp;
+    }
   temp[pos] = '\0';
-  // Safety checks
   if (pos > limit)
     {
       free (temp);
-      return -1;                // File too large
+      return BUFFER_LOAD_TOO_BIG;
     }
-  // Check for null bytes (indicates binary file)
-  if (memchr (temp, '\0', pos) != NULL)
+  if (memchr (temp, '\0', (size_t) pos) != NULL)
     {
       free (temp);
-      return -1;                // Binary file or null bytes
+      return BUFFER_LOAD_BINARY;
     }
-  // Split into lines
+  int truncated = 0;
+  long text_stored = 0;
   int start = 0;
   for (int i = 0; i <= pos; i++)
     {
-		
-
-
-
       if (temp[i] == '\n' || temp[i] == '\0')
         {
           int len = i - start;
           int maxll = (max_line_len > 0 ? max_line_len : DEFAULT_MAX_LINE_LENGTH);
           if (len > maxll)
             {
-              len = maxll; // Truncate long lines
+              len = maxll;
+              truncated = 1;
             }
-          char *line = malloc (len + 1);
+          if (load_next_bytes (buf, text_stored, len) > mem_limit)
+            {
+              free (temp);
+              load_abandon (buf);
+              return BUFFER_LOAD_OVER_MEMORY;
+            }
+          char *line = malloc ((size_t) len + 1);
           if (!line)
             {
               free (temp);
-              return -1;
+              load_abandon (buf);
+              return BUFFER_LOAD_NOMEM;
             }
-          memcpy (line, &temp[start], len);
+          memcpy (line, &temp[start], (size_t) len);
           line[len] = '\0';
           if (buffer_insert_line (buf, buf->num_lines, line) != 0)
             {
               free (line);
               free (temp);
-              return -1;
+              load_abandon (buf);
+              return BUFFER_LOAD_NOMEM;
             }
           free (line);
+          text_stored += len;
           start = i + 1;
         }
     }
   free (temp);
-  return 0;
+  return truncated ? BUFFER_LOAD_TRUNCATED : BUFFER_LOAD_OK;
 }
 int
 buffer_delete_char (Buffer *buf, int line, int col)

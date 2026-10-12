@@ -191,10 +191,15 @@ editor_init (Editor *ed, int argc, char *argv[])
       start_line = 0;
       start_col = 0;
     }
-  int open_note = 0;            /* 1 = file larger than the configured limit */
+  int open_note = BUFFER_LOAD_OK;
   if (ed->filename)
     {
-      // Check for recovery file first
+      long maxb = (long) ed->config.performance.max_file_size_mb * 1024 * 1024;
+      if (maxb <= 0)
+        maxb = 10L * 1024 * 1024;
+      long memb = (long) ed->config.performance.memory_limit_mb * 1024 * 1024;
+      if (memb <= 0)
+        memb = 50L * 1024 * 1024;
       char recovery_path[512];
       snprintf (recovery_path, sizeof (recovery_path), "%s.recovery",
                 ed->filename);
@@ -202,30 +207,25 @@ editor_init (Editor *ed, int argc, char *argv[])
       if (recovery_fp)
         {
           fclose (recovery_fp);
-          // Recovery file exists, load from it
-          buffer_load_from_file (&ed->model, recovery_path,
-            (long)ed->config.performance.max_file_size_mb * 1024 * 1024,
-            ed->config.performance.max_line_length);
-          // Remove recovery file after loading
+          open_note = buffer_load_from_file (&ed->model, recovery_path, maxb,
+                                              ed->config.performance.max_line_length,
+                                              memb);
           unlink (recovery_path);
         }
       else
         {
-          // Check file size to prevent loading huge files
           FILE *fp = fopen (ed->filename, "rb");
           if (fp)
             {
               fseek (fp, 0, SEEK_END);
               long size = ftell (fp);
               fclose (fp);
-              long maxb = (long)ed->config.performance.max_file_size_mb * 1024 * 1024;
-              if (maxb <= 0) maxb = 10L * 1024 * 1024;
               if (size > maxb)
-                open_note = 1;  /* leave the buffer empty; say so once status exists */
+                open_note = BUFFER_LOAD_TOO_BIG;
               else
-                {
-                  buffer_load_from_file (&ed->model, ed->filename, maxb, ed->config.performance.max_line_length);
-                }
+                open_note = buffer_load_from_file (&ed->model, ed->filename, maxb,
+                                                   ed->config.performance.max_line_length,
+                                                   memb);
             }
         }
     }
@@ -322,8 +322,16 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->meta_pending = 0;
   ed->key_word_left = 0;
   ed->key_word_right = 0;
-  if (open_note)
+  if (open_note == BUFFER_LOAD_TOO_BIG)
     set_status_message (ed, "File too large");
+  else if (open_note == BUFFER_LOAD_BINARY)
+    set_status_message (ed, "Binary file");
+  else if (open_note == BUFFER_LOAD_OVER_MEMORY)
+    set_status_message (ed, "Too many lines");
+  else if (open_note == BUFFER_LOAD_NOMEM)
+    set_status_message (ed, "Out of memory");
+  else if (open_note == BUFFER_LOAD_TRUNCATED)
+    set_status_message (ed, "Long line truncated");
   else if (start_line > 0)
     {
       char msg[64];
