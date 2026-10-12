@@ -102,7 +102,7 @@ redo_operation (Buffer *buf, UndoStack *undo, UndoStack *redo, int *cursor_line,
     return;
   redo->count--;
   Change c = redo->changes[redo->count];
-  push_undo (undo, !c.is_insert, c.line, c.col, c.ch);
+  push_undo (undo, c.is_insert, c.line, c.col, c.ch);
   if (c.is_insert)
     {
       buffer_insert_char (buf, c.line, c.col, c.ch);
