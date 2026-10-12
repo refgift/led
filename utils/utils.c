@@ -53,8 +53,6 @@ is_filename_safe (const char *fn)
   size_t n = strlen (fn);
   if (n > 255)
     return false;
-  if (strstr (fn, ".."))
-    return false;
   for (size_t i = 0; i < n; i++)
     {
       unsigned char c = (unsigned char) fn[i];

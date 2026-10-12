@@ -13,7 +13,7 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 - **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
 - **Tests**: 192 tests (buffer, undo, clipboard, autosave, view, search wrap, indent, braces, save). `./led -t` on your machine.
-
+- **Open files in with .. in the path. It used to fail.
 ## What Fails
 - **Large files**: whole file loaded into memory, no lazy/mmap. Past about 30000 lines it hogs the system and you may have to kill the process. Split huge files first.
 - **Long lines**: truncates past 10k characters; those lines skip highlighting and use basic rendering.

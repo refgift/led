@@ -1287,6 +1287,71 @@ test_open_location (void)
 }
 
 void
+test_open_parent_path (void)
+{
+  fprintf (stderr, "Running parent-path open tests\n");
+  test_assert (is_filename_safe ("../.config/filename.c"),
+               "a parent path is a usable filename");
+  test_assert (is_filename_safe ("filename.c"),
+               "a name in the current directory is usable");
+  test_assert (!is_filename_safe (NULL), "a null filename is rejected");
+  test_assert (!is_filename_safe (""), "an empty filename is rejected");
+
+  char tmpl[] = "/tmp/led_parent_XXXXXX";
+  char *root = mkdtemp (tmpl);
+  test_assert (root != NULL, "parent-path fixture directory is created");
+  if (!root)
+    {
+      fprintf (stderr, "Parent-path open tests completed\n");
+      return;
+    }
+  char child[512];
+  char conf[512];
+  char file[512];
+  snprintf (child, sizeof child, "%s/child", root);
+  snprintf (conf, sizeof conf, "%s/.config", root);
+  snprintf (file, sizeof file, "%s/.config/filename.c", root);
+  test_assert (mkdir (child, 0700) == 0 && mkdir (conf, 0700) == 0,
+               "parent-path fixture directories exist");
+  FILE *fp = fopen (file, "wb");
+  test_assert (fp != NULL, "parent-path fixture can be written");
+  if (fp)
+    {
+      fputs ("outside\n", fp);
+      fclose (fp);
+    }
+  char recovery[576];
+  snprintf (recovery, sizeof recovery, "%s.recovery", file);
+  unlink (recovery);
+
+  char oldcwd[4096];
+  int moved = getcwd (oldcwd, sizeof oldcwd) != NULL && chdir (child) == 0;
+  test_assert (moved, "test moves into a child directory");
+  if (moved)
+    {
+      char arg[] = "../.config/filename.c";
+      char *av[] = { "led", arg };
+      Editor ed;
+      editor_init (&ed, 2, av);
+      char *line = buffer_get_line (&ed.model, 0);
+      test_assert (ed.filename != NULL
+                   && strcmp (ed.filename, "../.config/filename.c") == 0,
+                   "a parent path is kept as the filename");
+      test_assert (line && strcmp (line, "outside") == 0,
+                   "a parent path loads the file instead of a blank buffer");
+      free (line);
+      editor_cleanup (&ed);
+      test_assert (chdir (oldcwd) == 0, "test restores the working directory");
+    }
+  unlink (file);
+  unlink (recovery);
+  rmdir (conf);
+  rmdir (child);
+  rmdir (root);
+  fprintf (stderr, "Parent-path open tests completed\n");
+}
+
+void
 test_save_replaces_cleanly (void)
 {
   fprintf (stderr, "Running atomic save tests\n");
@@ -1439,6 +1504,9 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   fprintf (stderr, "Test %d: open_location - file:line and +N\n",
            ++test_number);
   test_open_location ();
+  fprintf (stderr, "Test %d: open_parent_path - paths with ..\n",
+           ++test_number);
+  test_open_parent_path ();
   fprintf (stderr, "Test %d: save_replaces_cleanly - atomic save\n",
            ++test_number);
   test_save_replaces_cleanly ();

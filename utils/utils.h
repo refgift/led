@@ -25,8 +25,8 @@ void* xmalloc(size_t n);
 void* xrealloc(void *p, size_t n);
 void* xcalloc(size_t nmemb, size_t size);
 
-/** Basic filename safety check to mitigate trivial directory traversal.
- *  Rejects: NULL/empty, length > 255, any ".." sequence, control characters.
+/** Reject a name that cannot be opened: NULL, empty, longer than 255 bytes,
+ *  or containing a control character. Directories and ".." are allowed.
  */
 bool is_filename_safe(const char *fn);
 
