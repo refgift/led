@@ -83,6 +83,36 @@ log_unrecorded() {
   done < <(git log --reverse --format='%H%x1f%cs%x1f%s' "${last}..HEAD")
 }
 
+review_worktree_ids() {
+  "$GROK" worktree list --repo led --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+for row in rows:
+    ident = row.get("id") or ""
+    if ident:
+        print(ident)
+'
+}
+
+drop_new_worktrees() {
+  local before="$1" id
+  [[ -n "${GROK:-}" ]] || return 0
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    if grep -qxF "$id" <<<"$before"; then
+      continue
+    fi
+    if "$GROK" worktree rm --force "$id" >/dev/null 2>&1; then
+      log "removed review worktree ${id}"
+    else
+      log "fail: remove worktree ${id}"
+    fi
+  done < <(review_worktree_ids || true)
+}
+
 record_day() {
   local why="$1" files qb hb vb already=0
   [[ "$mode" == "run" ]] || return 0
@@ -377,7 +407,7 @@ if [[ "$action" == "review" ]]; then
   log "review ${target} before the edit"
   review_head="$(git rev-parse HEAD)"
   review_prompt=$(cat <<EOF
-Read ${REPO}/${target} and the implementation it describes. Do not edit any file. Do not commit.
+Read ${target} and the implementation it describes. Stay in this checkout. Do not edit any file. Do not commit.
 
 Jev marked this file action=review, concern=${concern}, confidence=${conf}. The verdict is too uncertain to edit from the score alone.
 
@@ -393,11 +423,17 @@ EOF
   GROK="$(command -v grok || true)"
   if [[ -n "$GROK" ]]; then
     # -p takes the prompt as its next argument. Flags before it.
+    # --worktree=led reviews a copy, so a stray edit stays off master.
     # --no-plan: a review that waits for plan approval never returns a line.
+    worktrees_before="$(review_worktree_ids)"
+    worktree_list_rc=$?
     timeout 8m "$GROK" --verbatim --no-alt-screen --no-plan --output-format plain \
-      --permission-mode plan --cwd "$REPO" -p "$review_prompt" \
+      --permission-mode plan --cwd "$REPO" --worktree=led -p "$review_prompt" \
       >"$STATE/review.txt" 2>"$STATE/review.err"
     review_rc=$?
+    if [[ "$worktree_list_rc" == 0 ]]; then
+      drop_new_worktrees "$worktrees_before"
+    fi
   else
     review_rc=127
   fi

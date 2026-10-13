@@ -119,7 +119,7 @@ The temperature goal is steady, measurable improvement, with special attention p
 `tools/daily.sh` is the automated loop. A user timer runs it once a day. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
 
 - `needs_work` or `poor`, high confidence: one edit, checked against the implementation. A header edit is major. A `.c` edit that leaves the header untouched is minor.
-- `review`: `grok -p` reads the header and the implementation (opencode if Grok fails). It must name one verified change, major or minor, or decline. Only a named change is worked.
+- `review`: `grok -p --worktree=led` reads the header and the implementation in that worktree. The worktree is removed when the review returns. Opencode reads the main checkout if Grok fails. The review must name one verified change, major or minor, or decline. Only a named change is worked.
 - `excellent`: leave it.
 
 A matching `.c` and a focused test may accompany a major change. A minor day is a verified behavior change in the `.c` with the header left as it is. The loop marks the `path.log` line `major` when the header is in the diff, and `minor` when it is not.
