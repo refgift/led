@@ -112,7 +112,7 @@ arctic (`view.c`, `controller.c`). The old 38.0°F figure predates this
 scoping. Weak rank-alignment between temperature and Jev health
 (Spearman ≈ 0.21, n=8) confirms they track different qualities.
 
-The temperature goal is steady, measurable improvement, with special attention paid to every `.h` file. That number is a meter. The process goal is the unbroken day.
+The temperature goal is steady, measurable improvement, with special attention paid to every `.h` file. That number is a meter. The process goal is the unbroken day. An unbroken log is the model path. A broken log is the shining path, and the model path is the higher level (`doc/PHILOSOPHY.md`).
 
 ## Daily progress
 
@@ -125,6 +125,8 @@ The temperature goal is steady, measurable improvement, with special attention p
 A matching `.c` and a focused test may accompany a major change. A minor day is a verified behavior change in the `.c` with the header left as it is. The loop marks the `path.log` line `major` when the header is in the diff, and `minor` when it is not.
 
 Then `make && ./led -t`. A failed test is reverted. Pass or fail, one `path.log` line is appended and pushed: the change, or why it did not land. That line is the day. A silent day is the failure this process exists to prevent.
+
+Commits that landed after the last `path.log` commit, and do not themselves only touch that log, are appended first. Their meters are `n/a`. The day's own line follows.
 
 `quality` rates any text. The verse is kept for `*.h` only. `quality_jev.py` pairs that verse with the header-contract battery, and rates other text on purpose, claims, terms, and bulk without a verse. No-args `score` still ranks tracked headers, which is what the daily pick uses. `--compare`, the daily run log, and the `path.log` verse field say whether a header's verse held, warmed, or cooled.
 

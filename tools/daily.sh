@@ -61,14 +61,40 @@ commit_path_log() {
   fi
 }
 
+log_unrecorded() {
+  local last hash day subject short files
+  [[ "$mode" == "run" ]] || return 0
+  last="$(git log -1 --format=%H -- path.log 2>/dev/null || true)"
+  [[ -n "$last" ]] || return 0
+  while IFS=$'\x1f' read -r hash day subject; do
+    [[ -n "$hash" ]] || continue
+    short="$(git rev-parse --short=7 "$hash")"
+    if grep -q "| ${short} |" path.log; then
+      continue
+    fi
+    files="$(git diff-tree --no-commit-id --name-only -r "$hash" | paste -sd, - || true)"
+    [[ "$files" == "path.log" ]] && continue
+    [[ -n "$files" ]] || files="-"
+    subject="$(printf '%s' "$subject" | tr '|' '/' | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+    subject="${subject:0:120}"
+    [[ -n "$subject" ]] || subject="unrecorded commit"
+    printf '%s | %s | %s | %s | qual n/a->n/a | health n/a->n/a | tests n/a\n' \
+      "$day" "$short" "$files" "$subject" >>path.log
+  done < <(git log --reverse --format='%H%x1f%cs%x1f%s' "${last}..HEAD")
+}
+
 record_day() {
-  local why="$1" files qb hb vb
+  local why="$1" files qb hb vb already=0
   [[ "$mode" == "run" ]] || return 0
   [[ "$day_logged" == 1 ]] && return 0
   why="$(printf '%s' "$why" | tr '|' '/' | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
   [[ -n "$why" ]] || why="fail: no outcome"
   why="${why:0:120}"
-  if ! grep -q "^${today} |" path.log; then
+  if grep -q "^${today} |" path.log; then
+    already=1
+  fi
+  log_unrecorded
+  if [[ "$already" != 1 ]]; then
     files="${target:--}"
     qb="${qual_before:-n/a}"
     hb="${health_before:-n/a}"
@@ -366,8 +392,10 @@ EOF
   set +e
   GROK="$(command -v grok || true)"
   if [[ -n "$GROK" ]]; then
-    timeout 8m "$GROK" -p --verbatim --no-alt-screen --output-format plain \
-      --permission-mode plan --cwd "$REPO" "$review_prompt" \
+    # -p takes the prompt as its next argument. Flags before it.
+    # --no-plan: a review that waits for plan approval never returns a line.
+    timeout 8m "$GROK" --verbatim --no-alt-screen --no-plan --output-format plain \
+      --permission-mode plan --cwd "$REPO" -p "$review_prompt" \
       >"$STATE/review.txt" 2>"$STATE/review.err"
     review_rc=$?
   else
@@ -375,7 +403,8 @@ EOF
   fi
   set -e
   if [[ "$review_rc" != 0 || ! -s "$STATE/review.txt" ]]; then
-    log "grok review failed (${review_rc}); opencode review"
+    grok_err="$(head -n 1 "$STATE/review.err" 2>/dev/null | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+    log "grok review failed (${review_rc})${grok_err:+: ${grok_err}}; opencode review"
     timeout 12m "$OPENCODE" run --dir "$REPO" --auto --title "led daily review ${today}" \
       "$review_prompt Print the line only. Write nothing in the repo." \
       >"$STATE/review.txt" 2>"$STATE/review.err" || true
@@ -629,6 +658,7 @@ esac
 grep -v '^$' "$STATE/agent-files" | LC_ALL=C sort -u >"$STATE/agent-files.sorted"
 mv "$STATE/agent-files.sorted" "$STATE/agent-files"
 files="$(paste -sd, "$STATE/agent-files")"
+log_unrecorded
 git add --pathspec-from-file="$STATE/agent-files"
 git commit -m "$what"
 code_hash="$(git rev-parse --short HEAD)"
