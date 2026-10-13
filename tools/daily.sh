@@ -114,29 +114,24 @@ drop_new_worktrees() {
 }
 
 record_day() {
-  local why="$1" files qb hb vb already=0
+  local why="$1" files qb hb vb
   [[ "$mode" == "run" ]] || return 0
   [[ "$day_logged" == 1 ]] && return 0
   why="$(printf '%s' "$why" | tr '|' '/' | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
   [[ -n "$why" ]] || why="fail: no outcome"
   why="${why:0:120}"
-  if grep -q "^${today} |" path.log; then
-    already=1
-  fi
   log_unrecorded
-  if [[ "$already" != 1 ]]; then
-    files="${target:--}"
-    qb="${qual_before:-n/a}"
-    hb="${health_before:-n/a}"
-    vb="${verse_before:-}"
-    if [[ -n "$vb" ]]; then
-      vb="$(printf '%s' "$vb" | tr '|' '/' | tr -d '\r')"
-      printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a | verse %s -> n/a\n' \
-        "$today" "$files" "$why" "$qb" "$hb" "$vb" >>path.log
-    else
-      printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a\n' \
-        "$today" "$files" "$why" "$qb" "$hb" >>path.log
-    fi
+  files="${target:--}"
+  qb="${qual_before:-n/a}"
+  hb="${health_before:-n/a}"
+  vb="${verse_before:-}"
+  if [[ -n "$vb" ]]; then
+    vb="$(printf '%s' "$vb" | tr '|' '/' | tr -d '\r')"
+    printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a | verse %s -> n/a\n' \
+      "$today" "$files" "$why" "$qb" "$hb" "$vb" >>path.log
+  else
+    printf '%s | - | %s | %s | qual %s->n/a | health %s->n/a | tests n/a\n' \
+      "$today" "$files" "$why" "$qb" "$hb" >>path.log
   fi
   day_logged=1
   commit_path_log "path.log: ${today} ${why}" || log "fail: commit path.log"
@@ -241,16 +236,12 @@ if [[ "$(git branch --show-current)" != "master" ]]; then
 fi
 
 if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
-  if grep -q "^${today} |" path.log; then
-    commit_path_log "path.log: ${today}" || true
-    day_logged=1
-    day_claimed=0
-    log "skip: path.log already has ${today}"
+  commit_path_log "path.log: ${today}" || true
+  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    log "skip: tracked tree dirty"
+    outcome="fail: tracked tree dirty"
     exit 0
   fi
-  log "skip: tracked tree dirty"
-  outcome="fail: tracked tree dirty"
-  exit 0
 fi
 
 if [[ -f "$STATE/pending-push" ]]; then
@@ -263,12 +254,6 @@ if [[ -f "$STATE/pending-push" ]]; then
   fi
 fi
 
-if [[ "$mode" == "run" ]] && grep -q "^${today} |" path.log; then
-  log "skip: path.log already has ${today}"
-  day_claimed=0
-  exit 0
-fi
-
 git fetch origin master || { log "fail: fetch"; outcome="fail: fetch"; exit 1; }
 ahead="$(git rev-list --count origin/master..HEAD)"
 behind="$(git rev-list --count HEAD..origin/master)"
@@ -279,12 +264,6 @@ if [[ "$ahead" != "0" ]]; then
 fi
 if [[ "$behind" != "0" ]]; then
   git merge --ff-only origin/master
-fi
-
-if [[ "$mode" == "run" ]] && grep -q "^${today} |" path.log; then
-  log "skip: path.log already has ${today} after pull"
-  day_claimed=0
-  exit 0
 fi
 
 if [[ -z "${TYPESAFE_API_KEY:-}" ]]; then

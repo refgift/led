@@ -116,7 +116,7 @@ The temperature goal is steady, measurable improvement, with special attention p
 
 ## Daily progress
 
-`tools/daily.sh` is the automated loop. A user timer runs it once a day. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
+`tools/daily.sh` is the automated loop. The operating system decides when it starts, and how many timers there are. Each start is one run. The same date may hold more than one `path.log` line. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
 
 - `needs_work` or `poor`, high confidence: one edit, checked against the implementation. A header edit is major. A `.c` edit that leaves the header untouched is minor.
 - `review`: `grok -p --worktree=led` reads the header and the implementation in that worktree. The worktree is removed when the review returns. Opencode reads the main checkout if Grok fails. The review must name one verified change, major or minor, or decline. Only a named change is worked.
@@ -124,7 +124,7 @@ The temperature goal is steady, measurable improvement, with special attention p
 
 A matching `.c` and a focused test may accompany a major change. A minor day is a verified behavior change in the `.c` with the header left as it is. The loop marks the `path.log` line `major` when the header is in the diff, and `minor` when it is not.
 
-Then `make && ./led -t`. A failed test is reverted. Pass or fail, one `path.log` line is appended and pushed: the change, or why it did not land. That line is the day. A silent day is the failure this process exists to prevent.
+Then `make && ./led -t`. A failed test is reverted. Pass or fail, one `path.log` line is appended and pushed: the change, or why it did not land. That line is the run. A silent run is the failure this process exists to prevent.
 
 Commits that landed after the last `path.log` commit, and do not themselves only touch that log, are appended first. Their meters are `n/a`. The day's own line follows.
 
