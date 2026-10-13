@@ -269,25 +269,6 @@ if [[ "$mode" == "run" ]] && grep -q "^${today} |" path.log; then
   exit 0
 fi
 
-hour="$(date +%H)"
-min="$(date +%M)"
-in_window=0
-if [[ "$hour" == "09" && "$min" -ge 20 ]] || [[ "$hour" == "10" && "$min" -le 15 ]]; then
-  in_window=1
-fi
-if [[ "$mode" == "run" && "$in_window" == 0 ]]; then
-  sid="$(loginctl list-sessions --no-legend | awk '$3=="lbd" && $0 ~ /user/ {print $1; exit}')"
-  idle="no"
-  if [[ -n "$sid" ]]; then
-    idle="$(loginctl show-session "$sid" -p IdleHint --value 2>/dev/null || echo no)"
-  fi
-  if [[ "$idle" != "yes" ]]; then
-    log "skip: catch-up while session is active"
-    day_claimed=0
-    exit 0
-  fi
-fi
-
 git fetch origin master || { log "fail: fetch"; outcome="fail: fetch"; exit 1; }
 ahead="$(git rev-list --count origin/master..HEAD)"
 behind="$(git rev-list --count HEAD..origin/master)"
