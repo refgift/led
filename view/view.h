@@ -88,7 +88,9 @@ void view_recreate_text_window(WINDOW* frame, WINDOW** text, int show_border);
 
 /* === Main rendering entry points ===
  * frame = border window (typically stdscr, owns box())
- * text  = inset subwindow (derwin(frame, LINES-2, COLS-2, 1,1), owns all text)
+ * text  = content subwindow (owns all text). If bordered,
+ *         derwin(frame, LINES-2, COLS-2, 1,1); else
+ *         derwin(frame, LINES-1, COLS, 0,0).
  * Either may be NULL in headless tests (LED_TEST).
  */
 
