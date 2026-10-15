@@ -144,7 +144,18 @@ void editor_draw_compat(WINDOW* win, Editor* ed);
 /** Process one keypress. Returns 1 when the session should end (Ctrl+Q). */
 int editor_handle_input(Editor* ed, int ch);
 
-/** Bind Ctrl+Left / Ctrl+Right from terminfo. Call after initscr and keypad. */
+/**
+ * Ctrl+/ when the terminal does not send byte 31.
+ * Assigned by editor_bind_terminal_keys:
+ *   LED_KEY_SEARCH      foot / xterm modifyOtherKeys  ESC [ 27 ; 5 ; 47 ~
+ *   LED_KEY_SEARCH_ALT  kitty keyboard protocol       ESC [ 47 ; 5 u
+ * Left unrecognized, that sequence is ESC plus characters: a word
+ * motion starts and the rest is inserted into the buffer.
+ */
+#define LED_KEY_SEARCH      (KEY_MAX + 1)
+#define LED_KEY_SEARCH_ALT  (KEY_MAX + 2)
+
+/** Bind Ctrl+Left / Ctrl+Right and Ctrl+/ from the terminal. Call after initscr and keypad. */
 void editor_bind_terminal_keys(Editor* ed);
 
 /** "+142" -> 142. Returns 1 on success. */

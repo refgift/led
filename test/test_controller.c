@@ -1348,6 +1348,43 @@ test_programmer_motions (void)
                "a failed save stays modified and says so");
   editor_cleanup (&ed);
 
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "hello");
+  ed.config.search.enabled = 1;
+  test_assert (editor_handle_input (&ed, 31) == 0 && ed.search_mode == 1
+               && ed.file_modified == 0,
+               "Ctrl+/ (byte 31) opens search and does not edit");
+  editor_handle_input (&ed, 'h');
+  test_assert (strcmp (ed.search_buffer, "h") == 0 && ed.file_modified == 0,
+               "search typing stays out of the buffer");
+  {
+    char *line = buffer_get_line (&ed.model, 0);
+    test_assert (line && strcmp (line, "hello") == 0,
+                 "search typing does not change the file");
+    free (line);
+  }
+  editor_cleanup (&ed);
+
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "hello");
+  ed.config.search.enabled = 1;
+  test_assert (editor_handle_input (&ed, LED_KEY_SEARCH) == 0
+               && ed.search_mode == 1 && ed.file_modified == 0
+               && ed.meta_pending == 0,
+               "foot Ctrl+/ sequence opens search, not a word motion");
+  editor_cleanup (&ed);
+
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "hello");
+  ed.config.search.enabled = 1;
+  test_assert (editor_handle_input (&ed, LED_KEY_SEARCH_ALT) == 0
+               && ed.search_mode == 1 && ed.file_modified == 0,
+               "kitty Ctrl+/ sequence opens search");
+  editor_cleanup (&ed);
+
   fprintf (stderr, "Programmer motion tests completed\n");
 }
 

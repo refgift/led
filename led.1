@@ -52,6 +52,8 @@ Select all / Copy / Cut / Paste (paste filtered).
 .TP
 .B Ctrl+/ / Ctrl+R
 Search / Replace (regex, wraps to the top).
+Ctrl+/ is byte 31, or the modified-key sequence the terminal sends for that chord
+(\fCESC [27;5;47~\fR or \fCESC [47;5u\fR). The sequence is not inserted.
 .SS Display
 .TP
 .B F2
@@ -70,7 +72,7 @@ Editing, selection, clipboard, regex search/replace, syntax highlight, Unicode, 
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-193 tests.
+229 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap; lines >10k truncated.

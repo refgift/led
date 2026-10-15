@@ -152,7 +152,20 @@ editor_bind_terminal_keys (Editor *ed)
       if (code > 0)
         ed->key_word_right = code;
     }
+  /* '/' is not a C0 control character, so foot and xterm
+   * modifyOtherKeys send Ctrl+/ as CSI 27 ; 5 ; 47 ~ rather than
+   * byte 31. kitty sends CSI 47 ; 5 u. Bind both so getch() returns
+   * one code instead of ESC plus the rest of the sequence. */
+  define_key ("\033[27;5;47~", LED_KEY_SEARCH);
+  define_key ("\033[47;5u", LED_KEY_SEARCH_ALT);
 }
+
+static int
+is_search_chord (int ch)
+{
+  return ch == 31 || ch == LED_KEY_SEARCH || ch == LED_KEY_SEARCH_ALT;
+}
+
 void
 editor_init (Editor *ed, int argc, char *argv[])
 {
@@ -493,12 +506,18 @@ editor_handle_input (Editor *ed, int ch)
       set_status_message (ed, ed->config.display.show_border ? "Border: ON" : "Border: OFF (xterm copy clean)");
       return 0;
     }
-  if ((ch == 31) && ed->config.search.enabled) /* Ctrl+/ or / */
+  /* Byte 31 is traditional Ctrl+/ (and Ctrl+_). The other two codes
+   * are the same chord from a terminal that sends a modified-key
+   * sequence. Consume the chord either way so it is never inserted. */
+  if (is_search_chord (ch))
     {
-      ed->search_mode = 1;
-      ed->replace_step = 0;
-      memset (ed->search_buffer, 0, sizeof (ed->search_buffer));
-      set_status_message (ed, "Search (Esc to cancel):");
+      if (ed->config.search.enabled)
+        {
+          ed->search_mode = 1;
+          ed->replace_step = 0;
+          memset (ed->search_buffer, 0, sizeof (ed->search_buffer));
+          set_status_message (ed, "Search (Esc to cancel):");
+        }
       return 0;
     }
   if (ch == 18 && ed->config.search.enabled)
