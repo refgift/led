@@ -6,13 +6,13 @@
 #include "config.h"
 
 /**
- * editor.h - Main editor state and public API.
+ * editor.h - The editor system.
  *
- * This is a core "hot" header. The Editor struct is the central
- * coordinator that ties together the Buffer (model), undo/redo,
+ * This is a core header. The Editor struct is the central
+ * coordinator that ties together the model subsystem's undo/redo,
  * configuration, selection, search/replace state, and autosave.
+ * with the view and controller subsystems.
  *
- * Keep this file extremely well documented and low-entropy.
  */
 
 /* Opaque forward declarations */

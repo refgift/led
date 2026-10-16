@@ -7,10 +7,13 @@
 #include "editor.h"
 
 /**
- * view.h - ncurses rendering and visual helpers.
+ * view.h - subsystem for things the user sees.
  *
- * This is a hot header. It owns all screen output, syntax highlighting,
+ * This is a header. It owns all screen output, syntax highlighting,
  * word-wrap logic (when enabled), and cursor positioning math.
+ * The view is part of the model/view/controller design pattern
+ * and plays 1 of the major roles in the separation of work into 
+ * subsystems of the editor system.
  */
 
 /* === Incremental rendering === */
