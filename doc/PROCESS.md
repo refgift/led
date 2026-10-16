@@ -61,14 +61,7 @@ implementation and falls below the table, so `quality` prints
 and commented, and the definition carries the entropy. Do not look for a
 verse on a `.c`, and do not try to warm one into the table.
 
-The day's pick still comes from Jev `health` on a header. A change to
-that header is major. A change that leaves the header untouched and
-edits the `.c` is minor: the contract is the same, and the running
-program can still differ. When a day is compared, read the header's
-verse with its temperature. Held means the integer degree did not move,
-which is the usual reading of a minor day. Warmed or cooled means the
-degree moved, which is a major day that reached the contract. Do not
-edit in order to chase a verse.
+The day's pick still comes from Jev `health` on a header. 
 
 ### 2. Semantic review (header contracts)
 
@@ -102,9 +95,6 @@ Rules learned the hard way:
 - Expect run-to-run jitter (~±0.016 health). Use wide bands, thin
   thresholds lose.
 
-**Core Philosophy for this project**:
-- **.h header files are "hot"** — they are the public contracts, types, and interfaces. A change here is major. Prioritize making every `.h` file excellent (high comment density, clean declarations, minimal duplication, no dead includes).
-- **.c implementation files are "cold"** — they can tolerate more internal entropy (complexity, duplication) provided the behavior is correct, the tests pass, and the `.h` surface remains clean and well-documented. Their thermometer line is `Out of range`. A change here is minor. The verse is a header instrument. A user interface may need to be humane, near room temperature. The inner workings may be demonic.
 
 Measured 2026-10-01 over 21 tracked `*.c/*.h`: average **-163.9°F**.
 Headers run warm (25–85°F, `utils.h` highest); large implementations run
@@ -118,8 +108,10 @@ The temperature goal is steady, measurable improvement, with special attention p
 
 `tools/daily.sh` is the automated loop. The operating system decides when it starts, and how many timers there are. Each start is one run. The same date may hold more than one `path.log` line. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
 
-- `needs_work` or `poor`, high confidence: one edit, checked against the implementation. A header edit is major. A `.c` edit that leaves the header untouched is minor.
-- `review`: `grok -p --worktree=led` reads the header and the implementation in that worktree. The worktree is removed when the review returns. Opencode reads the main checkout if Grok fails. The review must name one verified change, major or minor, or decline. Only a named change is worked.
+- `needs_work` or `poor`, high confidence: one edit, checked against the implementation. 
+- `review`: `grok -p --worktree=led` reads the header and the implementation in that worktree. 
+-  The worktree is removed when the review returns. Opencode reads the main checkout if Grok fails. 
+-  The review must name one verified change, major or minor, or decline. Only a named change is worked.
 - `excellent`: leave it.
 
 A matching `.c` and a focused test may accompany a major change. A minor day is a verified behavior change in the `.c` with the header left as it is. The loop marks the `path.log` line `major` when the header is in the diff, and `minor` when it is not.
