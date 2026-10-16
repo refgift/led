@@ -4,13 +4,13 @@
 /**
  * config.h - Configuration system for the led text editor.
  *
- * This header defines the complete runtime configuration model.
- * All user preferences (colors, syntax rules, autosave behavior,
- * display options, etc.) live here.
+ * This header defines the runtime configuration model.
+ * User preferences (colors, syntax rules, autosave behavior,
+ * display options, etc.) and their structures and interfaces
+ * are here.
  *
- * Philosophy: Headers are "hot" — this file must be extremely clear,
- * well-documented, and low-entropy because it is the contract between
- * the editor core and user customization.
+ * The editor version number is held here.
+ *
  */
 
 #include <ncurses.h>
