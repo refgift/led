@@ -6,5 +6,6 @@ led
 __pycache__/
 *.py[cod]
 AGENTS.md
+GROK.md
 .opencode/
 /SKILL.md
