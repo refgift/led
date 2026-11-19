@@ -21,6 +21,7 @@ void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
                      const char *inputs);
 
 void test_buffer_manipulation ();
+void run_safety_tests (void);
 void test_buffer_advanced ();
 void test_controller_simulation ();
 void test_selection_clipboard ();
