@@ -205,6 +205,8 @@ editor_init (Editor *ed, int argc, char *argv[])
       start_col = 0;
     }
   int open_note = BUFFER_LOAD_OK;
+  int recovered = 0;
+  ed->save_blocked = 0;
   if (ed->filename)
     {
       long maxb = (long) ed->config.performance.max_file_size_mb * 1024 * 1024;
@@ -216,31 +218,28 @@ editor_init (Editor *ed, int argc, char *argv[])
       char recovery_path[512];
       snprintf (recovery_path, sizeof (recovery_path), "%s.recovery",
                 ed->filename);
-      FILE *recovery_fp = fopen (recovery_path, "rb");
-      if (recovery_fp)
+      int maxll = ed->config.performance.max_line_length;
+      if (access (recovery_path, F_OK) == 0)
         {
-          fclose (recovery_fp);
           open_note = buffer_load_from_file (&ed->model, recovery_path, maxb,
-                                              ed->config.performance.max_line_length,
-                                              memb);
-          unlink (recovery_path);
-        }
-      else
-        {
-          FILE *fp = fopen (ed->filename, "rb");
-          if (fp)
+                                              maxll, memb);
+          /* Only a recovery file that loaded whole is used up. A bad
+           * one stays on disk for the user to look at. */
+          if (open_note == BUFFER_LOAD_OK)
             {
-              fseek (fp, 0, SEEK_END);
-              long size = ftell (fp);
-              fclose (fp);
-              if (size > maxb)
-                open_note = BUFFER_LOAD_TOO_BIG;
-              else
-                open_note = buffer_load_from_file (&ed->model, ed->filename, maxb,
-                                                   ed->config.performance.max_line_length,
-                                                   memb);
+              recovered = 1;
+              unlink (recovery_path);
             }
         }
+      if (!recovered)
+        open_note = buffer_load_from_file (&ed->model, ed->filename, maxb,
+                                           maxll, memb);
+      /* A name that does not exist yet is a new file. Anything else
+       * that did not load whole must never be written back. */
+      if (open_note == BUFFER_LOAD_NOT_FOUND)
+        open_note = BUFFER_LOAD_OK;
+      else if (open_note != BUFFER_LOAD_OK)
+        ed->save_blocked = 1;
     }
   if (buffer_num_lines (&ed->model) == 0)
     {
@@ -326,7 +325,8 @@ editor_init (Editor *ed, int argc, char *argv[])
   // Initialize status
   ed->status_message[0] = '\0';
   ed->status_message_time = 0;
-  ed->file_modified = 0;
+  /* Recovered text is not on disk under the real name yet. */
+  ed->file_modified = recovered ? 1 : 0;
   ed->last_key_us = 0;
   ed->prev_key = 0;
   ed->goto_mode = 0;
@@ -335,7 +335,13 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->meta_pending = 0;
   ed->key_word_left = 0;
   ed->key_word_right = 0;
-  if (open_note == BUFFER_LOAD_TOO_BIG)
+  if (recovered)
+    set_status_message (ed, "Recovered unsaved changes — Ctrl+S to keep");
+  else if (open_note == BUFFER_LOAD_NOT_REGULAR)
+    set_status_message (ed, "Not a regular file");
+  else if (open_note == BUFFER_LOAD_UNREADABLE)
+    set_status_message (ed, "Cannot read file");
+  else if (open_note == BUFFER_LOAD_TOO_BIG)
     set_status_message (ed, "File too large");
   else if (open_note == BUFFER_LOAD_BINARY)
     set_status_message (ed, "Binary file");
@@ -344,7 +350,7 @@ editor_init (Editor *ed, int argc, char *argv[])
   else if (open_note == BUFFER_LOAD_NOMEM)
     set_status_message (ed, "Out of memory");
   else if (open_note == BUFFER_LOAD_TRUNCATED)
-    set_status_message (ed, "Long line truncated");
+    set_status_message (ed, "Long line truncated — saving is off");
   else if (start_line > 0)
     {
       char msg[64];
@@ -359,9 +365,28 @@ set_status_message (Editor *ed, const char *message)
   ed->status_message[sizeof (ed->status_message) - 1] = '\0';
   ed->status_message_time = time (NULL);
 }
+int
+editor_write_recovery (Editor *ed)
+{
+  if (!ed || !ed->filename || !ed->file_modified || ed->save_blocked)
+    return -1;
+  char recovery_path[512];
+  int n = snprintf (recovery_path, sizeof recovery_path, "%s.recovery",
+                    ed->filename);
+  if (n < 0 || (size_t) n >= sizeof recovery_path)
+    return -1;
+  return buffer_save_to_file (&ed->model, recovery_path);
+}
+
 void
 auto_save (Editor *ed)
 {
+  if (ed->filename && ed->save_blocked)
+    {
+      ed->unsaved_keystrokes = 0;
+      ed->last_save_time = time (NULL);
+      return;
+    }
   if (ed->filename)
     {
       // Create backup before auto-saving
@@ -551,9 +576,25 @@ editor_handle_input (Editor *ed, int ch)
         ed->replace_step = 0;
       else if (ch == 10 || ch == 13 || ch == KEY_ENTER)
         {
-          buffer_replace_all (&ed->model, ed->search_buffer,
-                              ed->replace_buffer);
+          int n = buffer_replace_all (&ed->model, ed->search_buffer,
+                                      ed->replace_buffer);
           ed->replace_step = 0;
+          if (n > 0)
+            {
+              /* Replace is not recorded for undo, and every position
+               * already on the stacks is now wrong. Drop them. */
+              free_undo_stacks (&ed->undo_stack, &ed->redo_stack);
+              ed->file_modified = 1;
+              ed->unsaved_keystrokes++;
+              int len = buffer_get_line_length (&ed->model, ed->cursor_line);
+              if (ed->cursor_col > len)
+                ed->cursor_col = len;
+              char msg[64];
+              snprintf (msg, sizeof msg, "Replaced %d (cannot be undone)", n);
+              set_status_message (ed, msg);
+            }
+          else
+            set_status_message (ed, n == 0 ? "Not found" : "Bad pattern");
         }
       else if (((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
                && strlen (ed->replace_buffer) <
@@ -564,7 +605,7 @@ editor_handle_input (Editor *ed, int ch)
     }
   else
     {
-      int was_meta = ed->meta_pending;
+      unsigned long gen_before = ed->model.edit_generation;
       if (handle_input
           (ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line,
            &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer,
@@ -574,22 +615,9 @@ editor_handle_input (Editor *ed, int ch)
                               "Error: Operation failed (insufficient memory?)");
         }
       ed->prev_key = ch;
-      /* Esc-b / Esc-f only move. Esc-Backspace deletes a word. */
-      if (was_meta)
-        {
-          if (!ed->search_mode && !ed->replace_step
-              && (ch == 127 || ch == 8 || ch == KEY_BACKSPACE))
-            {
-              ed->unsaved_keystrokes++;
-              ed->file_modified = 1;
-            }
-        }
-      else if (!ed->search_mode && !ed->replace_step &&
-          ((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255)
-           || ch == 9 || ch == 10 || ch == 13 || ch == KEY_ENTER || ch == 127
-           || ch == KEY_BACKSPACE || ch == KEY_DC || ch == KEY_F(3)
-           || ch == KEY_BTAB
-           || ch == 3 || ch == 11 || ch == 22 || ch == 23 || ch == 24))
+      /* Modified means the text changed, whatever key did it. That
+       * covers undo and redo, and leaves out copy and cursor keys. */
+      if (ed->model.edit_generation != gen_before)
         {
           ed->unsaved_keystrokes++;
           ed->file_modified = 1;
@@ -597,7 +625,7 @@ editor_handle_input (Editor *ed, int ch)
       // Auto-save if threshold reached (keystrokes or time)
       time_t now = time (NULL);
       if ((ed->unsaved_keystrokes >= ed->auto_save_threshold ||
-           (ed->auto_save_timeout > 0
+           (ed->auto_save_timeout > 0 && ed->file_modified
             && now - ed->last_save_time >= ed->auto_save_timeout))
           && ed->filename)
         {

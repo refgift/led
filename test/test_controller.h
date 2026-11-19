@@ -27,4 +27,5 @@ void test_right_arrow_repeat_navigation(void);
 void test_cursor_newline_undo_redo_bug(void);
 void test_tab_key(void);
 void run_view_tests(void);
+void run_safety_tests(void);
 void test_autosave_comprehensive(void);

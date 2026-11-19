@@ -6,6 +6,7 @@
 #include <regex.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 /* Fallback default; caller should pass a limit from EditorConfig. */
 #define DEFAULT_MAX_FILE_BYTES (10L * 1024 * 1024)
 #define DEFAULT_MAX_LINE_LENGTH 10000
@@ -270,7 +271,11 @@ buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
 {
   struct stat st;
   if (stat (filename, &st) != 0)
-    return BUFFER_LOAD_NOT_FOUND;
+    return errno == ENOENT ? BUFFER_LOAD_NOT_FOUND : BUFFER_LOAD_UNREADABLE;
+  /* A directory opens and reads as empty; a FIFO or device can block
+   * forever. Neither is a text file. */
+  if (!S_ISREG (st.st_mode))
+    return BUFFER_LOAD_NOT_REGULAR;
   long limit = (max_bytes > 0 ? max_bytes : DEFAULT_MAX_FILE_BYTES);
   long mem_limit = (memory_limit_bytes > 0
                     ? memory_limit_bytes : DEFAULT_MEMORY_LIMIT_BYTES);
@@ -278,7 +283,7 @@ buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
     return BUFFER_LOAD_TOO_BIG;
   FILE *fp = fopen (filename, "rb");
   if (!fp)
-    return BUFFER_LOAD_NOT_FOUND;
+    return errno == ENOENT ? BUFFER_LOAD_NOT_FOUND : BUFFER_LOAD_UNREADABLE;
   int temp_cap = 1024;
   char *temp = malloc (temp_cap);
   if (!temp)
@@ -373,7 +378,7 @@ buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
 int
 buffer_delete_char (Buffer *buf, int line, int col)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || col < 0 || line >= buf->num_lines)
     {
       return -1;
     }
@@ -442,7 +447,7 @@ buffer_delete_range (Buffer *buf, int start_line, int start_col,
       // Delete chars in line
       GapBuffer *gb = buf->lines[start_line];
       int len = gap_buffer_length(gb);
-      if (start_col >= len)
+      if (start_col < 0 || start_col >= len)
         {
           return -1;
         }
@@ -526,7 +531,7 @@ buffer_num_lines (const Buffer *buf)
 char *
 buffer_get_line (const Buffer *buf, int line)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || line >= buf->num_lines)
     {
       return NULL;
     }
@@ -535,7 +540,7 @@ buffer_get_line (const Buffer *buf, int line)
 int
 buffer_get_line_length (const Buffer *buf, int line)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || line >= buf->num_lines)
     {
       return 0;
     }
@@ -544,7 +549,7 @@ buffer_get_line_length (const Buffer *buf, int line)
 char
 buffer_get_char (const Buffer *buf, int line, int col)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || line >= buf->num_lines)
     {
       return '\0';
     }
@@ -553,7 +558,7 @@ buffer_get_char (const Buffer *buf, int line, int col)
 int
 buffer_insert_line (Buffer *buf, int line, const char *content)
 {
-  if (line > buf->num_lines)
+  if (line < 0 || line > buf->num_lines)
     {
       return -1;
     }
@@ -612,7 +617,7 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
 int
 buffer_delete_line (Buffer *buf, int line)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || line >= buf->num_lines)
     {
       return -1;
     }
@@ -635,7 +640,7 @@ buffer_delete_line (Buffer *buf, int line)
 int
 buffer_insert_char (Buffer *buf, int line, int col, char c)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || line >= buf->num_lines)
     {
       return -1;
     }
@@ -645,6 +650,12 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
     {
       col = len;
     }
+  if (col < 0)
+    col = 0;
+  /* A NUL would end the line early for every reader, and the rest of
+   * the line would be lost on save. */
+  if (c == '\0')
+    return -1;
   if (c == '\n')
     {
       // Split line at col
@@ -693,7 +704,7 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
 int
 buffer_insert_text (Buffer *buf, int line, int col, const char *text)
 {
-  if (line >= buf->num_lines)
+  if (line < 0 || line >= buf->num_lines)
     {
       return -1;
     }
@@ -800,6 +811,14 @@ buffer_save_to_file (const Buffer *buf, const char *filename)
   if (!buf || !filename || !*filename)
     return -1;
 
+  /* Write to what a symlink points at. Renaming over the link itself
+   * would replace it with a plain file and leave the real one stale. */
+  char resolved[PATH_MAX];
+  struct stat lst;
+  if (lstat (filename, &lst) == 0 && S_ISLNK (lst.st_mode)
+      && realpath (filename, resolved) != NULL)
+    filename = resolved;
+
   char tmp[PATH_MAX];
   int nw = snprintf (tmp, sizeof tmp, "%s.ledtmp.%d", filename, (int) getpid ());
   if (nw < 0 || (size_t) nw >= sizeof tmp)
@@ -827,19 +846,20 @@ buffer_save_to_file (const Buffer *buf, const char *filename)
     }
   return 0;
 }
-void
+int
 buffer_replace_all (Buffer *buf, const char *search_regex,
                      const char *replace_str)
 {
-  if (strlen (search_regex) > 100)
+  if (!buf || !search_regex || !replace_str || strlen (search_regex) > 100)
     {
-      return;                     // Pattern too long
+      return -1;                  // Pattern too long
     }
   regex_t reg;
   if (regcomp (&reg, search_regex, REG_EXTENDED) != 0)
     {
-      return;
+      return -1;
     }
+  int total = 0;
   int replace_len = strlen (replace_str);
   for (int i = 0; i < buf->num_lines; i++)
     {
@@ -857,7 +877,10 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
        int pos = 0;
        regmatch_t match;
        int changed = 0;
-        while (regexec (&reg, original_line + pos, 1, &match, 0) == 0)
+        /* After the first match the rest of the line is not a line
+         * start, so "^x" must not match again. */
+        while (regexec (&reg, original_line + pos, 1, &match,
+                        pos > 0 ? REG_NOTBOL : 0) == 0)
           {
             if (match.rm_eo == match.rm_so)
               break;  // zero-width match would cause infinite loop
@@ -880,7 +903,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                    free (new_line);
                    free(original_line);
                    regfree (&reg);
-                   return;
+                   return -1;
                  }
                new_line = temp;
              }
@@ -904,7 +927,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                    free (new_line);
                    free(original_line);
                    regfree (&reg);
-                   return;
+                   return -1;
                  }
                new_line = temp;
              }
@@ -912,10 +935,11 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
            used += replace_len;
            pos += match.rm_eo;
            changed = 1;
+           total++;
          }
        // Append rest
        int rest_len = len - pos;
-       if (rest_len > 0)
+       if (changed && rest_len > 0)
          {
            if (used + rest_len >= new_cap)
              {
@@ -934,7 +958,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                    free (new_line);
                    free(original_line);
                    regfree (&reg);
-                   return;
+                   return -1;
                  }
                new_line = temp;
              }
@@ -952,7 +976,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
                free(new_line);
                free(original_line);
                regfree (&reg);
-               return;
+               return -1;
              }
            for (char *p = new_line; *p; p++)
              {
@@ -965,8 +989,12 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
          }
       free(original_line);
     }
-  // Invalidate entire cache since multiple lines changed
-  _invalidate_cache_from (buf, 0);
-  _buffer_mark_change (buf, 0, buf->num_lines - 1, 1);
   regfree (&reg);
+  if (total > 0)
+    {
+      // Invalidate entire cache since multiple lines changed
+      _invalidate_cache_from (buf, 0);
+      _buffer_mark_change (buf, 0, buf->num_lines - 1, 1);
+    }
+  return total;
 }

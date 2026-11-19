@@ -1700,6 +1700,10 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
            ++test_number);
   test_default_cpp_keywords (); 
   
+  fprintf (stderr, "Test %d: data_safety - undo, clipboard, UTF-8, blocked saves\n",
+           ++test_number);
+  run_safety_tests ();
+
   fprintf (stderr, "\n");
   run_view_tests();
   
