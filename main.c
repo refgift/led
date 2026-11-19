@@ -1,15 +1,17 @@
-#include <ncurses.h>
 #include <string.h>
 #include <stdlib.h>
-#include <locale.h>
+#include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
 #include "editor.h"
 #include "view.h"
 #include "config.h"
+#include "frontend/frontend.h"
 #include "test_controller.h"
 
-/* Tests re-enabled. Wordwrap-dependent tests skipped for stability. Runs ~20 core tests (clipboard, undo, autosave, buffer, view, cut/paste). */
+/* main.c ties the parts together and owns nothing else: it starts the
+ * front end, hands keys to the editor, and asks the view to draw. It
+ * does not know which front end is linked in. */
 extern int tests_passed;
 extern int tests_failed;
 
@@ -23,171 +25,150 @@ on_stop_signal (int sig)
   stop_requested = 1;
 }
 
+/* Each quality's colours, from the user's config. */
+static void
+styles_from_config (const EditorConfig *c, FrontendStyle s[LED_Q_COUNT])
+{
+  memset (s, 0, sizeof (FrontendStyle) * LED_Q_COUNT);
+  s[LED_Q_NORMAL] = (FrontendStyle) { c->colors.normal_fg, c->colors.normal_bg };
+  s[LED_Q_SELECTION] = (FrontendStyle) { c->colors.selection_fg, c->colors.selection_bg };
+  s[LED_Q_SEMICOLON] = (FrontendStyle) { c->colors.semicolon_fg, c->colors.semicolon_bg };
+  s[LED_Q_LEVEL1] = (FrontendStyle) { c->colors.meta_level1_fg, c->colors.meta_level1_bg };
+  s[LED_Q_LEVEL2] = (FrontendStyle) { c->colors.meta_level2_fg, c->colors.meta_level2_bg };
+  s[LED_Q_LEVEL3] = (FrontendStyle) { c->colors.meta_level3_fg, c->colors.meta_level3_bg };
+  s[LED_Q_LEVEL4] = (FrontendStyle) { c->colors.meta_level4_fg, c->colors.meta_level4_bg };
+  s[LED_Q_RESERVED] = (FrontendStyle) { c->colors.reserved_words_fg, c->colors.reserved_words_bg };
+}
+
+/* Read the device size into the screen grid and the editor. */
+static void
+adopt_size (const Frontend *fe, Editor *ed)
+{
+  int cols = 0, rows = 0;
+  fe->size (&cols, &rows);
+  screen_resize (cols, rows);
+  ed->page_rows = rows;
+}
+
+static void
+full_draw (Pane *text_win, Editor *ed)
+{
+  int dummy_y, dummy_x;
+  view_invalidate ();
+  draw_initial (screen_pane (), text_win, &ed->model, &ed->scroll_row,
+                &ed->scroll_col, ed->cursor_line, ed->cursor_col,
+                ed->show_line_numbers, ed->syntax_highlight, &dummy_y,
+                &dummy_x, &ed->config);
+}
+
+static int
+run_tests (int argc, char *argv[])
+{
+  /* Tests draw into the memory front end; no terminal is touched. */
+  frontend_use (frontend_memory ());
+  Editor ed;
+  editor_init (&ed, argc, argv);
+  run_comprehensive_tests ();
+  fprintf (stderr, "\nTest summary: %d passed, %d failed\n", tests_passed,
+           tests_failed);
+  fprintf (stderr, tests_failed == 0 ? "ALL TESTS PASSED\n"
+           : "SOME TESTS FAILED\n");
+  editor_cleanup (&ed);
+  return 0;
+}
+
 int
 main (int argc, char *argv[])
 {
   if (getenv ("LED_TEST"))
     {
-      run_comprehensive_tests();
+      frontend_use (frontend_memory ());
+      run_comprehensive_tests ();
       return 0;
     }
-  int test_mode = 0;
   if (argc > 1 && strcmp (argv[1], "-t") == 0)
-    {
-      test_mode = 1;
-      argc--;
-      argv++;
-    }
-  // Initialize curses only if not in test mode
-  if (!test_mode)
-    {
-      (void) setlocale (LC_ALL, "");    /* Enable UTF-8 / extended chars */
-      if (initscr () == NULL)
-        {
-          fprintf (stderr, "Error: Failed to initialize ncurses\n");
-          return 1;
-        }
-      raw ();
-      noecho ();
-      keypad (stdscr, TRUE);
-      scrollok (stdscr, FALSE); // Prevent line wrapping/scrolling
-      if (start_color () == ERR)
-        {
-          fprintf (stderr, "Error: Failed to start colors\n");
-          endwin ();
-          return 1;
-        }
-    }
+    return run_tests (argc - 1, argv + 1);
+
   Editor ed;
   editor_init (&ed, argc, argv);
-  if (!test_mode)
-    editor_bind_terminal_keys (&ed);
-  WINDOW *text_win = NULL;
-  if (!test_mode)
+
+  const Frontend *fe = frontend_default ();
+  FrontendStyle styles[LED_Q_COUNT];
+  styles_from_config (&ed.config, styles);
+  if (fe->start (styles) != 0)
     {
-      // Initialize color pairs
-      init_pair (1, ed.config.colors.normal_fg, ed.config.colors.normal_bg);
-      wbkgd(stdscr, COLOR_PAIR(1));
-      // Also set background for stdscr via bkgd for compat
-      bkgd(COLOR_PAIR(1));
-      init_pair (2, ed.config.colors.selection_fg,
-                 ed.config.colors.selection_bg);
-      init_pair (3, ed.config.colors.semicolon_fg,
-                 ed.config.colors.semicolon_bg);
-      init_pair (4, ed.config.colors.meta_level1_fg,
-                 ed.config.colors.meta_level1_bg);
-      init_pair (5, ed.config.colors.meta_level2_fg,
-                 ed.config.colors.meta_level2_bg);
-      init_pair (6, ed.config.colors.meta_level3_fg,
-                 ed.config.colors.meta_level3_bg);
-      init_pair (7, ed.config.colors.meta_level4_fg,
-                 ed.config.colors.meta_level4_bg);
-      init_pair (8, ed.config.colors.reserved_words_fg,
-                 ed.config.colors.reserved_words_bg);
-      // Create inset text subwindow: border stays on stdscr (frame),
-      // all text rendering goes to text_win (derwin). This isolates
-      // border from xterm block-select so copying text never drags '|'.
-      // Geometry depends on show_border (F4 / LED_NO_BORDER env).
-      if (view_create_text_window_ex(stdscr, &text_win, ed.config.display.show_border) != 0)
-        {
-          fprintf (stderr, "Warning: failed to create text subwindow, falling back to stdscr\n");
-          text_win = NULL;
-        }
-      else
-        {
-          wbkgd(text_win, COLOR_PAIR(1));
-          // Ensure child inherits keypad setting
-          keypad(text_win, FALSE);
-        }
-      int dummy_y, dummy_x;
-      draw_initial (stdscr, text_win, &ed.model, &ed.scroll_row, &ed.scroll_col,
-                    ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
-                    ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
+      fprintf (stderr, "Error: failed to start the display\n");
+      editor_cleanup (&ed);
+      return 1;
     }
-  if (test_mode)
+  frontend_use (fe);
+  editor_bind_terminal_keys (&ed);
+  adopt_size (fe, &ed);
+
+  /* The whole screen owns the border and the status line; the text
+   * pane owns the text. Its geometry depends on show_border (F4). */
+  Pane *text_win = NULL;
+  (void) view_create_text_window_ex (screen_pane (), &text_win,
+                                     ed.config.display.show_border);
+  full_draw (text_win, &ed);
+
+  /* No SA_RESTART, so a signal makes read_key return and the loop
+   * can save the work before leaving. */
+  struct sigaction sa;
+  memset (&sa, 0, sizeof sa);
+  sa.sa_handler = on_stop_signal;
+  sigemptyset (&sa.sa_mask);
+  sigaction (SIGHUP, &sa, NULL);
+  sigaction (SIGTERM, &sa, NULL);
+
+  int read_errors = 0;
+  while (1)
     {
-      //COLS = 80;
-      //LINES = 24;
-      run_comprehensive_tests();
-      fprintf(stderr, "\nTest summary: %d passed, %d failed\n", tests_passed, tests_failed);
-      if (tests_failed == 0) {
-        fprintf(stderr, "ALL TESTS PASSED\n");
-      } else {
-        fprintf(stderr, "SOME TESTS FAILED\n");
-      }
-      editor_cleanup (&ed);  // cleanup test Editor
-      return 0;
-    }
-  else
-    {
-      /* No SA_RESTART, so a signal makes getch() return and the loop
-       * can save the work before leaving. */
-      struct sigaction sa;
-      memset (&sa, 0, sizeof sa);
-      sa.sa_handler = on_stop_signal;
-      sigemptyset (&sa.sa_mask);
-      sigaction (SIGHUP, &sa, NULL);
-      sigaction (SIGTERM, &sa, NULL);
-      int read_errors = 0;
-      while (1)
+      int ch = fe->read_key ();
+      if (stop_requested)
         {
-          int ch = getch ();
-          if (stop_requested)
+          (void) editor_write_recovery (&ed);
+          break;
+        }
+      if (ch == LED_KEY_NONE)
+        {
+          /* A blocking read that keeps failing means input is gone
+           * (terminal closed without a signal). Do not spin. */
+          if (!isatty (STDIN_FILENO) || ++read_errors > 50)
             {
               (void) editor_write_recovery (&ed);
               break;
             }
-          if (ch == ERR)
-            {
-              /* A blocking read that keeps failing means input is gone
-               * (terminal closed without a signal). Do not spin. */
-              if (!isatty (STDIN_FILENO) || ++read_errors > 50)
-                {
-                  (void) editor_write_recovery (&ed);
-                  break;
-                }
-              continue;
-            }
-          read_errors = 0;
-          if (ch == KEY_RESIZE)
-            {
-              // Handle terminal resize: stdscr is resized by ncurses,
-              // text subwindow must be resized/moved to stay inset/aligned
-              if (text_win)
-                view_resize_windows_ex(stdscr, text_win, ed.config.display.show_border);
-              view_invalidate();
-              // Full repaint with new geometry
-              int dummy_y, dummy_x;
-              draw_initial (stdscr, text_win, &ed.model, &ed.scroll_row, &ed.scroll_col,
-                            ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
-                            ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
-              continue;
-            }
-          {
-            int old_border = ed.config.display.show_border;
-            if (editor_handle_input (&ed, ch))
-              break;            /* Ctrl+Q */
-
-            if (old_border != ed.config.display.show_border)
-              {
-                // F4 toggled border: recreate text window with new geometry
-                view_recreate_text_window(stdscr, &text_win, ed.config.display.show_border);
-                view_invalidate();
-                int dummy_y, dummy_x;
-                draw_initial(stdscr, text_win, &ed.model, &ed.scroll_row, &ed.scroll_col,
-                             ed.cursor_line, ed.cursor_col, ed.show_line_numbers,
-                             ed.syntax_highlight, &dummy_y, &dummy_x, &ed.config);
-                continue;
-              }
-          }
-          editor_draw (stdscr, text_win, &ed);
+          continue;
         }
+      read_errors = 0;
+      if (ch == LED_KEY_RESIZE)
+        {
+          adopt_size (fe, &ed);
+          if (text_win)
+            view_resize_windows_ex (screen_pane (), text_win,
+                                    ed.config.display.show_border);
+          else
+            (void) view_create_text_window_ex (screen_pane (), &text_win,
+                                               ed.config.display.show_border);
+          full_draw (text_win, &ed);
+          continue;
+        }
+      int old_border = ed.config.display.show_border;
+      if (editor_handle_input (&ed, ch))
+        break;                  /* Ctrl+Q */
+      if (old_border != ed.config.display.show_border)
+        {
+          /* F4 toggled the border: the text pane changes shape. */
+          view_recreate_text_window (screen_pane (), &text_win,
+                                     ed.config.display.show_border);
+          full_draw (text_win, &ed);
+          continue;
+        }
+      editor_draw (screen_pane (), text_win, &ed);
     }
-  if (text_win)
-    delwin(text_win);
+  pane_free (text_win);
   editor_cleanup (&ed);
-  if (!test_mode)
-    endwin ();
+  fe->stop ();
   return 0;
 }
-

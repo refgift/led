@@ -1,9 +1,10 @@
 #pragma once
 
-#include <ncurses.h>
+#include "frontend/frontend.h"
 #include <time.h>
 #include "model.h"
 #include "config.h"
+#include "view/screen.h"
 
 /**
  * editor.h - The editor system.
@@ -126,7 +127,10 @@ struct Editor {
     /* Esc was pressed; the next key is a word motion (b / f / Backspace). */
     int meta_pending;
 
-    /* Terminal key codes for Ctrl+Left / Ctrl+Right. 0 if unknown. */
+    /* Rows the front end shows; Page Up / Page Down move by this. */
+    int page_rows;
+
+    /* Key codes for Ctrl+Left / Ctrl+Right. 0 if unknown. */
     int key_word_left;
     int key_word_right;
 
@@ -144,26 +148,16 @@ struct Editor {
 void editor_init(Editor* ed, int argc, char* argv[]);
 
 /** Render the current editor state to the given ncurses windows.
- *  frame = border window (stdscr), text = inset derwin(frame) for text */
-void editor_draw(WINDOW* frame, WINDOW* text, Editor* ed);
+ *  frame = the whole screen (owns the border), text = the pane for text */
+void editor_draw(Pane* frame, Pane* text, Editor* ed);
 /* Compat: single-window wrapper (frame==text==stdscr legacy) */
-void editor_draw_compat(WINDOW* win, Editor* ed);
+void editor_draw_compat(Pane* win, Editor* ed);
 
 /** Process one keypress. Returns 1 when the session should end (Ctrl+Q). */
 int editor_handle_input(Editor* ed, int ch);
 
-/**
- * Ctrl+/ when the terminal does not send byte 31.
- * Assigned by editor_bind_terminal_keys:
- *   LED_KEY_SEARCH      foot / xterm modifyOtherKeys  ESC [ 27 ; 5 ; 47 ~
- *   LED_KEY_SEARCH_ALT  kitty keyboard protocol       ESC [ 47 ; 5 u
- * Left unrecognized, that sequence is ESC plus characters: a word
- * motion starts and the rest is inserted into the buffer.
- */
-#define LED_KEY_SEARCH      (KEY_MAX + 1)
-#define LED_KEY_SEARCH_ALT  (KEY_MAX + 2)
-
-/** Bind Ctrl+Left / Ctrl+Right and Ctrl+/ from the terminal. Call after initscr and keypad. */
+/** Point the word-motion keys at the front end's Ctrl+Left / Ctrl+Right
+ *  codes. The front end does the terminal-specific binding itself. */
 void editor_bind_terminal_keys(Editor* ed);
 
 /** "+142" -> 142. Returns 1 on success. */

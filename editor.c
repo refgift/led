@@ -134,30 +134,10 @@ editor_apply_goto (Editor *ed, const char *spec)
 void
 editor_bind_terminal_keys (Editor *ed)
 {
-  if (!ed || !stdscr)
+  if (!ed)
     return;
-  ed->key_word_left = 0;
-  ed->key_word_right = 0;
-  char *seq = tigetstr ("kLFT5");
-  if (seq && seq != (char *) -1)
-    {
-      int code = key_defined (seq);
-      if (code > 0)
-        ed->key_word_left = code;
-    }
-  seq = tigetstr ("kRIT5");
-  if (seq && seq != (char *) -1)
-    {
-      int code = key_defined (seq);
-      if (code > 0)
-        ed->key_word_right = code;
-    }
-  /* '/' is not a C0 control character, so foot and xterm
-   * modifyOtherKeys send Ctrl+/ as CSI 27 ; 5 ; 47 ~ rather than
-   * byte 31. kitty sends CSI 47 ; 5 u. Bind both so getch() returns
-   * one code instead of ESC plus the rest of the sequence. */
-  define_key ("\033[27;5;47~", LED_KEY_SEARCH);
-  define_key ("\033[47;5u", LED_KEY_SEARCH_ALT);
+  ed->key_word_left = LED_KEY_WORD_LEFT;
+  ed->key_word_right = LED_KEY_WORD_RIGHT;
 }
 
 static int
@@ -335,6 +315,7 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->meta_pending = 0;
   ed->key_word_left = 0;
   ed->key_word_right = 0;
+  ed->page_rows = 0;
   if (recovered)
     set_status_message (ed, "Recovered unsaved changes — Ctrl+S to keep");
   else if (open_note == BUFFER_LOAD_NOT_REGULAR)
@@ -407,7 +388,7 @@ auto_save (Editor *ed)
     }
 }
 void
-editor_draw (WINDOW *frame, WINDOW *text, Editor *ed)
+editor_draw (Pane *frame, Pane *text, Editor *ed)
 {
   int dummy_y, dummy_x;
   // If only frame given (text==NULL), try to use frame as both for legacy,
@@ -434,7 +415,7 @@ editor_draw (WINDOW *frame, WINDOW *text, Editor *ed)
 }
 
 void
-editor_draw_compat (WINDOW *win, Editor *ed)
+editor_draw_compat (Pane *win, Editor *ed)
 {
   editor_draw (win, NULL, ed);
 }
@@ -448,7 +429,7 @@ goto_edit (Editor *ed, int ch)
       set_status_message (ed, "Cancelled");
       return 0;
     }
-  if (ch == 10 || ch == 13 || ch == KEY_ENTER)
+  if (ch == 10 || ch == 13 || ch == LED_KEY_ENTER)
     {
       if (editor_apply_goto (ed, ed->goto_buffer) == 0)
         {
@@ -462,7 +443,7 @@ goto_edit (Editor *ed, int ch)
       ed->goto_mode = 0;
       return 0;
     }
-  if (ch == 127 || ch == 8 || ch == KEY_BACKSPACE)
+  if (ch == 127 || ch == 8 || ch == LED_KEY_BACKSPACE)
     {
       int n = (int) strlen (ed->goto_buffer);
       if (n > 0)
@@ -512,18 +493,18 @@ editor_handle_input (Editor *ed, int ch)
     }
 
   // Handle config toggles
-  if (ch == KEY_F (2))
+  if (ch == LED_KEY_F (2))
     {
       ed->show_line_numbers = !ed->show_line_numbers;
       return 0;
     }
-  if (ch == KEY_F (3))
+  if (ch == LED_KEY_F (3))
     {
       ed->config.display.word_wrap = !ed->config.display.word_wrap;
       set_status_message (ed, ed->config.display.word_wrap ? "Word wrap: ON" : "Word wrap: OFF");
       return 0;
     }
-  if (ch == KEY_F (4))
+  if (ch == LED_KEY_F (4))
     {
       ed->config.display.show_border = !ed->config.display.show_border;
       // Invalidate view so next draw does a full repaint (border appears/disappears)
@@ -559,7 +540,7 @@ editor_handle_input (Editor *ed, int ch)
     {
       if (ch == 27)
         ed->replace_step = 0;
-      else if (ch == 10 || ch == 13 || ch == KEY_ENTER)
+      else if (ch == 10 || ch == 13 || ch == LED_KEY_ENTER)
         {
           if (strlen (ed->search_buffer) > 0)
             ed->replace_step = 2;
@@ -574,7 +555,7 @@ editor_handle_input (Editor *ed, int ch)
     {
       if (ch == 27)
         ed->replace_step = 0;
-      else if (ch == 10 || ch == 13 || ch == KEY_ENTER)
+      else if (ch == 10 || ch == 13 || ch == LED_KEY_ENTER)
         {
           int n = buffer_replace_all (&ed->model, ed->search_buffer,
                                       ed->replace_buffer);

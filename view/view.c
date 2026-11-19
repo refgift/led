@@ -10,117 +10,111 @@
 // Meta symbols for basic syntax highlighting (braces, semicolons, etc.)
 static const char *meta_symbols = ";,{}()[]";
 
-/* === Subwindow helpers (border isolation) === */
+/* === Pane helpers (border isolation) === */
 int
-view_create_text_window (WINDOW *frame, WINDOW **text_out)
+view_create_text_window (Pane *frame, Pane **text_out)
 {
   return view_create_text_window_ex (frame, text_out, 1);
 }
 
 void
-view_resize_windows (WINDOW *frame, WINDOW *text)
+view_resize_windows (Pane *frame, Pane *text)
 {
   view_resize_windows_ex (frame, text, 1);
 }
 
-int
-view_create_text_window_ex (WINDOW *frame, WINDOW **text_out, int show_border)
+/* Text pane geometry: inset by one cell when the border is on,
+ * else full width with the bottom row left for the status line. */
+static int
+text_geometry (Pane *frame, int show_border, int *rows, int *cols, int *y0, int *x0)
 {
-  if (!frame || !text_out)
-    return -1;
-  int fh, fw;
-  getmaxyx (frame, fh, fw);
+  int fh = pane_rows (frame);
+  int fw = pane_cols (frame);
   if (show_border)
     {
       if (fh < 3 || fw < 3)
-        {
-          *text_out = NULL;
-          return -1;
-        }
-      *text_out = derwin (frame, fh - 2, fw - 2, 1, 1);
+        return -1;
+      *rows = fh - 2; *cols = fw - 2; *y0 = 1; *x0 = 1;
     }
   else
     {
-      /* Border off: text uses full width, leaves 1 row for status bar on frame */
       if (fh < 2 || fw < 1)
-        {
-          *text_out = NULL;
-          return -1;
-        }
-      *text_out = derwin (frame, fh - 1, fw, 0, 0);
+        return -1;
+      *rows = fh - 1; *cols = fw; *y0 = 0; *x0 = 0;
     }
+  return 0;
+}
+
+int
+view_create_text_window_ex (Pane *frame, Pane **text_out, int show_border)
+{
+  if (!frame || !text_out)
+    return -1;
+  int rows, cols, y0, x0;
+  if (text_geometry (frame, show_border, &rows, &cols, &y0, &x0) != 0)
+    {
+      *text_out = NULL;
+      return -1;
+    }
+  *text_out = pane_new (rows, cols, y0, x0);
   return *text_out ? 0 : -1;
 }
 
 void
-view_resize_windows_ex (WINDOW *frame, WINDOW *text, int show_border)
+view_resize_windows_ex (Pane *frame, Pane *text, int show_border)
 {
   if (!frame || !text)
     return;
-  int fh, fw;
-  getmaxyx (frame, fh, fw);
-  if (show_border)
-    {
-      if (fh < 3 || fw < 3)
-        return;
-      wresize (text, fh - 2, fw - 2);
-      mvderwin (text, 1, 1);
-    }
-  else
-    {
-      if (fh < 2 || fw < 1)
-        return;
-      wresize (text, fh - 1, fw);
-      mvderwin (text, 0, 0);
-    }
+  int rows, cols, y0, x0;
+  if (text_geometry (frame, show_border, &rows, &cols, &y0, &x0) != 0)
+    return;
+  pane_set (text, rows, cols, y0, x0);
 }
 
 void
-view_recreate_text_window (WINDOW *frame, WINDOW **text, int show_border)
+view_recreate_text_window (Pane *frame, Pane **text, int show_border)
 {
   if (!frame || !text)
     return;
   if (*text)
     {
-      delwin (*text);
+      pane_free (*text);
       *text = NULL;
     }
   view_create_text_window_ex (frame, text, show_border);
-  if (*text)
-    wbkgd (*text, COLOR_PAIR(1));
 }
 
-/* Helpers to get text window dimensions safely (fallback to LINES/COLS) */
+/* Helpers to get text pane dimensions safely (fallback to the screen) */
 static int
-text_win_rows (WINDOW *text)
+text_win_rows (Pane *text)
 {
   if (text)
-    return getmaxy (text);
-  return (LINES > 2) ? LINES - 2 : 0;
+    return pane_rows (text);
+  return (screen_rows () > 2) ? screen_rows () - 2 : 0;
 }
 
 static int
-text_win_cols (WINDOW *text)
+text_win_cols (Pane *text)
 {
   if (text)
-    return getmaxx (text);
-  return (COLS > 2) ? COLS - 2 : 0;
+    return pane_cols (text);
+  return (screen_cols () > 2) ? screen_cols () - 2 : 0;
 }
 
 static int
-frame_win_cols (WINDOW *frame)
+frame_win_cols (Pane *frame)
 {
   if (frame)
-    return getmaxx (frame);
-  return COLS;
+    return pane_cols (frame);
+  return screen_cols ();
 }
 
 static int
-frame_win_rows (WINDOW *frame)
+frame_win_rows (Pane *frame)
 {
   if (frame)
-    return getmaxy (frame);
-  return LINES;
+    return pane_rows (frame);
+  return screen_rows ();
 }
 // Alias for the pre-parsed config pair type
 typedef SyntaxPair KeywordPair;
@@ -704,7 +698,7 @@ ensure_exp_capacity (size_t need)
 // Print a highlighted substring of a line into text subwindow tw
 // y,x are tw-relative (0,0 origin). If tw==NULL (headless test), no-op fallback.
 static void
-print_highlighted (WINDOW *tw, int y, int x, const char *full_line, int line_len,
+print_highlighted (Pane *tw, int y, int x, const char *full_line, int line_len,
                    int start, int len, int highlight_pair,
                    EditorConfig *config, Buffer *buf, int logical_line)
 {
@@ -770,9 +764,9 @@ print_highlighted (WINDOW *tw, int y, int x, const char *full_line, int line_len
   if (!ensure_exp_capacity ((size_t) max_exp + 1))
     {
       if (tw)
-        mvwaddnstr (tw, y, x, &full_line[start], end - start);
+        pane_addnstr (tw, y, x, &full_line[start], end - start);
       else
-        mvaddnstr (y, x, &full_line[start], end - start);
+        pane_addnstr (NULL, y, x, &full_line[start], end - start);
       return;
     }
   char *expanded = g_exp_buf;
@@ -813,14 +807,14 @@ print_highlighted (WINDOW *tw, int y, int x, const char *full_line, int line_len
   if (!colors)
     {
       if (tw)
-        mvwaddnstr (tw, y, x, expanded, expanded_len);
+        pane_addnstr (tw, y, x, expanded, expanded_len);
       else
-        mvaddnstr (y, x, expanded, expanded_len);
+        pane_addnstr (NULL, y, x, expanded, expanded_len);
       return;
     }
 
   /* Print runs of same color as complete UTF-8 sequences */
-  int win_cols = tw ? getmaxx (tw) : COLS;
+  int win_cols = tw ? pane_cols (tw) : screen_cols ();
   int current_x = x;
   int i = 0;
   while (i < expanded_len && current_x < win_cols)
@@ -831,9 +825,9 @@ print_highlighted (WINDOW *tw, int y, int x, const char *full_line, int line_len
         i++;
       int run_len = i - run_start;
       if (tw)
-        wattron (tw, COLOR_PAIR (color));
+        pane_quality (color);
       else
-        attron (COLOR_PAIR (color));
+        pane_quality (color);
       /* Advance by display width of each char in the run */
       int j = run_start;
       int run_x = current_x;
@@ -844,16 +838,16 @@ print_highlighted (WINDOW *tw, int y, int x, const char *full_line, int line_len
           if (run_x + cw > win_cols)
             break;
           if (tw)
-            mvwaddnstr (tw, y, run_x, expanded + j, clen);
+            pane_addnstr (tw, y, run_x, expanded + j, clen);
           else
-            mvaddnstr (y, run_x, expanded + j, clen);
+            pane_addnstr (NULL, y, run_x, expanded + j, clen);
           run_x += cw;
           j += clen;
         }
       if (tw)
-        wattroff (tw, COLOR_PAIR (color));
+        pane_quality (LED_Q_NORMAL);
       else
-        attroff (COLOR_PAIR (color));
+        pane_quality (LED_Q_NORMAL);
       current_x = run_x;
     }
 }
@@ -897,32 +891,32 @@ handle_tab_key (Buffer *buf, int cursor_line, int cursor_col,
 }
 // Draw the initial editor view — subwindow-aware
 // frame = border window (box), text = inset derwin(frame) for content
-// Either may be NULL in headless tests; falls back to stdscr/LINES/COLS
+// Either may be NULL in headless tests; falls back to screen_pane ()/screen_rows ()/screen_cols ()
 void
-draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
+draw_initial (Pane *frame, Pane *text, Buffer *buf, int *scroll_row,
                int *scroll_col, int cursor_line, int cursor_col,
                int show_line_numbers, int syntax_highlight,
                int *cursor_screen_y, int *cursor_screen_x,
                EditorConfig *config)
 {
-  WINDOW *fw = frame ? frame : stdscr;
-  WINDOW *tw = text;
-  // If only one window passed historically (win==stdscr), treat as frame and create fallback
+  Pane *fw = frame ? frame : screen_pane ();
+  Pane *tw = text;
+  // If only one window passed historically (win==screen_pane ()), treat as frame and create fallback
   if (!tw && fw)
     {
       // Legacy: no text subwindow — use fw dimensions with border inset math
       // Keep old clear/box behaviour for compat
-      if (fw == stdscr)
-        clear ();
+      if (fw == screen_pane ())
+        pane_erase (NULL);
       else
         {
-          wclear (fw);
+          pane_erase (fw);
         }
       if (!config || config->display.show_border)
-        box (fw, 0, 0);
+        pane_box (fw);
       int num_digits = calculate_digits (buffer_num_lines (buf));
       int num_width = show_line_numbers ? num_digits + 1 : 0;
-      int max_lines = (LINES > 2) ? LINES - 2 : 0;
+      int max_lines = (screen_rows () > 2) ? screen_rows () - 2 : 0;
       for (int i = 0; i < max_lines; i++)
         {
           int line_idx = *scroll_row + (int) i;
@@ -930,7 +924,7 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
             break;
           if (show_line_numbers)
             {
-              mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
+              pane_printf (NULL, 1 + i, 1, "%*u ", num_digits, line_idx + 1);
             }
           char *line = buffer_get_line (buf, line_idx);
           int line_len = strlen (line);
@@ -938,7 +932,7 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
           if (start_col < line_len)
             {
               int print_len = line_len - start_col;
-              int max_print = (int) (COLS - 2 - num_width);
+              int max_print = (int) (screen_cols () - 2 - num_width);
               if (print_len > max_print)
                 print_len = max_print;
               // fallback tw NULL => uses mv* path
@@ -958,34 +952,34 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
       int screen_x = 1 + num_width + (int) x_diff;
       if (screen_x < 1 + num_width)
         screen_x = 1 + num_width;
-      if (screen_x > COLS - 1)
-        screen_x = COLS - 1;
+      if (screen_x > screen_cols () - 1)
+        screen_x = screen_cols () - 1;
       if (cursor_screen_y) *cursor_screen_y = (int) screen_y;
       if (cursor_screen_x) *cursor_screen_x = (int) screen_x;
-      move (screen_y, screen_x);
-      if (fw == stdscr)
-        refresh ();
+      pane_move (NULL, screen_y, screen_x);
+      if (fw == screen_pane ())
+        pane_refresh (NULL);
       else
-        wrefresh (fw);
+        pane_refresh (fw);
       view_invalidate ();
       return;
     }
 
   // Subwindow path: frame owns border, text owns content
-  // Clear/erase only text; box only frame (never cleared in STATUS_ONLY/LINES paths)
+  // Clear/erase only text; box only frame (never cleared in STATUS_ONLY/screen_rows () paths)
   int do_border = !config || config->display.show_border;
   if (fw)
     {
-      werase (fw);
+      pane_erase (fw);
       if (do_border)
-        box (fw, 0, 0);
+        pane_box (fw);
       // Ensure text subwindow background matches
       if (tw)
-        werase (tw);
+        pane_erase (tw);
     }
   else if (tw)
     {
-      werase (tw);
+      pane_erase (tw);
     }
 
   int num_digits = calculate_digits (buffer_num_lines (buf));
@@ -1000,9 +994,9 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
       if (show_line_numbers)
         {
           if (tw)
-            mvwprintw (tw, i, 0, "%*u ", num_digits, line_idx + 1);
+            pane_printf (tw, i, 0, "%*u ", num_digits, line_idx + 1);
           else
-            mvprintw (1 + i, 1, "%*u ", num_digits, line_idx + 1);
+            pane_printf (NULL, 1 + i, 1, "%*u ", num_digits, line_idx + 1);
         }
       char *line = buffer_get_line (buf, line_idx);
       int line_len = strlen (line);
@@ -1022,7 +1016,7 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
         }
       free(line);
     }
-  // Calculate cursor screen position (stdscr coords for caller, tw-relative for wmove)
+  // Calculate cursor screen position (screen_pane () coords for caller, tw-relative for wmove)
   int y_diff = (cursor_line >= *scroll_row) ? cursor_line - *scroll_row : 0;
   int screen_y = 1 + (int) y_diff;
   char *line = buffer_get_line (buf, cursor_line);
@@ -1032,21 +1026,21 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
   free(line);
   int x_diff = (vis_cursor >= vis_scroll) ? (int) (vis_cursor - vis_scroll) : 0;
   int screen_x = 1 + num_width + (int) x_diff;
-  // Clamp to text window bounds (text_cols is tw width, last valid stdscr x is 1+text_cols)
-  // Clamp screen_x which is stdscr coords (1-based)
+  // Clamp to text window bounds (text_cols is tw width, last valid screen_pane () x is 1+text_cols)
+  // Clamp screen_x which is screen_pane () coords (1-based)
   if (screen_x < 1 + num_width)
     screen_x = 1 + num_width;
   if (tw)
     {
-      // tw cols is text area; max stdscr x is 1+tw_cols (since border at 0)
+      // tw cols is text area; max screen_pane () x is 1+tw_cols (since border at 0)
       int max_sx = 1 + text_cols;
       if (screen_x > max_sx)
         screen_x = max_sx;
     }
   else
     {
-      if (screen_x > COLS - 1)
-        screen_x = COLS - 1;
+      if (screen_x > screen_cols () - 1)
+        screen_x = screen_cols () - 1;
     }
   if (cursor_screen_y) *cursor_screen_y = (int) screen_y;
   if (cursor_screen_x) *cursor_screen_x = (int) screen_x;
@@ -1062,30 +1056,30 @@ draw_initial (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row,
       if (wy >= tw_rows) wy = tw_rows - 1;
       if (wx < 0) wx = 0;
       if (wx >= tw_cols) wx = tw_cols - 1;
-      wmove (tw, wy, wx);
+      pane_move (tw, wy, wx);
       if (fw)
         {
-          wnoutrefresh (fw);
-          wnoutrefresh (tw);
-          doupdate ();
+          pane_noutrefresh (fw);
+          pane_noutrefresh (tw);
+          screen_commit ();
         }
       else
-        wrefresh (tw);
+        pane_refresh (tw);
     }
   else
     {
-      move (screen_y, screen_x);
-      if (fw == stdscr)
-        refresh ();
+      pane_move (NULL, screen_y, screen_x);
+      if (fw == screen_pane ())
+        pane_refresh (NULL);
       else if (fw)
-        wrefresh (fw);
+        pane_refresh (fw);
     }
   view_invalidate ();
 }
 // Repaint one content row in truncate (no-wrap) mode, erasing stale cells
-// tw is the inset text subwindow (NULL => fallback to stdscr for headless tests)
+// tw is the inset text subwindow (NULL => fallback to screen_pane () for headless tests)
 static void
-render_content_row (WINDOW *tw, int visual_row, int logical_line, Buffer *buf,
+render_content_row (Pane *tw, int visual_row, int logical_line, Buffer *buf,
                      int *scroll_col, int available_width, int num_digits,
                      int num_width, int show_line_numbers,
                      int syntax_highlight,
@@ -1095,13 +1089,13 @@ render_content_row (WINDOW *tw, int visual_row, int logical_line, Buffer *buf,
 {
   if (tw)
     {
-      wmove (tw, visual_row, 0);
-      wclrtoeol (tw);
+      pane_move (tw, visual_row, 0);
+      pane_clrtoeol (tw);
     }
   else
     {
-      move (1 + visual_row, 1);
-      clrtoeol ();
+      pane_move (NULL, 1 + visual_row, 1);
+      pane_clrtoeol (NULL);
     }
   char *line = NULL;
   int len = 0;
@@ -1109,9 +1103,9 @@ render_content_row (WINDOW *tw, int visual_row, int logical_line, Buffer *buf,
   if (show_line_numbers)
     {
       if (tw)
-        mvwprintw (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
+        pane_printf (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
       else
-        mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+        pane_printf (NULL, 1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
     }
 
   line = buffer_get_line (buf, logical_line);
@@ -1158,18 +1152,18 @@ render_content_row (WINDOW *tw, int visual_row, int logical_line, Buffer *buf,
       if (tw)
         {
           if (syntax_highlight)
-            wattron (tw, COLOR_PAIR (2));
-          mvwaddnstr (tw, visual_row, x, &line[pos], print_len);
+            pane_quality (2);
+          pane_addnstr (tw, visual_row, x, &line[pos], print_len);
           if (syntax_highlight)
-            wattroff (tw, COLOR_PAIR (2));
+            pane_quality (LED_Q_NORMAL);
         }
       else
         {
           if (syntax_highlight)
-            attron (COLOR_PAIR (2));
-          mvaddnstr (1 + visual_row, x, &line[pos], print_len);
+            pane_quality (2);
+          pane_addnstr (NULL, 1 + visual_row, x, &line[pos], print_len);
           if (syntax_highlight)
-            attroff (COLOR_PAIR (2));
+            pane_quality (LED_Q_NORMAL);
         }
       x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
       pos += print_len;
@@ -1190,9 +1184,9 @@ render_content_row (WINDOW *tw, int visual_row, int logical_line, Buffer *buf,
 }
 
 // Rebuild and repaint the bottom status line onto frame's bottom row
-// frame is border window (stdscr), bottom row is frame's LINES-1
+// frame is border window (screen_pane ()), bottom row is frame's screen_rows ()-1
 static void
-render_status_bar (WINDOW *frame, Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
+render_status_bar (Pane *frame, Editor *ed, Buffer *buf, int cursor_line, int cursor_col,
                    int search_mode, char *search_buffer, int replace_step,
                    char *replace_buffer, EditorConfig *config)
 {
@@ -1201,13 +1195,13 @@ render_status_bar (WINDOW *frame, Editor *ed, Buffer *buf, int cursor_line, int 
   // Clear bottom row of frame (status line)
   if (frame)
     {
-      wmove (frame, frows - 1, 1);
-      wclrtoeol (frame);
+      pane_move (frame, frows - 1, 1);
+      pane_clrtoeol (frame);
     }
   else
     {
-      move (LINES - 1, 1);
-      clrtoeol ();
+      pane_move (NULL, screen_rows () - 1, 1);
+      pane_clrtoeol (NULL);
     }
   char status_line[1024];
   if ((int) sizeof(status_line) > fcols + 1) { /* ensure fits */ }
@@ -1335,9 +1329,9 @@ render_status_bar (WINDOW *frame, Editor *ed, Buffer *buf, int cursor_line, int 
     }
   // Draw status onto frame bottom row
   if (frame)
-    mvwprintw (frame, frows - 1, 1, "%s", status_line);
+    pane_printf (frame, frows - 1, 1, "%s", status_line);
   else
-    mvprintw (LINES - 1, 1, "%s", status_line);
+    pane_printf (NULL, screen_rows () - 1, 1, "%s", status_line);
 }
 
 RenderPlan
@@ -1393,7 +1387,7 @@ view_invalidate (void)
 // Draw an updated editor view (with scrolling, selection, status bar)
 // frame = border window (box), text = inset derwin(frame) for content
 void
-draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scroll_col,
+draw_update (Pane *frame, Pane *text, Buffer *buf, int *scroll_row, int *scroll_col,
               int cursor_line, int cursor_col, int show_line_numbers,
               int syntax_highlight, int search_mode, char *search_buffer,
               int selection_start_line, int selection_start_col,
@@ -1402,19 +1396,19 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
               int *cursor_screen_x, int replace_step, char *replace_buffer,
               EditorConfig *config, Editor *ed)
 {
-  WINDOW *fw = frame ? frame : stdscr;
-  WINDOW *tw = text;
-  int eff_rows = tw ? getmaxy (tw) : ((LINES > 2) ? LINES - 2 : 0);
-  int eff_cols = tw ? getmaxx (tw) : ((COLS > 2) ? COLS - 2 : 0);
-  int frame_rows = fw ? getmaxy (fw) : LINES;
-  int frame_cols = fw ? getmaxx (fw) : COLS;
+  Pane *fw = frame ? frame : screen_pane ();
+  Pane *tw = text;
+  int eff_rows = tw ? pane_rows (tw) : ((screen_rows () > 2) ? screen_rows () - 2 : 0);
+  int eff_cols = tw ? pane_cols (tw) : ((screen_cols () > 2) ? screen_cols () - 2 : 0);
+  int frame_rows = fw ? pane_rows (fw) : screen_rows ();
+  int frame_cols = fw ? pane_cols (fw) : screen_cols ();
   // Adjust scroll to keep cursor visible (no word wrap)
-  int max_lines = tw ? getmaxy (tw) : ((LINES > 2) ? LINES - 2 : 0);
+  int max_lines = tw ? pane_rows (tw) : ((screen_rows () > 2) ? screen_rows () - 2 : 0);
   // For legacy fallback when tw==NULL, max_lines is as above
   (void) eff_rows; (void) eff_cols; (void) frame_rows; (void) frame_cols;
   int num_digits = calculate_digits (buffer_num_lines (buf));
   int num_width = show_line_numbers ? num_digits + 1 : 0;
-  int available_width = (tw ? getmaxx (tw) : COLS - 2) - num_width;
+  int available_width = (tw ? pane_cols (tw) : screen_cols () - 2) - num_width;
   if (available_width < 1) available_width = 1;
 
   // Simple scroll adjustment (no word wrap)
@@ -1430,8 +1424,8 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
   ViewFrameState cur;
   memset (&cur, 0, sizeof (cur));
   cur.valid = 1;
-  cur.term_lines = fw ? getmaxy (fw) : LINES;
-  cur.term_cols = fw ? getmaxx (fw) : COLS;
+  cur.term_lines = fw ? pane_rows (fw) : screen_rows ();
+  cur.term_cols = fw ? pane_cols (fw) : screen_cols ();
   cur.generation = buf->edit_generation;
   cur.num_lines = buffer_num_lines (buf);
   cur.changed_first = buf->changed_first;
@@ -1484,18 +1478,18 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
       // then text avoids overwriting child's content with parent's erase.
       if (fw)
         {
-          werase (fw);
+          pane_erase (fw);
           if (!config || config->display.show_border)
-            box (fw, 0, 0);
+            pane_box (fw);
         }
       if (tw)
-        werase (tw);
+        pane_erase (tw);
       else
         {
-          for (int r = 1; r <= LINES - 2; r++)
+          for (int r = 1; r <= screen_rows () - 2; r++)
             {
-              move (r, 1);
-              clrtoeol ();
+              pane_move (NULL, r, 1);
+              pane_clrtoeol (NULL);
             }
         }
       
@@ -1536,9 +1530,9 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
               if (show_line_numbers && pos == 0)
                 {
                   if (tw)
-                    mvwprintw (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
+                    pane_printf (tw, visual_row, 0, "%*u ", num_digits, logical_line + 1);
                   else
-                    mvprintw (1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
+                    pane_printf (NULL, 1 + visual_row, 1, "%*u ", num_digits, logical_line + 1);
                 }
               
               // Use helper for word-aware breaking (correctly handles tabs)
@@ -1573,15 +1567,15 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
                   int print_len = end - pos;
                   if (tw)
                     {
-                      if (syntax_highlight) wattron (tw, COLOR_PAIR (2));
-                      mvwaddnstr (tw, visual_row, x, &line[pos], print_len);
-                      if (syntax_highlight) wattroff (tw, COLOR_PAIR (2));
+                      if (syntax_highlight) pane_quality (2);
+                      pane_addnstr (tw, visual_row, x, &line[pos], print_len);
+                      if (syntax_highlight) pane_quality (LED_Q_NORMAL);
                     }
                   else
                     {
-                      if (syntax_highlight) attron (COLOR_PAIR (2));
-                      mvaddnstr (1 + visual_row, x, &line[pos], print_len);
-                      if (syntax_highlight) attroff (COLOR_PAIR (2));
+                      if (syntax_highlight) pane_quality (2);
+                      pane_addnstr (NULL, 1 + visual_row, x, &line[pos], print_len);
+                      if (syntax_highlight) pane_quality (LED_Q_NORMAL);
                     }
                   x += utf8_visual_width (&line[pos], print_len, tab_w, 0);
                   pos += print_len;
@@ -1623,16 +1617,16 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
       // For FULL, border and text already staged; refresh both
       if (fw && tw)
         {
-          wnoutrefresh (fw);
-          wnoutrefresh (tw);
-          doupdate ();
+          pane_noutrefresh (fw);
+          pane_noutrefresh (tw);
+          screen_commit ();
         }
       else if (tw)
-        wrefresh (tw);
+        pane_refresh (tw);
       else if (fw)
-        wrefresh (fw);
+        pane_refresh (fw);
       else
-        refresh ();
+        pane_refresh (NULL);
     }
 
   g_last_frame = cur;
@@ -1647,9 +1641,9 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
   free(line);
   int screen_x = 1 + num_width + (int) x_diff;
   // Clamp cursor to visible area (use frame/text sizes if available)
-  int frows = fw ? getmaxy (fw) : LINES;
-  int fcols = fw ? getmaxx (fw) : COLS;
-  int tcols = tw ? getmaxx (tw) : COLS - 2;
+  int frows = fw ? pane_rows (fw) : screen_rows ();
+  int fcols = fw ? pane_cols (fw) : screen_cols ();
+  int tcols = tw ? pane_cols (tw) : screen_cols () - 2;
   (void) fcols; (void) tcols;
   if (screen_y < 1)
     screen_y = 1;
@@ -1657,52 +1651,52 @@ draw_update (WINDOW *frame, WINDOW *text, Buffer *buf, int *scroll_row, int *scr
     screen_y = frows - 1;
   if (screen_x < 1 + num_width)
     screen_x = 1 + num_width;
-  int max_sx = tw ? (1 + tcols) : (COLS - 2);
+  int max_sx = tw ? (1 + tcols) : (screen_cols () - 2);
   if (screen_x > max_sx)
     screen_x = max_sx;
   if (cursor_screen_y) *cursor_screen_y = (int) screen_y;
   if (cursor_screen_x) *cursor_screen_x = (int) screen_x;
-  // Move cursor inside text subwindow (if present) else stdscr
+  // Move cursor inside text subwindow (if present) else screen_pane ()
   if (tw)
     {
       int wy = screen_y - 1;
       int wx = screen_x - 1;
-      int tw_rows = getmaxy (tw);
-      int tw_cols = getmaxx (tw);
+      int tw_rows = pane_rows (tw);
+      int tw_cols = pane_cols (tw);
       if (wy < 0) wy = 0;
       if (wy >= tw_rows) wy = tw_rows - 1;
       if (wx < 0) wx = 0;
       if (wx >= tw_cols) wx = tw_cols - 1;
-      wmove (tw, wy, wx);
+      pane_move (tw, wy, wx);
       if (fw)
         {
-          wnoutrefresh (tw);
-          wnoutrefresh (fw);
+          pane_noutrefresh (tw);
+          pane_noutrefresh (fw);
           // Ensure cursor is on tw
-          wnoutrefresh (tw);
-          doupdate ();
+          pane_noutrefresh (tw);
+          screen_commit ();
           // Move hardware cursor via wmove already; set after doupdate
-          wmove (tw, wy, wx);
-          wrefresh (tw);
+          pane_move (tw, wy, wx);
+          pane_refresh (tw);
         }
       else
-        wrefresh (tw);
+        pane_refresh (tw);
     }
   else
     {
-      move (screen_y, screen_x);
-      if (fw == stdscr)
-        refresh ();
+      pane_move (NULL, screen_y, screen_x);
+      if (fw == screen_pane ())
+        pane_refresh (NULL);
       else if (fw)
-        wrefresh (fw);
+        pane_refresh (fw);
       else
-        refresh ();
+        pane_refresh (NULL);
     }
 }
 
-/* === Compat wrappers for headless tests (single window == stdscr) === */
+/* === Compat wrappers for headless tests (single window == screen_pane ()) === */
 void
-draw_initial_compat (WINDOW *win, Buffer *buf, int *scroll_row,
+draw_initial_compat (Pane *win, Buffer *buf, int *scroll_row,
                int *scroll_col, int cursor_line, int cursor_col,
                int show_line_numbers, int syntax_highlight,
                int *cursor_screen_y, int *cursor_screen_x,
@@ -1713,7 +1707,7 @@ draw_initial_compat (WINDOW *win, Buffer *buf, int *scroll_row,
 }
 
 void
-draw_update_compat (WINDOW *win, Buffer *buf, int *scroll_row, int *scroll_col,
+draw_update_compat (Pane *win, Buffer *buf, int *scroll_row, int *scroll_col,
               int cursor_line, int cursor_col, int show_line_numbers,
               int syntax_highlight, int search_mode, char *search_buffer,
               int selection_start_line, int selection_start_col,

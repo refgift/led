@@ -5,7 +5,7 @@
 #include "test_controller.h"
 #include "controller.h"
 #include "editor.h"
-#include <ncurses.h>
+#include "frontend/frontend.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,10 +115,10 @@ test_selection_ops (void)
                "undo removes a multi-line paste");
 
   test_handle_input (&t, 1);
-  test_handle_input (&t, KEY_LEFT);
+  test_handle_input (&t, LED_KEY_LEFT);
   test_assert (t.ed.selection_active == 0, "a cursor key drops the selection");
   test_handle_input (&t, 1);
-  test_handle_input (&t, KEY_BACKSPACE);
+  test_handle_input (&t, LED_KEY_BACKSPACE);
   test_assert (buffer_num_lines (&t.buf) == 1 && line_is (&t.buf, 0, ""),
                "Backspace deletes the selection");
   test_handle_input (&t, 26);
@@ -169,21 +169,21 @@ test_utf8_keys (void)
   /* "a" + U+0436 (2 bytes) + U+20AC (3 bytes) + "b" */
   buffer_insert_line (&t.buf, 0, "a\xD0\xB6\xE2\x82\xAC" "b");
   buffer_insert_line (&t.buf, 1, "abc");
-  test_handle_input (&t, KEY_RIGHT);
-  test_handle_input (&t, KEY_RIGHT);
+  test_handle_input (&t, LED_KEY_RIGHT);
+  test_handle_input (&t, LED_KEY_RIGHT);
   test_assert (t.cursor_col == 3, "Right steps over a 2-byte character");
-  test_handle_input (&t, KEY_RIGHT);
+  test_handle_input (&t, LED_KEY_RIGHT);
   test_assert (t.cursor_col == 6, "Right steps over a 3-byte character");
-  test_handle_input (&t, KEY_LEFT);
+  test_handle_input (&t, LED_KEY_LEFT);
   test_assert (t.cursor_col == 3, "Left steps back over it");
-  test_handle_input (&t, KEY_DC);
+  test_handle_input (&t, LED_KEY_DC);
   test_assert (line_is (&t.buf, 0, "a\xD0\xB6" "b"),
                "Delete removes the whole character");
   test_handle_input (&t, 26);
   test_assert (line_is (&t.buf, 0, "a\xD0\xB6\xE2\x82\xAC" "b"),
                "one undo restores the whole character");
   t.cursor_col = 3;
-  test_handle_input (&t, KEY_BACKSPACE);
+  test_handle_input (&t, LED_KEY_BACKSPACE);
   test_assert (line_is (&t.buf, 0, "a\xE2\x82\xAC" "b") && t.cursor_col == 1,
                "Backspace removes the whole character");
   test_handle_input (&t, 26);
@@ -202,7 +202,7 @@ test_utf8_keys (void)
                "one undo removes a typed multi-byte character");
   t.cursor_line = 1;
   t.cursor_col = 2;
-  test_handle_input (&t, KEY_UP);
+  test_handle_input (&t, LED_KEY_UP);
   test_assert (t.cursor_col == 1, "Up does not land inside a character");
   test_cleanup (&t);
 }
@@ -245,7 +245,7 @@ test_replace_all_fixes (void)
 
   ed.file_modified = 0;
   editor_handle_input (&ed, 3);         /* Ctrl+C */
-  editor_handle_input (&ed, KEY_RIGHT);
+  editor_handle_input (&ed, LED_KEY_RIGHT);
   test_assert (ed.file_modified == 0, "copy and cursor keys do not mark modified");
   editor_handle_input (&ed, 'q');
   ed.file_modified = 0;
@@ -332,7 +332,7 @@ test_blocked_saves (void)
   ed.auto_save_threshold = 1000;
   ed.file_modified = 0;
   ed.last_save_time = time (NULL) - 100;
-  editor_handle_input (&ed, KEY_RIGHT);
+  editor_handle_input (&ed, LED_KEY_RIGHT);
   test_assert (file_is (file, "!hi"),
                "the autosave timer does not write an unmodified buffer");
   editor_cleanup (&ed);
