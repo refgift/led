@@ -1,8 +1,8 @@
-# led - Larry's Editor for Linux/Unix Terminal (1.0.7)
-
-Dedicated to Neal Stephenson's vision of paper-like data safety.
-
-Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earlier versions, Grok 4.7 on 1.0.7.
+# Larry's Editor
+- editor.h 39.50  Trust begins to bloom / Routine becomes second nature / Anchored in the storm
+- led - Larry's Editor for Linux/Unix Terminal (1.0.7)
+- Dedicated to Neal Stephenson's vision of paper-like data safety.
+- Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earlier versions, Grok 4.7 on 1.0.7.
 
 ## What Works
 - **Data safety**: undo/redo (1M-change cap, oldest dropped first; one step per key press, cut, or paste), auto-save with versioned backups, recovery file written when the terminal closes (SIGHUP/SIGTERM). A file that did not load whole (too large, binary, unreadable, not a regular file, or with cut lines) is never written back. Saving through a symlink keeps the link. Rejects files over `max_file_size_mb` (default 10MB) or with null bytes, and files whose line cache would pass `memory_limit_mb`. Cuts lines at `max_line_length`.
