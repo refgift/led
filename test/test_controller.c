@@ -22,6 +22,7 @@ void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
 
 void test_buffer_manipulation ();
 void run_safety_tests (void);
+void run_screen_tests (void);
 void test_buffer_advanced ();
 void test_controller_simulation ();
 void test_selection_clipboard ();
@@ -776,7 +777,7 @@ test_delete_key (void)
   ed.config.display.tab_width = 8;
 
   // Delete the space after "Hello"
-  handle_input (KEY_DC, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+  handle_input (LED_KEY_DC, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
                 filename, &ed);
   test_assert (strcmp (buffer_get_line (&buf, 0), "Helloworld") == 0
@@ -797,7 +798,7 @@ test_delete_key (void)
   // Now test deleting at end of line (merge with next)
   buffer_insert_line (&buf, 1, "next");
   cursor_col = buffer_get_line_length (&buf, 0); // end of first line
-  handle_input (KEY_DC, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+  handle_input (LED_KEY_DC, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
                 &show_line_numbers, search_buffer, &search_mode, &clipboard,
                 filename, &ed);
   test_assert (buffer_num_lines (&buf) == 1
@@ -855,13 +856,13 @@ test_backspace_key (void)
                && cursor_col == 1,
                "Backspace (8) removes char before cursor");
 
-  /* KEY_BACKSPACE (ncurses symbolic) */
-  handle_input (KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line,
+  /* LED_KEY_BACKSPACE (ncurses symbolic) */
+  handle_input (LED_KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line,
                 &cursor_col, &show_line_numbers, search_buffer, &search_mode,
                 &clipboard, filename, &ed);
   test_assert (strcmp (buffer_get_line (&buf, 0), "") == 0
                && cursor_col == 0,
-               "Backspace (KEY_BACKSPACE) removes char before cursor");
+               "Backspace (LED_KEY_BACKSPACE) removes char before cursor");
 
   /* Line merge: backspace at column 0 joins with previous line */
   clear_redo (&ed.redo_stack);
@@ -931,7 +932,7 @@ test_cursor_newline_undo_redo_bug (void)
                "Subsequent newline after redo positions cursor correctly");
 
     // Step 5: Backspace to merge lines
-    handle_input (KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+    handle_input (LED_KEY_BACKSPACE, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
                   &show_line_numbers, search_buffer, &search_mode, &clipboard,
                   filename, &ed);
     test_assert (buffer_num_lines (&buf) == 2 && cursor_line == 1 && cursor_col == 0
@@ -984,7 +985,7 @@ test_right_arrow_repeat_navigation (void)
     {
       int prev_line = cursor_line;
       int prev_col = cursor_col;
-       handle_input (KEY_RIGHT, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
+       handle_input (LED_KEY_RIGHT, &buf, &scroll_row, &scroll_col, &cursor_line, &cursor_col,
                      &show_line_numbers, search_buffer, &search_mode, &clipboard,
                      filename, &ed);
       if (cursor_line == prev_line && cursor_col == prev_col)
@@ -1276,7 +1277,7 @@ test_programmer_motions (void)
   ctx.ed.config.display.tab_width = 4;
   buffer_insert_line (&ctx.buf, 0, "        x");
   ctx.cursor_col = 8;
-  test_handle_input (&ctx, KEY_BTAB);
+  test_handle_input (&ctx, LED_KEY_BTAB);
   line = buffer_get_line (&ctx.buf, 0);
   test_assert (line && strcmp (line, "    x") == 0 && ctx.cursor_col == 4,
                "Shift-Tab removes one indent level of spaces");
@@ -1286,7 +1287,7 @@ test_programmer_motions (void)
   buffer_insert_line (&ctx.buf, 0, "\tx");
   ctx.cursor_line = 0;
   ctx.cursor_col = 1;
-  test_handle_input (&ctx, KEY_BTAB);
+  test_handle_input (&ctx, LED_KEY_BTAB);
   line = buffer_get_line (&ctx.buf, 0);
   test_assert (line && strcmp (line, "x") == 0 && ctx.cursor_col == 0,
                "Shift-Tab removes a leading tab");
@@ -1673,7 +1674,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   fprintf (stderr, "Test %d: delete_key - Delete key (forward delete)\n",
              ++test_number);
   test_delete_key ();
-  fprintf (stderr, "Test %d: backspace_key - Backspace (127, 8, KEY_BACKSPACE)\n",
+  fprintf (stderr, "Test %d: backspace_key - Backspace (127, 8, LED_KEY_BACKSPACE)\n",
              ++test_number);
   test_backspace_key ();
   fprintf (stderr, "Test %d: right_arrow_repeat_navigation - Right arrow navigation through document\n",
@@ -1707,6 +1708,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
 
   fprintf (stderr, "\n");
   run_view_tests();
+  run_screen_tests ();
   
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,
            tests_failed);

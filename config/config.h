@@ -13,7 +13,7 @@
  *
  */
 
-#include <ncurses.h>
+#include "frontend/frontend.h"
 #include <time.h>
 
 #define VERSION "1.0.7"
@@ -28,8 +28,8 @@ typedef struct {
     char close[32];
 } SyntaxPair;
 /**
- * ColorScheme - ncurses color pairs for different syntactic elements.
- * All values are ncurses color constants (COLOR_BLACK, COLOR_RED, etc.).
+ * ColorScheme - colours for different syntactic elements.
+ * All values are LED_COLOR_* from frontend.h.
  */
 typedef struct {
     int normal_fg, normal_bg;

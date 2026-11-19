@@ -1,6 +1,7 @@
 #pragma once
 
-#include <ncurses.h>
+#include "screen.h"
+#include "frontend/frontend.h"
 
 #include "model.h"
 #include "config.h"
@@ -67,18 +68,18 @@ void view_invalidate(void);
  * Caller owns *text and must delwin() it before endwin().
  * Returns 0 on success, -1 if frame is NULL or allocation fails.
  */
-int view_create_text_window(WINDOW* frame, WINDOW** text_out);
+int view_create_text_window(Pane* frame, Pane** text_out);
 
 /**
  * view_resize_windows - handle terminal resize (KEY_RESIZE).
  * Resizes frame (stdscr) is handled by ncurses; this resizes/moves the
  * text subwindow to remain inset 1,1 and LINES-2 x COLS-2.
  */
-void view_resize_windows(WINDOW* frame, WINDOW* text);
+void view_resize_windows(Pane* frame, Pane* text);
 
 /* Border-aware variant: text window geometry depends on show_border */
-int view_create_text_window_ex(WINDOW* frame, WINDOW** text_out, int show_border);
-void view_resize_windows_ex(WINDOW* frame, WINDOW* text, int show_border);
+int view_create_text_window_ex(Pane* frame, Pane** text_out, int show_border);
+void view_resize_windows_ex(Pane* frame, Pane* text, int show_border);
 
 /**
  * view_recreate_text_window - replace the text subwindow for show_border.
@@ -87,7 +88,7 @@ void view_resize_windows_ex(WINDOW* frame, WINDOW* text, int show_border);
  * On success, sets the new window background to COLOR_PAIR(1);
  * failure leaves *text NULL.
  */
-void view_recreate_text_window(WINDOW* frame, WINDOW** text, int show_border);
+void view_recreate_text_window(Pane* frame, Pane** text, int show_border);
 
 /* === Main rendering entry points ===
  * frame = border window (typically stdscr, owns box())
@@ -97,12 +98,12 @@ void view_recreate_text_window(WINDOW* frame, WINDOW** text, int show_border);
  * Either may be NULL in headless tests (LED_TEST).
  */
 
-void draw_initial(WINDOW* frame, WINDOW* text, Buffer* buf, int* scroll_row, int* scroll_col,
+void draw_initial(Pane* frame, Pane* text, Buffer* buf, int* scroll_row, int* scroll_col,
                    int cursor_line, int cursor_col, int show_line_numbers,
                    int syntax_highlight, int* cursor_screen_y, int* cursor_screen_x,
                    EditorConfig* config);
 
-void draw_update(WINDOW* frame, WINDOW* text, Buffer* buf, int* scroll_row, int* scroll_col,
+void draw_update(Pane* frame, Pane* text, Buffer* buf, int* scroll_row, int* scroll_col,
                   int cursor_line, int cursor_col, int show_line_numbers,
                   int syntax_highlight, int search_mode, char* search_buffer,
                   int selection_start_line, int selection_start_col,
@@ -112,11 +113,11 @@ void draw_update(WINDOW* frame, WINDOW* text, Buffer* buf, int* scroll_row, int*
                   EditorConfig* config, Editor* ed);
 
 /* Back-compat wrappers for headless tests that pass a single win==stdscr */
-void draw_initial_compat(WINDOW* win, Buffer* buf, int* scroll_row, int* scroll_col,
+void draw_initial_compat(Pane* win, Buffer* buf, int* scroll_row, int* scroll_col,
                          int cursor_line, int cursor_col, int show_line_numbers,
                          int syntax_highlight, int* cursor_screen_y, int* cursor_screen_x,
                          EditorConfig* config);
-void draw_update_compat(WINDOW* win, Buffer* buf, int* scroll_row, int* scroll_col,
+void draw_update_compat(Pane* win, Buffer* buf, int* scroll_row, int* scroll_col,
                   int cursor_line, int cursor_col, int show_line_numbers,
                   int syntax_highlight, int search_mode, char* search_buffer,
                   int selection_start_line, int selection_start_col,

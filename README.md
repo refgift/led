@@ -13,7 +13,7 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 276 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety). `./led -t` on your machine.
+- **Tests**: 293 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
 ## What Fails
 - **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
@@ -32,12 +32,24 @@ Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earl
 
 Bugs: size and type (`file`, `head` sample), or a `gdb ./led` backtrace, at https://github.com/refgift/led/issues
 
+## Design: model / view / controller / front end
+The view draws through three functions with one signature, declared in `frontend/frontend.h`:
+
+- `mark(x, y, c)` — the cell holds character `c` (its Unicode number).
+- `show(x, y, c)` — the cell is seen with quality `c` (normal, selection, reserved word, ...) and the cursor rests there.
+- `hide(x, y, c)` — the cell is blanked with `c`, a space.
+
+For each cell that changed: `mark` it and `show` it, or `hide` it; finish with a `show` where the caret is. `view/screen.c` keeps a grid of cells and sends only the ones that differ.
+
+A front end supplies those three functions plus start, stop, size and read-key. `frontend_curses.c` is the only file that includes ncurses. `frontend_memory.c` is a grid the tests read, so what reaches the screen is tested without a terminal. `frontend_ansi.c` is a stub with notes on how to finish it.
+
 ## Dependencies
-C compiler, `make` (`gmake` on Unix), `libncursesw`, `glibc regex`.
+C compiler, `make` (`gmake` on Unix), `glibc regex`, and `libncursesw` for the default front end.
 
 ## Build / Install / Test
 ```
-make              # builds ./led
+make              # builds ./led with the curses front end
+make UI=ansi      # no ncurses; the ANSI front end is not written yet (make clean first)
 make install      # installs to /usr/local/bin
 make doc          # installs led.1
 ./led file.c

@@ -2,7 +2,7 @@
 #include "editor.h"
 #include "view.h"
 #include "utils.h"
-#include <ncurses.h>
+#include "frontend/frontend.h"
 #include <stdlib.h>
 #include <string.h>
 #include <regex.h>
@@ -256,33 +256,33 @@ static void handle_comment   (int ch, InputContext *ctx);
 static void handle_outdent   (int ch, InputContext *ctx);
 
 static const KeyHandler key_table[] = {
-    { KEY_LEFT,   handle_left },
-    { KEY_RIGHT,  handle_right },
-    { KEY_UP,     handle_up },
-    { KEY_DOWN,   handle_down },
-    { KEY_HOME,   handle_home },
-    { KEY_END,    handle_end },
-    { KEY_PPAGE,  handle_ppage },
-    { KEY_NPAGE,  handle_npage },
+    { LED_KEY_LEFT,   handle_left },
+    { LED_KEY_RIGHT,  handle_right },
+    { LED_KEY_UP,     handle_up },
+    { LED_KEY_DOWN,   handle_down },
+    { LED_KEY_HOME,   handle_home },
+    { LED_KEY_END,    handle_end },
+    { LED_KEY_PPAGE,  handle_ppage },
+    { LED_KEY_NPAGE,  handle_npage },
     { 26,         handle_undo },        /* Ctrl+Z */
     { 25,         handle_redo },        /* Ctrl+Y */
     { 1,          handle_select_all },  /* Ctrl+A */
     { 3,          handle_copy },        /* Ctrl+C */
-    { KEY_ENTER,  handle_enter },
+    { LED_KEY_ENTER,  handle_enter },
     { 10,         handle_enter },
     { 13,         handle_enter },
     { 24,         handle_cut },         /* Ctrl+X */
     { 22,         handle_paste },       /* Ctrl+V */
     { 19,         handle_save },        /* Ctrl+S */
-    { KEY_BACKSPACE, handle_backspace },
+    { LED_KEY_BACKSPACE, handle_backspace },
     { 127,        handle_backspace },  /* DEL / ^? — common terminal Backspace */
     { 8,          handle_backspace },  /* BS / Ctrl+H */
-    { KEY_DC,     handle_delete },      /* Delete key */
+    { LED_KEY_DC,     handle_delete },      /* Delete key */
     { 9,          handle_tab },         /* TAB */
     { 11,         handle_comment },     /* Ctrl+K toggle // comment */
     { 23,         handle_delete_word }, /* Ctrl+W delete word backward */
     { 29,         handle_match_brace }, /* Ctrl+] matching brace */
-    { KEY_BTAB,   handle_outdent },     /* Shift-Tab outdent */
+    { LED_KEY_BTAB,   handle_outdent },     /* Shift-Tab outdent */
     { 0,          NULL }                /* sentinel */
 };
 
@@ -506,7 +506,7 @@ static void handle_down (int ch, InputContext *ctx)
 static void handle_home (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (ctx->ed && ctx->ed->prev_key == KEY_HOME)
+  if (ctx->ed && ctx->ed->prev_key == LED_KEY_HOME)
     {
       *ctx->cursor_line = 0;
       *ctx->cursor_col = 0;
@@ -520,7 +520,7 @@ static void handle_home (int ch, InputContext *ctx)
 static void handle_end (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (ctx->ed && ctx->ed->prev_key == KEY_END)
+  if (ctx->ed && ctx->ed->prev_key == LED_KEY_END)
     {
       *ctx->cursor_line = buffer_num_lines (ctx->buf) - 1;
       *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
@@ -530,10 +530,18 @@ static void handle_end (int ch, InputContext *ctx)
     *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
 }
 
+/* Lines a page key moves: the screen height less a little overlap. */
+static int
+page_step (InputContext *ctx)
+{
+  int rows = ctx->ed ? ctx->ed->page_rows : 0;
+  return rows > 5 ? rows - 3 : 5;
+}
+
 static void handle_ppage (int ch, InputContext *ctx)
 {
   (void)ch;
-  *ctx->cursor_line -= (LINES > 5 ? LINES - 3 : 5);
+  *ctx->cursor_line -= page_step (ctx);
   if (*ctx->cursor_line < 0) *ctx->cursor_line = 0;
   *ctx->cursor_col = 0;
   if (*ctx->scroll_row > *ctx->cursor_line) *ctx->scroll_row = *ctx->cursor_line;
@@ -542,7 +550,7 @@ static void handle_ppage (int ch, InputContext *ctx)
 static void handle_npage (int ch, InputContext *ctx)
 {
   (void)ch;
-  *ctx->cursor_line += (LINES > 5 ? LINES - 3 : 5);
+  *ctx->cursor_line += page_step (ctx);
   if (*ctx->cursor_line >= buffer_num_lines (ctx->buf))
     *ctx->cursor_line = buffer_num_lines (ctx->buf) - 1;
   *ctx->cursor_col = 0;
@@ -1452,7 +1460,7 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
   int error_occurred = 0;
   if (*search_mode)
     {
-      if (ch == '\n' || ch == 13 || ch == KEY_ENTER)
+      if (ch == '\n' || ch == 13 || ch == LED_KEY_ENTER)
         {
           if (strlen (search_buffer) > 0)
             {
@@ -1484,7 +1492,7 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               search_buffer[len + 1] = 0;
             }
         }
-      else if (ch == 127 || ch == 8 || ch == KEY_BACKSPACE)
+      else if (ch == 127 || ch == 8 || ch == LED_KEY_BACKSPACE)
         {
           int len = strlen (search_buffer);
           if (len > 0)
@@ -1509,11 +1517,11 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
       if (ed && ed->meta_pending)
         {
           ed->meta_pending = 0;
-          if (ch == 'b' || ch == KEY_LEFT)
+          if (ch == 'b' || ch == LED_KEY_LEFT)
             word_backward (buf, cursor_line, cursor_col);
-          else if (ch == 'f' || ch == KEY_RIGHT)
+          else if (ch == 'f' || ch == LED_KEY_RIGHT)
             word_forward (buf, cursor_line, cursor_col);
-          else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8)
+          else if (ch == LED_KEY_BACKSPACE || ch == 127 || ch == 8)
             {
               int start = ed->undo_stack.count;
               handle_delete_word (0, &ctx);

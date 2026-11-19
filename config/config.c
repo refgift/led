@@ -10,22 +10,22 @@ int
 string_to_color (const char *str)
 {
   if (strcmp (str, "BLACK") == 0)
-    return COLOR_BLACK;
+    return LED_COLOR_BLACK;
   if (strcmp (str, "RED") == 0)
-    return COLOR_RED;
+    return LED_COLOR_RED;
   if (strcmp (str, "GREEN") == 0)
-    return COLOR_GREEN;
+    return LED_COLOR_GREEN;
   if (strcmp (str, "YELLOW") == 0)
-    return COLOR_YELLOW;
+    return LED_COLOR_YELLOW;
   if (strcmp (str, "BLUE") == 0)
-    return COLOR_BLUE;
+    return LED_COLOR_BLUE;
   if (strcmp (str, "MAGENTA") == 0)
-    return COLOR_MAGENTA;
+    return LED_COLOR_MAGENTA;
   if (strcmp (str, "CYAN") == 0)
-    return COLOR_CYAN;
+    return LED_COLOR_CYAN;
   if (strcmp (str, "WHITE") == 0)
-    return COLOR_WHITE;
-  return COLOR_WHITE;           // default
+    return LED_COLOR_WHITE;
+  return LED_COLOR_WHITE;           // default
 }
 static void
 trim_whitespace (char *str)
@@ -47,22 +47,22 @@ set_default_config (EditorConfig *config)
   config->last_modified = time (NULL);
   config->last_error = CONFIG_SUCCESS;
   // Colors
-  config->colors.normal_fg = COLOR_WHITE;
-  config->colors.normal_bg = COLOR_BLACK;
-  config->colors.selection_fg = COLOR_BLACK;
-  config->colors.selection_bg = COLOR_WHITE;
-  config->colors.semicolon_fg = COLOR_RED;
-  config->colors.semicolon_bg = COLOR_BLACK;
-  config->colors.meta_level1_fg = COLOR_BLUE;
-  config->colors.meta_level1_bg = COLOR_BLACK;
-  config->colors.meta_level2_fg = COLOR_CYAN;
-  config->colors.meta_level2_bg = COLOR_BLACK;
-  config->colors.meta_level3_fg = COLOR_GREEN;
-  config->colors.meta_level3_bg = COLOR_BLACK;
-  config->colors.meta_level4_fg = COLOR_YELLOW;
-  config->colors.meta_level4_bg = COLOR_BLACK;
-  config->colors.reserved_words_fg = COLOR_RED;
-  config->colors.reserved_words_bg = COLOR_BLACK;
+  config->colors.normal_fg = LED_COLOR_WHITE;
+  config->colors.normal_bg = LED_COLOR_BLACK;
+  config->colors.selection_fg = LED_COLOR_BLACK;
+  config->colors.selection_bg = LED_COLOR_WHITE;
+  config->colors.semicolon_fg = LED_COLOR_RED;
+  config->colors.semicolon_bg = LED_COLOR_BLACK;
+  config->colors.meta_level1_fg = LED_COLOR_BLUE;
+  config->colors.meta_level1_bg = LED_COLOR_BLACK;
+  config->colors.meta_level2_fg = LED_COLOR_CYAN;
+  config->colors.meta_level2_bg = LED_COLOR_BLACK;
+  config->colors.meta_level3_fg = LED_COLOR_GREEN;
+  config->colors.meta_level3_bg = LED_COLOR_BLACK;
+  config->colors.meta_level4_fg = LED_COLOR_YELLOW;
+  config->colors.meta_level4_bg = LED_COLOR_BLACK;
+  config->colors.reserved_words_fg = LED_COLOR_RED;
+  config->colors.reserved_words_bg = LED_COLOR_BLACK;
   // Syntax
   strcpy (config->syntax.extensions,
           ".c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx");
