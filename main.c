@@ -2,6 +2,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <locale.h>
+#include <signal.h>
+#include <unistd.h>
 #include "editor.h"
 #include "view.h"
 #include "config.h"
@@ -10,6 +12,16 @@
 /* Tests re-enabled. Wordwrap-dependent tests skipped for stability. Runs ~20 core tests (clipboard, undo, autosave, buffer, view, cut/paste). */
 extern int tests_passed;
 extern int tests_failed;
+
+/* Set by SIGHUP / SIGTERM: the terminal closed or the session ended. */
+static volatile sig_atomic_t stop_requested = 0;
+
+static void
+on_stop_signal (int sig)
+{
+  (void) sig;
+  stop_requested = 1;
+}
 
 int
 main (int argc, char *argv[])
@@ -108,9 +120,35 @@ main (int argc, char *argv[])
     }
   else
     {
+      /* No SA_RESTART, so a signal makes getch() return and the loop
+       * can save the work before leaving. */
+      struct sigaction sa;
+      memset (&sa, 0, sizeof sa);
+      sa.sa_handler = on_stop_signal;
+      sigemptyset (&sa.sa_mask);
+      sigaction (SIGHUP, &sa, NULL);
+      sigaction (SIGTERM, &sa, NULL);
+      int read_errors = 0;
       while (1)
         {
           int ch = getch ();
+          if (stop_requested)
+            {
+              (void) editor_write_recovery (&ed);
+              break;
+            }
+          if (ch == ERR)
+            {
+              /* A blocking read that keeps failing means input is gone
+               * (terminal closed without a signal). Do not spin. */
+              if (!isatty (STDIN_FILENO) || ++read_errors > 50)
+                {
+                  (void) editor_write_recovery (&ed);
+                  break;
+                }
+              continue;
+            }
+          read_errors = 0;
           if (ch == KEY_RESIZE)
             {
               // Handle terminal resize: stdscr is resized by ncurses,

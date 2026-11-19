@@ -28,11 +28,15 @@ struct Change {
     int line;
     int col;
     char ch;          /* the character involved (or '\n' for line breaks) */
+    bool chained;     /* undo/redo together with the entry below it:
+                         the later bytes of one character, or of one
+                         cut, paste, or other multi-byte operation */
 };
 
 /**
  * UndoStack - Dynamic array of Changes.
- * Owned by the Editor. Capped at 10,000 entries for safety.
+ * Owned by the Editor. Capped at 1,000,000 entries; when full, the
+ * oldest half is forgotten.
  */
 struct UndoStack {
     Change* changes;
@@ -126,6 +130,10 @@ struct Editor {
     int key_word_left;
     int key_word_right;
 
+    /* Set when the buffer is not the whole file (load refused, or long
+     * lines were cut). Ctrl+S and autosave refuse to write while set. */
+    int save_blocked;
+
     /* Owns the filename when it was peeled from "path:line". */
     char filename_storage[512];
 };
@@ -171,6 +179,10 @@ int editor_apply_goto(Editor* ed, const char* spec);
 
 /** Release all resources owned by the Editor. */
 void editor_cleanup(Editor* ed);
+
+/** Write "<filename>.recovery" if the buffer has unsaved changes.
+ *  Called when the terminal goes away. Returns 0 if a file was written. */
+int editor_write_recovery(Editor* ed);
 
 /** Perform an autosave + backup if conditions are met. */
 void auto_save(Editor* ed);

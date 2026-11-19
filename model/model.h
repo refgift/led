@@ -81,7 +81,7 @@ void gap_buffer_insert(GapBuffer* gb, int pos, char c);
 void gap_buffer_delete(GapBuffer* gb, int pos);
 /** Returns the character at logical position pos. */
 char gap_buffer_get_char(const GapBuffer* gb, int pos);
-/** Returns the logical text (gap excluded). Pointer is owned by gb. */
+/** Returns a newly allocated NUL-terminated copy of the text. Caller must free(). */
 const char* gap_buffer_get_text(const GapBuffer* gb);
 /** Returns the logical length (text_len, gap excluded). */
 int gap_buffer_length(const GapBuffer* gb);
@@ -105,6 +105,8 @@ void buffer_free(Buffer* buf);
 #define BUFFER_LOAD_BINARY (-3)
 #define BUFFER_LOAD_OVER_MEMORY (-4)
 #define BUFFER_LOAD_NOMEM (-5)
+#define BUFFER_LOAD_NOT_REGULAR (-6)   /* directory, FIFO, device */
+#define BUFFER_LOAD_UNREADABLE (-7)    /* exists, but cannot be read */
 
 /** Loads filename into buf.
  *  max_bytes <= 0 uses a 10 MB ceiling. max_line_len <= 0 uses 10000.
@@ -121,7 +123,8 @@ int buffer_load_from_file(Buffer* buf, const char* filename, long max_bytes,
 /** Write the buffer to filename.
  *  When the directory is writable, the bytes go to a temp file in that
  *  directory and replace filename via rename, so a crash mid-write leaves
- *  the previous file intact. Existing permission bits are kept.
+ *  the previous file intact. Existing permission bits are kept. A symlink
+ *  is followed: the file it points at is replaced, the link stays.
  *  Returns 0 on success, -1 on error (the previous file is then unchanged
  *  unless the temp file could not be created and the direct write was used). */
 int buffer_save_to_file(const Buffer* buf, const char* filename);
@@ -148,8 +151,10 @@ int buffer_delete_char(Buffer* buf, int line, int col);
 int buffer_delete_range(Buffer* buf, int start_line, int start_col, int end_line, int end_col);
 /** Inserts text at (line, col), splitting lines on '\n'. Returns 0 on success, -1 on error. */
 int buffer_insert_text(Buffer* buf, int line, int col, const char* text);
-/** Replaces every regex match of search_regex with replace_str, all lines. */
-void buffer_replace_all(Buffer* buf, const char* search_regex, const char* replace_str);
+/** Replaces every regex match of search_regex with replace_str, all lines.
+ *  Returns the number of replacements, or -1 for a bad or over-long pattern.
+ *  The caller owns undo: positions recorded before this call are stale. */
+int buffer_replace_all(Buffer* buf, const char* search_regex, const char* replace_str);
 
 /** Clears the per-draw change range (changed_first/last/structure_changed).
  *  Does NOT reset edit_generation. The view calls this after consuming

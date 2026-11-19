@@ -3,7 +3,7 @@ CC = cc
 CFLAGS = -I. -Iview -Itest -Imodel -Icontroller -Iconfig -Iutils -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -Wall -Wextra -Wno-unused-parameter -std=c11 -O3
 LDFLAGS = -lncursesw 
 TARGET = led
-SRCS = main.c model/model.c view/view.c controller/controller.c editor.c config/config.c utils/utils.c test/test_helpers.c test/test_controller.c test/test_view.c test/test_autosave.c
+SRCS = main.c model/model.c view/view.c controller/controller.c editor.c config/config.c utils/utils.c test/test_helpers.c test/test_controller.c test/test_view.c test/test_autosave.c test/test_safety.c
 OBJS = $(SRCS:.c=.o)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)

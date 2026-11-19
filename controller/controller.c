@@ -9,41 +9,76 @@
 #include <ctype.h>
 #include <stdio.h>
 
+/* Most changes kept per stack. One change is one byte of text. */
+#define UNDO_CAP 1000000
+
+static int
+is_utf8_cont (char c)
+{
+  return ((unsigned char) c & 0xC0) == 0x80;
+}
+
 static void
-push_change (UndoStack *stack, bool is_insert, int line, int col, char ch)
+push_change (UndoStack *stack, bool is_insert, int line, int col, char ch,
+             bool chained)
 {
   if (!stack)
     return;
   if (stack->count >= stack->capacity)
     {
-      if (stack->capacity >= 10000)
-        return;
-      int new_capacity =
-        stack->capacity == 0 ? 16 : stack->capacity * 2;
-      Change *temp =
-        xrealloc (stack->changes, new_capacity * sizeof (Change));
-      if (!temp)
-        return;
-      stack->changes = temp;
-      stack->capacity = new_capacity;
+      if (stack->capacity >= UNDO_CAP)
+        {
+          /* Full. Forget the oldest half. Dropping the new change instead
+           * would leave the stack describing a buffer that no longer
+           * exists, and the next undo would edit the wrong place. */
+          int keep = stack->count / 2;
+          memmove (stack->changes, stack->changes + (stack->count - keep),
+                   (size_t) keep * sizeof (Change));
+          stack->count = keep;
+        }
+      else
+        {
+          int new_capacity =
+            stack->capacity == 0 ? 16 : stack->capacity * 2;
+          if (new_capacity > UNDO_CAP)
+            new_capacity = UNDO_CAP;
+          Change *temp =
+            xrealloc (stack->changes, new_capacity * sizeof (Change));
+          if (!temp)
+            return;
+          stack->changes = temp;
+          stack->capacity = new_capacity;
+        }
     }
   stack->changes[stack->count].is_insert = is_insert;
   stack->changes[stack->count].line = line;
   stack->changes[stack->count].col = col;
   stack->changes[stack->count].ch = ch;
+  stack->changes[stack->count].chained = chained;
   stack->count++;
 }
 
 void
 push_undo (UndoStack *stack, bool is_insert, int line, int col, char ch)
 {
-  push_change (stack, is_insert, line, col, ch);
+  push_change (stack, is_insert, line, col, ch, is_utf8_cont (ch));
+}
+
+/* Make everything pushed since the stack held `start` entries one undo
+ * step: every entry but the first is chained to the one below it. */
+static void
+chain_since (UndoStack *stack, int start)
+{
+  if (!stack || start < 0)
+    return;
+  for (int i = start + 1; i < stack->count; i++)
+    stack->changes[i].chained = true;
 }
 
 void
 push_redo (UndoStack *stack, bool is_insert, int line, int col, char ch)
 {
-  push_change (stack, is_insert, line, col, ch);
+  push_change (stack, is_insert, line, col, ch, is_utf8_cont (ch));
 }
 
 void
@@ -53,7 +88,7 @@ undo_operation (Buffer *buf, UndoStack *undo, UndoStack *redo, int *cursor_line,
     return;
   undo->count--;
   Change c = undo->changes[undo->count];
-  push_redo (redo, c.is_insert, c.line, c.col, c.ch);
+  push_change (redo, c.is_insert, c.line, c.col, c.ch, c.chained);
   if (c.is_insert)
     {
       buffer_delete_char (buf, c.line, c.col);
@@ -102,7 +137,7 @@ redo_operation (Buffer *buf, UndoStack *undo, UndoStack *redo, int *cursor_line,
     return;
   redo->count--;
   Change c = redo->changes[redo->count];
-  push_undo (undo, c.is_insert, c.line, c.col, c.ch);
+  push_change (undo, c.is_insert, c.line, c.col, c.ch, c.chained);
   if (c.is_insert)
     {
       buffer_insert_char (buf, c.line, c.col, c.ch);
@@ -268,7 +303,13 @@ dispatch_key (int ch, InputContext *ctx)
     {
       if (key_table[i].key == ch)
         {
+          /* Whatever one key press records is one undo step: an
+           * indented newline, a tab of spaces, a comment toggle. */
+          int grouped = (ctx->ed && ch != 26 && ch != 25);
+          int start = grouped ? ctx->ed->undo_stack.count : -1;
           key_table[i].handler (ch, ctx);
+          if (grouped && ctx->ed->undo_stack.count > start)
+            chain_since (&ctx->ed->undo_stack, start);
           return;
         }
     }
@@ -278,11 +319,148 @@ dispatch_key (int ch, InputContext *ctx)
 }
 
 /* === Handler implementations === */
+
+/* Byte column where the character ending just before col starts. */
+static int
+char_start_before (const Buffer *buf, int line, int col)
+{
+  int c = col - 1;
+  int steps = 0;
+  while (c > 0 && steps < 3 && is_utf8_cont (buffer_get_char (buf, line, c)))
+    {
+      c--;
+      steps++;
+    }
+  return c < 0 ? 0 : c;
+}
+
+/* Byte column just past the character that starts at col. */
+static int
+char_end_after (const Buffer *buf, int line, int col)
+{
+  int len = buffer_get_line_length (buf, line);
+  int c = col + 1;
+  int steps = 0;
+  while (c < len && steps < 3 && is_utf8_cont (buffer_get_char (buf, line, c)))
+    {
+      c++;
+      steps++;
+    }
+  return c > len ? len : c;
+}
+
+/* Order two points so (*l1,*c1) comes first. */
+static void
+order_points (int *l1, int *c1, int *l2, int *c2)
+{
+  if (*l1 > *l2 || (*l1 == *l2 && *c1 > *c2))
+    {
+      int t = *l1; *l1 = *l2; *l2 = t;
+      t = *c1; *c1 = *c2; *c2 = t;
+    }
+}
+
+/* Text between two ordered points, lines joined by '\n'. Caller frees. */
+static char *
+range_text (const Buffer *buf, int l1, int c1, int l2, int c2)
+{
+  size_t total = 0;
+  for (int l = l1; l <= l2; l++)
+    total += (size_t) buffer_get_line_length (buf, l) + 1;
+  char *out = xmalloc (total + 1);
+  size_t n = 0;
+  for (int l = l1; l <= l2; l++)
+    {
+      int len = buffer_get_line_length (buf, l);
+      int from = (l == l1) ? c1 : 0;
+      int to = (l == l2) ? c2 : len;
+      if (from > len) from = len;
+      if (to > len) to = len;
+      for (int c = from; c < to; c++)
+        out[n++] = buffer_get_char (buf, l, c);
+      if (l < l2)
+        out[n++] = '\n';
+    }
+  out[n] = '\0';
+  return out;
+}
+
+/* Delete an ordered range and record every byte, so undo puts the text
+ * back. A range too large for the undo stack empties both stacks: no
+ * history is better than history that points at the wrong text.
+ * Returns 0 when the range is empty or invalid. */
+static int
+delete_range_with_undo (InputContext *ctx, int l1, int c1, int l2, int c2)
+{
+  int n = buffer_num_lines (ctx->buf);
+  if (l1 < 0 || l2 >= n || l1 > l2 || (l1 == l2 && c1 >= c2) || c1 < 0)
+    return 0;
+  char *text = range_text (ctx->buf, l1, c1, l2, c2);
+  size_t len = strlen (text);
+  if (len == 0)
+    {
+      free (text);
+      return 0;
+    }
+  if (buffer_delete_range (ctx->buf, l1, c1, l2, c2) != 0)
+    {
+      free (text);
+      return 0;
+    }
+  if (ctx->ed)
+    {
+      clear_redo (&ctx->ed->redo_stack);
+      if (len > UNDO_CAP / 2)
+        {
+          free_undo_stacks (&ctx->ed->undo_stack, &ctx->ed->redo_stack);
+          set_status_message (ctx->ed, "Too large to undo");
+        }
+      else
+        /* Each byte is "deleted at (l1,c1)". Undo runs them backwards
+         * and re-inserts at that one point, which rebuilds the text. */
+        for (size_t i = 0; i < len; i++)
+          push_change (&ctx->ed->undo_stack, false, l1, c1, text[i], i > 0);
+    }
+  free (text);
+  return 1;
+}
+
+/* The active selection as an ordered range. Returns 0 if there is none. */
+static int
+selection_range (InputContext *ctx, int *l1, int *c1, int *l2, int *c2)
+{
+  if (!ctx->ed || !ctx->ed->selection_active)
+    return 0;
+  *l1 = ctx->ed->selection_start_line;
+  *c1 = ctx->ed->selection_start_col;
+  *l2 = ctx->ed->selection_end_line;
+  *c2 = ctx->ed->selection_end_col;
+  order_points (l1, c1, l2, c2);
+  int n = buffer_num_lines (ctx->buf);
+  if (*l1 < 0 || *l2 >= n)
+    return 0;
+  return (*l1 < *l2 || *c1 < *c2);
+}
+
+/* Delete the selection, if any, and put the cursor where it began. */
+static int
+delete_selection (InputContext *ctx)
+{
+  int l1, c1, l2, c2;
+  if (!selection_range (ctx, &l1, &c1, &l2, &c2))
+    return 0;
+  if (!delete_range_with_undo (ctx, l1, c1, l2, c2))
+    return 0;
+  ctx->ed->selection_active = 0;
+  *ctx->cursor_line = l1;
+  *ctx->cursor_col = c1;
+  return 1;
+}
 static void handle_left (int ch, InputContext *ctx)
 {
   (void)ch;
   if (*ctx->cursor_col > 0)
-    (*ctx->cursor_col)--;
+    *ctx->cursor_col = char_start_before (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
   else if (*ctx->cursor_line > 0)
     {
       (*ctx->cursor_line)--;
@@ -295,7 +473,7 @@ static void handle_right (int ch, InputContext *ctx)
   (void)ch;
   int len = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
   if (*ctx->cursor_col < len)
-    (*ctx->cursor_col)++;
+    *ctx->cursor_col = char_end_after (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
   else if (*ctx->cursor_line < buffer_num_lines (ctx->buf) - 1)
     {
       (*ctx->cursor_line)++;
@@ -373,15 +551,31 @@ static void handle_npage (int ch, InputContext *ctx)
 static void handle_undo (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (ctx->ed)
-    undo_operation (ctx->buf, &ctx->ed->undo_stack, &ctx->ed->redo_stack, ctx->cursor_line, ctx->cursor_col);
+  if (!ctx->ed)
+    return;
+  UndoStack *u = &ctx->ed->undo_stack;
+  /* One step is one whole operation: keep going while the entry just
+   * undone was chained to the one below it. */
+  while (u->count > 0)
+    {
+      bool chained = u->changes[u->count - 1].chained;
+      undo_operation (ctx->buf, u, &ctx->ed->redo_stack, ctx->cursor_line, ctx->cursor_col);
+      if (!chained)
+        break;
+    }
 }
 
 static void handle_redo (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (ctx->ed)
-    redo_operation (ctx->buf, &ctx->ed->undo_stack, &ctx->ed->redo_stack, ctx->cursor_line, ctx->cursor_col);
+  if (!ctx->ed)
+    return;
+  UndoStack *r = &ctx->ed->redo_stack;
+  if (r->count <= 0)
+    return;
+  redo_operation (ctx->buf, &ctx->ed->undo_stack, r, ctx->cursor_line, ctx->cursor_col);
+  while (r->count > 0 && r->changes[r->count - 1].chained)
+    redo_operation (ctx->buf, &ctx->ed->undo_stack, r, ctx->cursor_line, ctx->cursor_col);
 }
 
 static void handle_select_all (int ch, InputContext *ctx)
@@ -473,63 +667,97 @@ static void handle_enter (int ch, InputContext *ctx)
     }
 }
 
+static void
+set_clipboard (InputContext *ctx, char *text)
+{
+  if (*ctx->clipboard)
+    free (*ctx->clipboard);
+  *ctx->clipboard = text;
+}
+
+/* With a selection: cut it. Without: cut from the cursor to end of line. */
 static void handle_cut (int ch, InputContext *ctx)
 {
   (void)ch;
+  int l1, c1, l2, c2;
+  if (selection_range (ctx, &l1, &c1, &l2, &c2))
+    {
+      set_clipboard (ctx, range_text (ctx->buf, l1, c1, l2, c2));
+      delete_selection (ctx);
+      return;
+    }
   int row = *ctx->cursor_line;
   int col = *ctx->cursor_col;
   int linelen = buffer_get_line_length (ctx->buf, row);
   if (col < linelen)
     {
-      char *linecontent = buffer_get_line (ctx->buf, row);
-      if (linecontent)
-        {
-          size_t textlen = strlen (linecontent + col);
-          if (*ctx->clipboard) free (*ctx->clipboard);
-          *ctx->clipboard = xmalloc (textlen + 1);
-          if (*ctx->clipboard) strcpy (*ctx->clipboard, linecontent + col);
-          free (linecontent);
-          if (ctx->ed)
-            {
-              push_undo (&ctx->ed->undo_stack, false, row, col, 0);
-              clear_redo (&ctx->ed->redo_stack);
-            }
-          buffer_delete_range (ctx->buf, row, col, row, linelen);
-        }
+      set_clipboard (ctx, range_text (ctx->buf, row, col, row, linelen));
+      delete_range_with_undo (ctx, row, col, row, linelen);
     }
 }
 
+/* With a selection: copy it. Without: copy from the cursor to end of line. */
 static void handle_copy (int ch, InputContext *ctx)
 {
   (void)ch;
+  int l1, c1, l2, c2;
+  if (selection_range (ctx, &l1, &c1, &l2, &c2))
+    {
+      set_clipboard (ctx, range_text (ctx->buf, l1, c1, l2, c2));
+      return;
+    }
   int row = *ctx->cursor_line;
   int col = *ctx->cursor_col;
   int linelen = buffer_get_line_length (ctx->buf, row);
   if (col < linelen)
-    {
-      char *linecontent = buffer_get_line (ctx->buf, row);
-      if (linecontent)
-        {
-          size_t textlen = strlen (linecontent + col);
-          if (*ctx->clipboard) free (*ctx->clipboard);
-          *ctx->clipboard = xmalloc (textlen + 1);
-          if (*ctx->clipboard) strcpy (*ctx->clipboard, linecontent + col);
-          free (linecontent);
-        }
-    }
+    set_clipboard (ctx, range_text (ctx->buf, row, col, row, linelen));
 }
 
 static void handle_paste (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (*ctx->clipboard && **ctx->clipboard)
+  if (!*ctx->clipboard || !**ctx->clipboard)
+    return;
+  char *filtered = border_filter_dup (*ctx->clipboard);
+  const char *to_insert = filtered ? filtered : *ctx->clipboard;
+  size_t n = strlen (to_insert);
+  int line = *ctx->cursor_line;
+  int col = *ctx->cursor_col;
+  int len = buffer_get_line_length (ctx->buf, line);
+  if (col > len)
+    col = len;
+  if (n > 0 && buffer_insert_text (ctx->buf, line, col, to_insert) == 0)
     {
-      char *filtered = border_filter_dup (*ctx->clipboard);
-      const char *to_insert = filtered ? filtered : *ctx->clipboard;
-      buffer_insert_text (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, to_insert);
-      *ctx->cursor_col += strlen (to_insert);
-      if (filtered) free (filtered);
+      if (ctx->ed)
+        {
+          clear_redo (&ctx->ed->redo_stack);
+          if (n > UNDO_CAP / 2)
+            {
+              free_undo_stacks (&ctx->ed->undo_stack, &ctx->ed->redo_stack);
+              set_status_message (ctx->ed, "Too large to undo");
+            }
+        }
+      /* Record each byte where it landed, and leave the cursor after
+       * the pasted text, on the last pasted line. */
+      int record = (ctx->ed && n <= UNDO_CAP / 2);
+      for (size_t i = 0; i < n; i++)
+        {
+          if (record)
+            push_change (&ctx->ed->undo_stack, true, line, col, to_insert[i],
+                         i > 0);
+          if (to_insert[i] == '\n')
+            {
+              line++;
+              col = 0;
+            }
+          else
+            col++;
+        }
+      *ctx->cursor_line = line;
+      *ctx->cursor_col = col;
     }
+  if (filtered)
+    free (filtered);
 }
 
 static void handle_save (int ch, InputContext *ctx)
@@ -539,6 +767,13 @@ static void handle_save (int ch, InputContext *ctx)
     {
       if (ctx->ed)
         set_status_message (ctx->ed, "No file name");
+      return;
+    }
+  if (ctx->ed && ctx->ed->save_blocked)
+    {
+      /* The buffer is not the whole file. Writing it would destroy
+       * the part that was never loaded. */
+      set_status_message (ctx->ed, "Not saved: file was not fully loaded");
       return;
     }
   if (buffer_save_to_file (ctx->buf, ctx->filename) != 0)
@@ -558,16 +793,25 @@ static void handle_save (int ch, InputContext *ctx)
 static void handle_backspace (int ch, InputContext *ctx)
 {
   (void)ch;
+  if (delete_selection (ctx))
+    return;
   if (*ctx->cursor_col > 0)
     {
-      char deleted = buffer_get_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col - 1);
+      /* Remove the whole character, lead byte first, so the undo
+       * stack holds its bytes in the same order as a typed one. */
+      int row = *ctx->cursor_line;
+      int start = char_start_before (ctx->buf, row, *ctx->cursor_col);
+      int nbytes = *ctx->cursor_col - start;
       if (ctx->ed)
+        clear_redo (&ctx->ed->redo_stack);
+      for (int i = 0; i < nbytes; i++)
         {
-          push_undo (&ctx->ed->undo_stack, false, *ctx->cursor_line, *ctx->cursor_col - 1, deleted);
-          clear_redo (&ctx->ed->redo_stack);
+          char deleted = buffer_get_char (ctx->buf, row, start);
+          if (ctx->ed)
+            push_undo (&ctx->ed->undo_stack, false, row, start, deleted);
+          buffer_delete_char (ctx->buf, row, start);
         }
-      buffer_delete_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col - 1);
-      (*ctx->cursor_col)--;
+      *ctx->cursor_col = start;
     }
   else if (*ctx->cursor_line > 0)
     {
@@ -587,17 +831,24 @@ static void handle_backspace (int ch, InputContext *ctx)
 static void handle_delete (int ch, InputContext *ctx)
 {
   (void)ch;
+  if (delete_selection (ctx))
+    return;
   int len = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
   if (*ctx->cursor_col < len)
     {
-      // Delete character at cursor (forward)
-      char deleted = buffer_get_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
+      // Delete the whole character at the cursor (forward)
+      int row = *ctx->cursor_line;
+      int col = *ctx->cursor_col;
+      int nbytes = char_end_after (ctx->buf, row, col) - col;
       if (ctx->ed)
+        clear_redo (&ctx->ed->redo_stack);
+      for (int i = 0; i < nbytes; i++)
         {
-          push_undo (&ctx->ed->undo_stack, false, *ctx->cursor_line, *ctx->cursor_col, deleted);
-          clear_redo (&ctx->ed->redo_stack);
+          char deleted = buffer_get_char (ctx->buf, row, col);
+          if (ctx->ed)
+            push_undo (&ctx->ed->undo_stack, false, row, col, deleted);
+          buffer_delete_char (ctx->buf, row, col);
         }
-      buffer_delete_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col);
       // cursor position does not move
     }
   else if (*ctx->cursor_line < buffer_num_lines (ctx->buf) - 1)
@@ -1263,7 +1514,12 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
           else if (ch == 'f' || ch == KEY_RIGHT)
             word_forward (buf, cursor_line, cursor_col);
           else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8)
-            handle_delete_word (0, &ctx);
+            {
+              int start = ed->undo_stack.count;
+              handle_delete_word (0, &ctx);
+              if (ed->undo_stack.count > start)
+                chain_since (&ed->undo_stack, start);
+            }
           else
             set_status_message (ed, "Cancelled");
         }
@@ -1274,14 +1530,31 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
         }
       else
         dispatch_key (ch, &ctx);
+      /* A selection lasts until the next key that is not Select All
+       * or Copy. Otherwise the highlight would never go away. */
+      if (ed && ch != 1 && ch != 3)
+        ed->selection_active = 0;
     }
   // Clamp cursor after input
   {
+    int nl = buffer_num_lines (buf);
+    if (*cursor_line >= nl)
+      *cursor_line = nl > 0 ? nl - 1 : 0;
+    if (*cursor_line < 0)
+      *cursor_line = 0;
     int clen = buffer_get_line_length (buf, *cursor_line);
     if (*cursor_col > clen)
       {
         *cursor_col = clen;
       }
+    if (*cursor_col < 0)
+      *cursor_col = 0;
+    /* Up/Down can land inside a multi-byte character. Step back to
+     * its first byte so the next edit cannot split it. */
+    int steps = 0;
+    while (*cursor_col > 0 && *cursor_col < clen && steps++ < 3
+           && is_utf8_cont (buffer_get_char (buf, *cursor_line, *cursor_col)))
+      (*cursor_col)--;
   }
   return error_occurred ? -1 : 0;
 }
