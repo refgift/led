@@ -7,8 +7,6 @@
 #include <limits.h>
 #include <time.h>               // For time functions in status bar
 #include <string.h>             // For strdup
-// Meta symbols for basic syntax highlighting (braces, semicolons, etc.)
-static const char *meta_symbols = ";,{}()[]";
 
 /* === Pane helpers (border isolation) === */
 int
@@ -275,46 +273,46 @@ finish_word (const char *full_line, int start, int end, int *colors,
       colors[j] = color;
 }
 
-// Compute color array for a line based on syntax highlighting
-// Returns an array of color indices (1-based: the LED_Q_* qualities)
-// Caller must free the returned array.
-// highlight_pair: 1 to disable, else enable
-int *
-compute_line_colors (const char *full_line, int line_len,
-                     int highlight_pair, EditorConfig *config, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack)
+/* Read one line of source: colour it when colors is given, and carry
+ * the nesting state across it either way. One scanner serves both the
+ * colouring pass and the nesting-only pass, so they cannot disagree.
+ *
+ * Text inside a string, a character literal or a comment is not code:
+ * it is left plain, and a bracket or keyword in it does not nest.
+ * *in_comment carries an open block comment from line to line. */
+static void
+scan_line (const char *s, int len, int *colors, EditorConfig *config,
+           KeywordPair *pairs, int num_pairs,
+           int *brace_level, int *brace_top, int *brace_stack,
+           int *kw_level, int *kw_top, int *kw_stack, int *in_comment)
 {
-  int maxll = (config && config->performance.max_line_length > 0) ? config->performance.max_line_length : 10000;
-  if (highlight_pair == 1 || line_len > maxll)
-    {
-      return NULL;              // No colors if disabled or line too long
-    }
-  int *colors = xmalloc (line_len * sizeof (int));
-  if (!colors)
-    return NULL;
-  // Initialize all to normal color (1)
-  for (int i = 0; i < line_len; i++)
-    colors[i] = 1;
-  if (!config)
-    return colors;              // Safety check
-  // Use pre-paired keyword pairs parsed once by load_editor_config
-  KeywordPair *pairs = (KeywordPair *) config->syntax_pairs;
-  int num_pairs = config->num_syntax_pairs;
   int word_start = 0;
   int in_word = 0;
   int word_count = 0;
-  /* i == line_len is one step past the text, so a word that runs to the
-   * end of the line is ended by the same code as any other. */
-  for (int i = 0; i <= line_len; i++)
+  int i = 0;
+  /* i == len is one step past the text, so a word that runs to the end
+   * of the line is ended by the same code as any other. */
+  while (i <= len)
     {
-      char c = (i < line_len) ? full_line[i] : '\0';
-      int is_word_char = (i < line_len) && (isalnum ((unsigned char) c) || c == '_');
-      if (is_word_char)
+      if (*in_comment)
+        {
+          while (i < len && !(s[i] == '*' && i + 1 < len && s[i + 1] == '/'))
+            i++;
+          if (i >= len)
+            break;              /* still open at the end of the line */
+          i += 2;
+          *in_comment = 0;
+          continue;
+        }
+      char c = (i < len) ? s[i] : '\0';
+      if (i < len && (isalnum ((unsigned char) c) || c == '_'))
         {
           if (!in_word)
             {
               word_start = i;
               in_word = 1;
             }
+          i++;
           continue;
         }
       /* Anything that is not a word character ends the word, a meta
@@ -323,84 +321,95 @@ compute_line_colors (const char *full_line, int line_len,
         {
           /* Past 100 words the line is not coloured further, but the
            * nesting is still counted so later lines stay right. */
-          finish_word (full_line, word_start, i,
+          finish_word (s, word_start, i,
                        word_count++ > 100 ? NULL : colors, config, pairs,
                        num_pairs, kw_level, kw_top, kw_stack);
           in_word = 0;
         }
-      if (i >= line_len || !strchr (meta_symbols, c))
-        continue;
-      // Meta symbols (braces, semicolons, commas)
-      if (c == ';')
+      if (i >= len)
+        break;
+      if (c == '/' && i + 1 < len && s[i + 1] == '/')
+        break;                  /* line comment: the rest is not code */
+      if (c == '/' && i + 1 < len && s[i + 1] == '*')
         {
-          colors[i] = 3;        // Red for semicolons
+          *in_comment = 1;
+          i += 2;
+          continue;
         }
-      else if (c == '{' || c == '(' || c == '[')
+      /* A quote opens a literal. An apostrophe straight after a letter
+       * or digit does not: that is 1'000'000 or a word like don't. */
+      if (c == '"' || (c == '\'' && !(i > 0 && (isalnum ((unsigned char) s[i - 1])
+                                                || s[i - 1] == '_'))))
         {
-          // Opening brace
+          i++;
+          while (i < len && s[i] != c)
+            {
+              if (s[i] == '\\' && i + 1 < len)
+                i++;
+              i++;
+            }
+          if (i < len)
+            i++;                /* the closing quote */
+          continue;
+        }
+      if (c == '{' || c == '(' || c == '[')
+        {
           if (*brace_top < 256)
             brace_stack[*brace_top] = *brace_level;
           (*brace_top)++;
           int lvl = *brace_level;
-          colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);      // Levels 4-7
+          if (colors)
+            colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);    // Levels 4-7
           (*brace_level)++;
         }
       else if (c == '}' || c == ')' || c == ']')
         {
-          // Closing brace
+          int lvl = 1;          /* a closer with no opener: outermost */
           if (*brace_top > 0)
             {
               /* Deeper than the stack holds: the depth is still counted,
                * but there is no saved level to read. */
               --(*brace_top);
-              int lvl = (*brace_top < 256) ? brace_stack[*brace_top] : 4;
-              colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);
+              lvl = (*brace_top < 256) ? brace_stack[*brace_top] : 4;
             }
-          else
-            {
-              colors[i] = 4;    // Default
-            }
+          if (colors)
+            colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);
           *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
         }
-      else
-        {
-          colors[i] = 4;        // Other meta like ','
-        }
+      else if (colors && c == ';')
+        colors[i] = 3;          // Red for semicolons
+      else if (colors && c == ',')
+        colors[i] = 4;
+      i++;
     }
+}
+
+// Compute color array for a line based on syntax highlighting
+// Returns an array of color indices (1-based: the LED_Q_* qualities)
+// Caller must free the returned array.
+// highlight_pair: 1 to disable, else enable
+int *
+compute_line_colors (const char *full_line, int line_len,
+                     int highlight_pair, EditorConfig *config, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack, int *in_comment)
+{
+  int maxll = (config && config->performance.max_line_length > 0) ? config->performance.max_line_length : 10000;
+  if (highlight_pair == 1 || line_len > maxll)
+    {
+      return NULL;              // No colors if disabled or line too long
+    }
+  int *colors = xmalloc ((size_t) (line_len > 0 ? line_len : 1) * sizeof (int));
+  for (int i = 0; i < line_len; i++)
+    colors[i] = 1;              // normal
+  if (!config)
+    return colors;              // Safety check
+  scan_line (full_line, line_len, colors, config,
+             (KeywordPair *) config->syntax_pairs, config->num_syntax_pairs,
+             brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack,
+             in_comment);
   return colors;
 }
-// Helper to update nesting state for a line without coloring
-static void update_nesting(const char *full_line, int line_len, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack, KeywordPair *pairs, int num_pairs) {
-  int word_start = 0;
-  int in_word = 0;
-  for (int i = 0; i <= line_len; i++) {
-    char c = (i < line_len) ? full_line[i] : '\0';
-    if (i < line_len && (isalnum((unsigned char) c) || c == '_')) {
-      if (!in_word) {
-        word_start = i;
-        in_word = 1;
-      }
-      continue;
-    }
-    if (in_word) {
-      finish_word (full_line, word_start, i, NULL, NULL, pairs, num_pairs,
-                   kw_level, kw_top, kw_stack);
-      in_word = 0;
-    }
-    if (i >= line_len)
-      break;
-    if (c == '{' || c == '(' || c == '[') {
-      if (*brace_top < 256) brace_stack[*brace_top] = *brace_level;
-      (*brace_top)++;
-      (*brace_level)++;
-    } else if (c == '}' || c == ')' || c == ']') {
-      if (*brace_top > 0) --(*brace_top);
-      *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
-    }
-  }
-}
 // Compute starting nesting state for a line (with caching)
-void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[], int *kw_level, int *kw_top, int kw_stack[], EditorConfig *config) {
+void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[], int *kw_level, int *kw_top, int kw_stack[], int *in_comment, EditorConfig *config) {
   // Check if cache is available and valid for previous line
   if (buf->nesting_cache && start_line > 0 && buf->nesting_cache[start_line - 1].valid) {
     // Use cached state from previous line
@@ -410,6 +419,7 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
     *kw_level = buf->nesting_cache[start_line - 1].kw_level;
     *kw_top = buf->nesting_cache[start_line - 1].kw_top;
     memcpy(kw_stack, buf->nesting_cache[start_line - 1].kw_stack, sizeof(int) * 100);
+    *in_comment = buf->nesting_cache[start_line - 1].in_comment;
     return;
   }
 
@@ -417,6 +427,7 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
   *brace_top = 0;
   *kw_level = 1;
   *kw_top = 0;
+  *in_comment = 0;
   // Use pre-parsed pairs from config
   KeywordPair *pairs = (KeywordPair *) config->syntax_pairs;
   int num_pairs = config->num_syntax_pairs;
@@ -428,7 +439,7 @@ void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *bra
 
     char *line = buffer_get_line(buf, l);
     int len = strlen(line);
-    update_nesting(line, len, brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack, pairs, num_pairs);
+    scan_line (line, len, NULL, config, pairs, num_pairs, brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack, in_comment);
     free(line);
   }
 }
@@ -449,14 +460,16 @@ typedef struct {
   /* nesting state AFTER this line, so hits restore identical state */
   int brace_level, brace_top, brace_stack[256];
   int kw_level, kw_top, kw_stack[100];
+  int in_comment;
 } LineColorEntry;
 
 static LineColorEntry g_ccache[CCACHE_SLOTS];
 
 static unsigned long
-hash_start_state (int bl, int bt, const int *bs, int kl, int kt, const int *ks)
+hash_start_state (int bl, int bt, const int *bs, int kl, int kt, const int *ks,
+                  int in_comment)
 {
-  unsigned long h = 1469598103934665603UL;
+  unsigned long h = 1469598103934665603UL ^ (in_comment ? 0x9E3779B9UL : 0);
   unsigned long vals[8];
   int n = 0;
   vals[n++] = (unsigned long) bl;
@@ -485,7 +498,7 @@ static int *
 colors_for_line (Buffer *buf, int logical_line, const char *line, int len,
                  int highlight_pair, EditorConfig *config,
                  int *brace_level, int *brace_top, int brace_stack[],
-                 int *kw_level, int *kw_top, int kw_stack[])
+                 int *kw_level, int *kw_top, int kw_stack[], int *in_comment)
 {
   static int *overflow_colors;
   static int overflow_cap;
@@ -495,7 +508,8 @@ colors_for_line (Buffer *buf, int logical_line, const char *line, int len,
     {
       int *computed = compute_line_colors (line, len, highlight_pair, config,
                                            brace_level, brace_top, brace_stack,
-                                           kw_level, kw_top, kw_stack);
+                                           kw_level, kw_top, kw_stack,
+                                           in_comment);
       if (!computed)
         return NULL;
       if (overflow_cap < len)
@@ -515,7 +529,8 @@ colors_for_line (Buffer *buf, int logical_line, const char *line, int len,
     }
   LineColorEntry *slot = &g_ccache[logical_line & (CCACHE_SLOTS - 1)];
   unsigned long h = hash_start_state (*brace_level, *brace_top, brace_stack,
-                                      *kw_level, *kw_top, kw_stack);
+                                      *kw_level, *kw_top, kw_stack,
+                                      *in_comment);
   if (slot->used && slot->line_no == logical_line
       && slot->generation == buf->edit_generation
       && slot->start_hash == h
@@ -528,37 +543,36 @@ colors_for_line (Buffer *buf, int logical_line, const char *line, int len,
       *kw_level = slot->kw_level;
       *kw_top = slot->kw_top;
       memcpy (kw_stack, slot->kw_stack, sizeof (int) * 100);
+      *in_comment = slot->in_comment;
       return slot->has_colors ? slot->colors : NULL;
     }
   int *computed = compute_line_colors (line, len, highlight_pair, config,
                                        brace_level, brace_top, brace_stack,
-                                       kw_level, kw_top, kw_stack);
+                                       kw_level, kw_top, kw_stack, in_comment);
   if (!slot->colors)
     slot->colors = xmalloc ((size_t) CCACHE_MAX_LINE * sizeof (int));
   if (!slot->text)
     slot->text = xmalloc ((size_t) CCACHE_MAX_LINE + 1);
-  if (slot->colors && slot->text)
-    {
-      slot->used = 1;
-      slot->line_no = logical_line;
-      slot->generation = buf->edit_generation;
-      slot->start_hash = hash_start_state (*brace_level, *brace_top,
-                                           brace_stack, *kw_level, *kw_top,
-                                           kw_stack);
-      slot->has_colors = (computed != NULL);
-      slot->text_len = len;
-      memcpy (slot->text, line, (size_t) len);
-      slot->text[len] = '\0';
-      if (computed)
-        memcpy (slot->colors, computed, (size_t) len * sizeof (int));
-      slot->brace_level = *brace_level;
-      slot->brace_top = *brace_top;
-      memcpy (slot->brace_stack, brace_stack, sizeof (int) * 256);
-      slot->kw_level = *kw_level;
-      slot->kw_top = *kw_top;
-      memcpy (slot->kw_stack, kw_stack, sizeof (int) * 100);
-    }
-  return computed;
+  slot->used = 1;
+  slot->line_no = logical_line;
+  slot->generation = buf->edit_generation;
+  slot->start_hash = h;         /* the state on entry, which a hit compares */
+  slot->has_colors = (computed != NULL);
+  slot->text_len = len;
+  memcpy (slot->text, line, (size_t) len);
+  slot->text[len] = '\0';
+  if (computed)
+    memcpy (slot->colors, computed, (size_t) len * sizeof (int));
+  slot->brace_level = *brace_level;
+  slot->brace_top = *brace_top;
+  memcpy (slot->brace_stack, brace_stack, sizeof (int) * 256);
+  slot->kw_level = *kw_level;
+  slot->kw_top = *kw_top;
+  memcpy (slot->kw_stack, kw_stack, sizeof (int) * 100);
+  slot->in_comment = *in_comment;
+  /* The slot owns a copy; the computed array was only a carrier. */
+  free (computed);
+  return slot->has_colors ? slot->colors : NULL;
 }
 
 /* === Grow-only scratch buffers for tab expansion === */
@@ -601,11 +615,12 @@ print_highlighted (Pane *tw, int y, int x, const char *full_line, int line_len,
   int kw_top = 0;
   int kw_stack[100];
   memset(kw_stack, 0, sizeof(kw_stack));
-  get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, config);
+  int in_comment = 0;
+  get_starting_levels(buf, logical_line, &brace_level, &brace_top, brace_stack, &kw_level, &kw_top, kw_stack, &in_comment, config);
   int *colors = colors_for_line (buf, logical_line, full_line, line_len,
                                  highlight_pair, config,
                                  &brace_level, &brace_top, brace_stack,
-                                 &kw_level, &kw_top, kw_stack);
+                                 &kw_level, &kw_top, kw_stack, &in_comment);
 
   // Cache the nesting state after processing this line (for next line's use)
   if (buf->nesting_cache && logical_line < buf->capacity) {
@@ -616,6 +631,7 @@ print_highlighted (Pane *tw, int y, int x, const char *full_line, int line_len,
     buf->nesting_cache[logical_line].kw_level = kw_level;
     buf->nesting_cache[logical_line].kw_top = kw_top;
     memcpy(buf->nesting_cache[logical_line].kw_stack, kw_stack, sizeof(int) * 100);
+    buf->nesting_cache[logical_line].in_comment = in_comment;
   }
 
   int end = start + len;

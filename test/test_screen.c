@@ -148,7 +148,8 @@ run_screen_tests (void)
 int *compute_line_colors (const char *full_line, int line_len,
                           int highlight_pair, EditorConfig *config,
                           int *brace_level, int *brace_top, int *brace_stack,
-                          int *kw_level, int *kw_top, int *kw_stack);
+                          int *kw_level, int *kw_top, int *kw_stack,
+                          int *in_comment);
 void run_color_tests (void);
 
 /* Colour every byte of one line with a fresh nesting state. */
@@ -157,8 +158,9 @@ colors_of (EditorConfig *cfg, const char *line, int *kw_level_out)
 {
   int bl = 1, bt = 0, kl = 1, kt = 0;
   static int bs[256], ks[100];
+  int ic = 0;
   int *c = compute_line_colors (line, (int) strlen (line), 4, cfg,
-                                &bl, &bt, bs, &kl, &kt, ks);
+                                &bl, &bt, bs, &kl, &kt, ks, &ic);
   if (kw_level_out)
     *kw_level_out = kl;
   return c;
@@ -212,6 +214,52 @@ run_color_tests (void)
                "a paired keyword against ';' is coloured and opens a level");
   free (c);
 
+  /* In C, "if" has no "then": it is a reserved word like any other,
+   * the same colour every time, and opens no level. */
+  c = colors_of (&cfg, "if (a) x; if (b) y; if (c) z;", &kl);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[10] == LED_Q_RESERVED
+               && c[20] == LED_Q_RESERVED && kl == 1,
+               "every 'if' has the reserved-word colour and opens no level");
+  free (c);
+
+  /* Strings, character literals and comments are not code. */
+  c = colors_of (&cfg, "x = \"if (\"; y(1);", NULL);
+  test_assert (c && c[5] == LED_Q_NORMAL && c[8] == LED_Q_NORMAL
+               && c[13] == LED_Q_LEVEL1 && c[15] == LED_Q_LEVEL1,
+               "a bracket or keyword inside a string is plain and does not nest");
+  free (c);
+  c = colors_of (&cfg, "c = '('; n = 1'000; f(2);", NULL);
+  test_assert (c && c[5] == LED_Q_NORMAL && c[21] == LED_Q_LEVEL1
+               && c[23] == LED_Q_LEVEL1,
+               "a character literal is skipped; a digit separator is not a quote");
+  free (c);
+  c = colors_of (&cfg, "a(1); // if (", &kl);
+  test_assert (c && c[1] == LED_Q_LEVEL1 && c[9] == LED_Q_NORMAL
+               && c[12] == LED_Q_NORMAL && kl == 1,
+               "a line comment is plain");
+  free (c);
+  c = colors_of (&cfg, "a /* ( if */ (b)", NULL);
+  test_assert (c && c[5] == LED_Q_NORMAL && c[7] == LED_Q_NORMAL
+               && c[13] == LED_Q_LEVEL1 && c[15] == LED_Q_LEVEL1,
+               "a block comment is plain, and code after it is coloured");
+  free (c);
+
+  /* A block comment left open carries to the next line. */
+  {
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *c1 = compute_line_colors ("x /* open (", 11, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (ic == 1 && bl == 1, "an open block comment is carried on");
+    int *c2 = compute_line_colors ("( still ) */ f(1)", 17, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (c2 && ic == 0 && c2[0] == LED_Q_NORMAL && c2[8] == LED_Q_NORMAL
+                 && c2[14] == LED_Q_LEVEL1 && bl == 1,
+                 "the next line stays plain until the comment closes");
+    free (c1);
+    free (c2);
+  }
+
   /* Deep nesting must not read past the level stack. */
   char deep[700];
   memset (deep, '(', 300);
@@ -230,7 +278,15 @@ run_color_tests (void)
   buffer_insert_line (&ed.model, 1, "begin x");
   int bl = 0, bt = 0, kl2 = 0, kt = 0;
   static int bs[256], ks[100];
-  get_starting_levels (&ed.model, 1, &bl, &bt, bs, &kl2, &kt, ks, &cfg);
+  int ic = 0;
+  get_starting_levels (&ed.model, 1, &bl, &bt, bs, &kl2, &kt, ks, &ic, &cfg);
   test_assert (kl2 == 2, "nesting carried to the next line counts 'begin;'");
+  buffer_insert_line (&ed.model, 2, "/* ( ( (");
+  buffer_insert_line (&ed.model, 3, "*/ x");
+  get_starting_levels (&ed.model, 3, &bl, &bt, bs, &kl2, &kt, ks, &ic, &cfg);
+  test_assert (ic == 1 && bl == 1,
+               "the nesting pass also knows a comment is open");
+  get_starting_levels (&ed.model, 4, &bl, &bt, bs, &kl2, &kt, ks, &ic, &cfg);
+  test_assert (ic == 0 && bl == 1, "and that it closed");
   editor_cleanup (&ed);
 }

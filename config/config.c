@@ -105,6 +105,8 @@ config_apply_env_overrides (EditorConfig *config)
     config->display.show_border = atoi (v) ? 1 : 0;
 }
 
+int config_is_reserved_word (const EditorConfig *config, const char *word);
+
 void
 config_parse_syntax (EditorConfig *config)
 {
@@ -189,6 +191,22 @@ config_parse_syntax (EditorConfig *config)
         }
       config->reserved_offset[j + 1] = key;
     }
+
+  /* A pair is a pair only if both words belong to the language or both
+   * are outside its reserved words. "if-then" with "if" reserved and
+   * "then" not is C written with a Pascal pair: the "then" never comes,
+   * so every "if" would open a level that nothing closes. Leave such a
+   * pair out and let the word be coloured as the reserved word it is. */
+  int kept = 0;
+  for (int p = 0; p < config->num_syntax_pairs; p++)
+    {
+      SyntaxPair *pair = &config->syntax_pairs[p];
+      int open_reserved = config_is_reserved_word (config, pair->open);
+      int close_reserved = config_is_reserved_word (config, pair->close);
+      if (open_reserved == close_reserved)
+        config->syntax_pairs[kept++] = *pair;
+    }
+  config->num_syntax_pairs = kept;
 }
 
 int
