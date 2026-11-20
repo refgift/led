@@ -6,25 +6,66 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
+/* A colour from colorization.conf. Accepted, in any letter case:
+ *   BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE   the eight standard ones
+ *   BRIGHT_BLUE, LIGHT_BLUE, BRIGHTBLUE, LIGHTBLUE   the bright variant of each
+ *   GRAY / GREY                                      bright black
+ *   DEFAULT                                          the terminal's own colour
+ *   0 .. 255                                         a colour by number
+ * curses has no standard names past the first eight, so the bright
+ * names are led's own. Anything else is WHITE. */
 int
 string_to_color (const char *str)
 {
-  if (strcmp (str, "BLACK") == 0)
-    return LED_COLOR_BLACK;
-  if (strcmp (str, "RED") == 0)
-    return LED_COLOR_RED;
-  if (strcmp (str, "GREEN") == 0)
-    return LED_COLOR_GREEN;
-  if (strcmp (str, "YELLOW") == 0)
-    return LED_COLOR_YELLOW;
-  if (strcmp (str, "BLUE") == 0)
-    return LED_COLOR_BLUE;
-  if (strcmp (str, "MAGENTA") == 0)
-    return LED_COLOR_MAGENTA;
-  if (strcmp (str, "CYAN") == 0)
-    return LED_COLOR_CYAN;
-  if (strcmp (str, "WHITE") == 0)
+  static const char *names[8] = {
+    "BLACK", "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN", "WHITE"
+  };
+  char up[32];
+  size_t n = 0;
+  if (!str)
     return LED_COLOR_WHITE;
+  while (*str == ' ' || *str == '\t')
+    str++;
+  for (; str[n] && n < sizeof up - 1; n++)
+    up[n] = (char) toupper ((unsigned char) str[n]);
+  up[n] = '\0';
+  while (n > 0 && (up[n - 1] == ' ' || up[n - 1] == '\t'))
+    up[--n] = '\0';
+  if (n == 0)
+    return LED_COLOR_WHITE;
+
+  if (strcmp (up, "DEFAULT") == 0)
+    return LED_COLOR_DEFAULT;
+  if (strcmp (up, "GRAY") == 0 || strcmp (up, "GREY") == 0)
+    return LED_COLOR_BRIGHT + LED_COLOR_BLACK;
+
+  int all_digits = 1;
+  for (size_t i = 0; i < n; i++)
+    if (!isdigit ((unsigned char) up[i]))
+      all_digits = 0;
+  if (all_digits)
+    {
+      long v = strtol (up, NULL, 10);
+      return (v >= 0 && v <= 255) ? (int) v : LED_COLOR_WHITE;
+    }
+
+  const char *base = up;
+  int bright = 0;
+  if (strncmp (up, "BRIGHT", 6) == 0)
+    {
+      base = up + 6;
+      bright = 1;
+    }
+  else if (strncmp (up, "LIGHT", 5) == 0)
+    {
+      base = up + 5;
+      bright = 1;
+    }
+  if (bright && (*base == '_' || *base == '-' || *base == ' '))
+    base++;
+  for (int c = 0; c < 8; c++)
+    if (strcmp (base, names[c]) == 0)
+      return bright ? LED_COLOR_BRIGHT + c : c;
   return LED_COLOR_WHITE;           // default
 }
 static void
@@ -104,6 +145,8 @@ config_apply_env_overrides (EditorConfig *config)
   if (v)
     config->display.show_border = atoi (v) ? 1 : 0;
 }
+
+int config_is_reserved_word (const EditorConfig *config, const char *word);
 
 void
 config_parse_syntax (EditorConfig *config)
@@ -189,6 +232,22 @@ config_parse_syntax (EditorConfig *config)
         }
       config->reserved_offset[j + 1] = key;
     }
+
+  /* A pair is a pair only if both words belong to the language or both
+   * are outside its reserved words. "if-then" with "if" reserved and
+   * "then" not is C written with a Pascal pair: the "then" never comes,
+   * so every "if" would open a level that nothing closes. Leave such a
+   * pair out and let the word be coloured as the reserved word it is. */
+  int kept = 0;
+  for (int p = 0; p < config->num_syntax_pairs; p++)
+    {
+      SyntaxPair *pair = &config->syntax_pairs[p];
+      int open_reserved = config_is_reserved_word (config, pair->open);
+      int close_reserved = config_is_reserved_word (config, pair->close);
+      if (open_reserved == close_reserved)
+        config->syntax_pairs[kept++] = *pair;
+    }
+  config->num_syntax_pairs = kept;
 }
 
 int

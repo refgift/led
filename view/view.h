@@ -140,11 +140,12 @@ int calculate_digits(int n);
  * valid, copies that state (brace_stack 256 ints, kw_stack 100) and
  * returns. Otherwise sets both levels to 1 and tops to 0, then folds
  * each earlier line using config syntax pairs. Never writes the cache.
+ * *in_comment is set when a block comment is still open at that point.
  */
 void get_starting_levels(Buffer *buf, int start_line,
                          int *brace_level, int *brace_top, int brace_stack[],
                          int *kw_level, int *kw_top, int kw_stack[],
-                         EditorConfig *config);
+                         int *in_comment, EditorConfig *config);
 
 /**
  * visual_column - display column of byte offset logical_pos.

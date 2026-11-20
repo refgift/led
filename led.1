@@ -48,6 +48,8 @@ Ctrl+Q on a modified buffer asks for a second Ctrl+Q.
 .TP
 .B Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V
 Select all / Copy / Cut / Paste (paste filtered).
+After Ctrl+A, Copy, Cut, Backspace and Delete act on the whole buffer.
+Without a selection, Copy and Cut take from the cursor to the end of the line.
 .SS Search
 .TP
 .B Ctrl+/ / Ctrl+R
@@ -63,30 +65,105 @@ Line numbers.
 Word wrap.
 .TP
 .B F4
-Border on/off. On: \fCderwin(LINES-2,COLS-2,1,1)\fR boxed. Off: \fCderwin(LINES-1,COLS,0,0)\fR full-width so xterm block-select copies only text. Paste filter strips \fC| │ ─ ┌┐└┘\fR. Config \fCshow_border\fR, env \fCLED_NO_BORDER=1\fR.
+Border on/off. On: the text is inset by one cell inside a box. Off: the text is full-width so xterm block-select copies only text. Paste filter strips \fC| │ ─ ┌┐└┘\fR. Config \fCshow_border\fR, env \fCLED_NO_BORDER=1\fR.
 .SH WHAT WORKS
 .IP \(bu 2
-Data safety, undo/redo, autosave, crash recovery.
+Data safety, undo/redo (one step per key press, cut, or paste), autosave.
+A recovery file is written when the terminal closes.
+A file that did not load whole is never written back.
 .IP \(bu 2
-Editing, selection, clipboard, regex search/replace, syntax highlight, Unicode, incremental rendering (75x less output).
+Editing, selection, clipboard, regex search/replace, Unicode, incremental rendering (75x less output).
+.IP \(bu 2
+Syntax highlight for C and C++: reserved words, semicolons, and brackets coloured by nesting depth.
+Strings, character literals and comments are left plain.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-229 tests.
+353 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap; lines >10k truncated.
 .IP \(bu 2
-Limits hardcoded, errors not standardized, no per-buffer undo persistence.
+Errors not standardized, no per-buffer undo persistence.
+Replace cannot be undone and clears the undo history.
+.IP \(bu 2
+Comments, strings and numbers have no colour of their own.
 .IP \(bu 2
 No fuzzing, still needs input sanitization, no OSC 52 clipboard.
 .IP \(bu 2
 xterm copy still sees screen cells — use F4 off.
 .SH CONFIGURATION
-\fC~/.config/led/colorization.conf\fR (\fCkey=value\fR, \fC#\fR comments). Colors: \fCnormal_fg/bg\fR etc. (\fCBLACK..WHITE\fR). \fCshow_border=0\fR (F4), \fCshow_key_meter\fR, \fCsyntax_extensions\fR, \fCreserved_words\fR, \fCpaired_keywords\fR, \fCtab_width\fR. Env \fCLED_NO_BORDER=1\fR.
+\fC~/.config/led/colorization.conf\fR holds \fCkey=value\fR lines; \fC#\fR starts a comment.
+.B led
+does not create the file. Without it the built-in defaults apply.
+List only the keys to change.
+.SS Colors
+The keys are
+\fCnormal\fR, \fCselection\fR, \fCsemicolon\fR, \fCmeta_level1\fR to \fCmeta_level4\fR
+(brackets by nesting depth) and \fCreserved_words\fR, each with \fC_fg\fR and \fC_bg\fR.
+A value is one of the following, in any letter case.
+.TP
+.B BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE
+The eight standard colors. These are the dark set.
+.TP
+.B BRIGHT_\fIname\fB, LIGHT_\fIname\fB
+The bright variant of one of the eight, for example \fCLIGHT_BLUE\fR.
+.B GRAY
+is bright black.
+.TP
+.B 0 \fRto\fB 255
+A color by number, for a terminal with extended colors.
+.TP
+.B DEFAULT
+The terminal's own foreground or background.
+.PP
+The sixteen named colors and their numbers:
+.PP
+.nf
+\fC0  BLACK      8  GRAY
+1  RED        9  LIGHT_RED
+2  GREEN     10  LIGHT_GREEN
+3  YELLOW    11  LIGHT_YELLOW
+4  BLUE      12  LIGHT_BLUE
+5  MAGENTA   13  LIGHT_MAGENTA
+6  CYAN      14  LIGHT_CYAN
+7  WHITE     15  LIGHT_WHITE\fR
+.fi
+.PP
+Defaults: text WHITE on BLACK, selection BLACK on WHITE,
+semicolon and reserved words RED,
+nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW.
+.PP
+The bright variants are colors 8 to 15 on a terminal with 16 or more colors.
+On a terminal with eight, a bright foreground is shown as the plain color in bold,
+and a bright background as the plain color.
+A number the terminal does not have is shown as white.
+Give every \fC_bg\fR key the same value, or the background changes from word to word.
+See
+.BR curs_color (3X).
+.PP
+Example:
+.PP
+.nf
+\fCmeta_level1_fg=LIGHT_BLUE
+reserved_words_fg=LIGHT_RED
+normal_bg=DEFAULT\fR
+.fi
+.SS Syntax
+\fCsyntax_extensions\fR lists the file endings that are highlighted.
+\fCreserved_words\fR lists the words colored as reserved.
+\fCpaired_keywords\fR lists \fIopen\fR-\fIclose\fR word pairs colored by nesting depth.
+A pair is used only when both of its words, or neither, are reserved words,
+so the default \fCif-then\fR is ignored for C.
+.SS Other keys
+\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR,
+\fCtab_width\fR, \fCspaces_for_tab\fR,
+\fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
+Env \fCLED_NO_BORDER=1\fR.
 .SH FILES
 .I ~/.config/led/colorization.conf
 .SH SEE ALSO
+.BR curs_color (3X),
 .BR vim (1),
 .BR emacs (1),
 .BR nano (1)

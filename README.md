@@ -11,15 +11,15 @@
 - **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic (arrows, Backspace, Delete, and undo work on whole characters).
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
-- **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
+- **Config**: `~/.config/led/colorization.conf` (colors by name, bright variant, number or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 338 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
+- **Tests**: 353 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
 ## What Fails
 - **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
 - **Long lines**: a line past `max_line_length` (default 10000) is cut on load. The status line says `Long line truncated`. Cut lines skip highlighting and use basic rendering.
 - **Limits**: `max_file_size_mb` (1–100, default 10), `memory_limit_mb` (1–200, default 50), and `max_line_length` (80–100000, default 10000) are keys in `colorization.conf`. A value outside its range keeps the default.
-- **Language support**: highlighting and parsing are built for C/C++; other languages may be incomplete. Turn highlighting off in config if a file fights you.
+- **Language support**: highlighting and parsing are built for C/C++; other languages may be incomplete. Turn highlighting off in config if a file fights you. Strings, character literals and comments are left plain: brackets and keywords inside them are not coloured and do not nest. A `paired_keywords` pair is used only when both words, or neither, are in `reserved_words`, so the default `if-then` is ignored for C and `if` is coloured as a reserved word.
 - **Error handling**: not fully standardized across modules.
 - **No per-buffer undo persistence** across sessions.
 - **Replace** (`Ctrl+R`) cannot be undone and clears the undo history. The status line says so.
@@ -87,9 +87,36 @@ man led           # after make doc
 | `F4` | Border on/off (subwindow inset vs full-width; pasted `│` stripped) |
 
 ## Configuration
-`~/.config/led/colorization.conf` — `key=value`, `#` comments, created on first run.
+`~/.config/led/colorization.conf` — `key=value`, `#` comments. led does not create this file; without it the built-in defaults apply. Create it and list only the keys you want to change.
 
-**Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
+**Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; a bright variant of each as `BRIGHT_BLUE` or `LIGHT_BLUE`; `GRAY`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
+
+| Number | Dark (plain name) | Number | Light |
+|---|---|---|---|
+| 0 | `BLACK` | 8 | `GRAY` (or `BRIGHT_BLACK`) |
+| 1 | `RED` | 9 | `LIGHT_RED` |
+| 2 | `GREEN` | 10 | `LIGHT_GREEN` |
+| 3 | `YELLOW` | 11 | `LIGHT_YELLOW` |
+| 4 | `BLUE` | 12 | `LIGHT_BLUE` |
+| 5 | `MAGENTA` | 13 | `LIGHT_MAGENTA` |
+| 6 | `CYAN` | 14 | `LIGHT_CYAN` |
+| 7 | `WHITE` | 15 | `LIGHT_WHITE` |
+
+`BRIGHT_` works wherever `LIGHT_` does. Defaults: text `WHITE` on `BLACK`, selection `BLACK` on `WHITE`, semicolon and reserved words `RED`, nesting levels 1–4 `BLUE`, `CYAN`, `GREEN`, `YELLOW`.
+
+The eight plain names are the dark set. Bright variants are colours 8–15 on a terminal with 16 or more colours; on an 8-colour terminal led shows the plain colour in bold instead (see `curs_color(3x)`). A number above what the terminal has falls back to white.
+
+Example, light colours on the terminal's own background:
+```
+normal_bg=DEFAULT
+reserved_words_fg=LIGHT_RED
+meta_level1_fg=LIGHT_BLUE
+meta_level2_fg=LIGHT_CYAN
+meta_level3_fg=LIGHT_GREEN
+meta_level4_fg=LIGHT_YELLOW
+semicolon_fg=208
+```
+Give every `_bg` key the same value, or the background changes from word to word.
 
 **Display/Border**: `show_border=0` (default off, `1` shows box). Toggled by `F4`.
 

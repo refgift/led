@@ -47,6 +47,7 @@ typedef struct {
     int kw_level;
     int kw_top;
     int kw_stack[100];
+    int in_comment;     /* a block comment is still open after this line */
 } NestingCache;
 
 /**

@@ -21,6 +21,7 @@ _Static_assert (LED_COLOR_BLACK == COLOR_BLACK && LED_COLOR_WHITE == COLOR_WHITE
                 "led colour numbers must match curses");
 
 static int started;
+static attr_t quality_attr[LED_Q_COUNT];        /* A_BOLD where bold stands in for bright */
 static int word_left_code, word_right_code;
 
 static void
@@ -36,7 +37,7 @@ static void
 curses_show (int x, int y, int c)
 {
   if (c > 0 && c < LED_Q_COUNT)
-    mvchgat (y, x, 1, A_NORMAL, (short) c, NULL);
+    mvchgat (y, x, 1, quality_attr[c], (short) c, NULL);
   move (y, x);
 }
 
@@ -59,6 +60,30 @@ terminal_key (const char *capname)
   return 0;
 }
 
+/* Turn one of led's colours into one this terminal has.
+ * curs_color(3x): colour values run from 0 to COLORS-1, the first eight
+ * are the standard ones, and where a terminal has more, the next eight
+ * are the same hues at full strength. On a terminal that stops at
+ * eight, bold is how a foreground is made bright; a background cannot
+ * be, so it falls back to the plain colour. */
+static short
+terminal_color (int c, int have_default, int is_fg, attr_t *attr)
+{
+  if (c == LED_COLOR_DEFAULT)
+    return have_default ? -1 : (short) (is_fg ? COLOR_WHITE : COLOR_BLACK);
+  if (c < 0)
+    return (short) (is_fg ? COLOR_WHITE : COLOR_BLACK);
+  if (c < COLORS)
+    return (short) c;
+  if (c >= LED_COLOR_BRIGHT && c < LED_COLOR_BRIGHT + 8)
+    {
+      if (is_fg && attr)
+        *attr |= A_BOLD;
+      return (short) (c - LED_COLOR_BRIGHT);
+    }
+  return (short) (is_fg ? COLOR_WHITE : COLOR_BLACK);
+}
+
 static int
 curses_start (const FrontendStyle styles[LED_Q_COUNT])
 {
@@ -74,8 +99,14 @@ curses_start (const FrontendStyle styles[LED_Q_COUNT])
       endwin ();
       return -1;
     }
+  int have_default = (use_default_colors () == OK);
   for (int q = 1; q < LED_Q_COUNT; q++)
-    init_pair ((short) q, (short) styles[q].fg, (short) styles[q].bg);
+    {
+      quality_attr[q] = A_NORMAL;
+      short fg = terminal_color (styles[q].fg, have_default, 1, &quality_attr[q]);
+      short bg = terminal_color (styles[q].bg, have_default, 0, NULL);
+      init_pair ((short) q, fg, bg);
+    }
   bkgd (COLOR_PAIR (LED_Q_NORMAL));
   word_left_code = terminal_key ("kLFT5");
   word_right_code = terminal_key ("kRIT5");
