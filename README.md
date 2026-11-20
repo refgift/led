@@ -1,6 +1,6 @@
 # Larry's Editor
 - editor.h 39.50  Trust begins to bloom / Routine becomes second nature / Anchored in the storm
-- led - Larry's Editor for Linux/Unix Terminal (1.0.7)
+- led - Larry's Editor for Linux/Unix Terminal (1.0.8)
 - Dedicated to Neal Stephenson's vision of paper-like data safety.
 - Author: Larry Bruce Daniel. Assistance from Grok (xAI): grok-code-fast-1 on earlier versions, Grok 4.7 on 1.0.7.
 
