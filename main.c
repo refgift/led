@@ -50,15 +50,14 @@ adopt_size (const Frontend *fe, Editor *ed)
   ed->page_rows = rows;
 }
 
+/* A full draw is the ordinary draw with nothing remembered, so the
+ * first frame, a resize and F4 paint the same picture as any key
+ * press: status line, word wrap, and lines cut at a character. */
 static void
 full_draw (Pane *text_win, Editor *ed)
 {
-  int dummy_y, dummy_x;
   view_invalidate ();
-  draw_initial (screen_pane (), text_win, &ed->model, &ed->scroll_row,
-                &ed->scroll_col, ed->cursor_line, ed->cursor_col,
-                ed->show_line_numbers, ed->syntax_highlight, &dummy_y,
-                &dummy_x, &ed->config);
+  editor_draw (screen_pane (), text_win, ed);
 }
 
 static int

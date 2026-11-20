@@ -15,6 +15,7 @@
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
 - **Tests**: 353 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Paths**: a file with `..` in its path (`../src/file.c`) opens. It used to fail.
+- **First frame, resize, `F4`**: these draw through the same painter as a key press. Before, they showed no status line, dropped word wrap, and cut a line with non-ASCII characters short (sometimes ending in `??`) until the next key.
 
 ## What Fails
 - **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
@@ -28,7 +29,8 @@
 - **Input sanitization**: `is_filename_safe` rejects only empty names, names over 255 bytes, and control characters. There is no directory-traversal check; `..` is allowed.
 - **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
 - **Other languages**: a file such as Python is not highlighted by default. Add its extension to `syntax_extensions` in `colorization.conf` (for example `syntax_extensions=.c,.h,.cpp,.py`) and it is highlighted with the C rules.
-- **Garbled display**: if the screen looks corrupted, turn line numbers on with `F2`; the text then renders correctly.
+- **Garbled display**: if the screen looks corrupted, press `F4` twice (border on, then off again). `F4` repaints the whole screen. `F2` is not a repaint key. A file whose extension is not in `syntax_extensions` should need no workaround; if one does, that is a bug to report.
+- **Config file**: led does not write a default `colorization.conf`. The one file holds every setting, not only colours; it should become a general config file, or two files.
 
 Bugs: size and type (`file`, `head` sample), or a `gdb ./led` backtrace, at https://github.com/refgift/led/issues
 
