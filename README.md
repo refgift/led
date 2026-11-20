@@ -13,7 +13,7 @@
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 293 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents). `./led -t` on your machine.
+- **Tests**: 329 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
 ## What Fails
 - **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
@@ -42,6 +42,14 @@ The view draws through three functions with one signature, declared in `frontend
 For each cell that changed: `mark` it and `show` it, or `hide` it; finish with a `show` where the caret is. `view/screen.c` keeps a grid of cells and sends only the ones that differ.
 
 A front end supplies those three functions plus start, stop, size and read-key. `frontend_curses.c` is the only file that includes ncurses. `frontend_memory.c` is a grid the tests read, so what reaches the screen is tested without a terminal. `frontend_ansi.c` is a stub with notes on how to finish it.
+
+The controller is three functions with one signature too, declared in `controller/controller.h`:
+
+- `symbol(action, value)` — one action, one key press: `symbol(S_INSERT, 'a')`, `symbol(S_LEFT, 3)`.
+- `macro(action, value)` — an action made of several symbols, and one undo step: `macro(M_ENTER, 1)` is a newline plus the indent.
+- `token(action, value)` — keys collected into a unit before anything happens (search, replace, go to line, `Esc` then a key): `T_BEGIN`, then `T_CHAR` per character, then `T_DONE` or `T_CANCEL`.
+
+One table in `controller.c` says which call each key makes. A test, or a recorded macro, is a list of those calls with no keys involved.
 
 ## Dependencies
 C compiler, `make` (`gmake` on Unix), `glibc regex`, and `libncursesw` for the default front end.
