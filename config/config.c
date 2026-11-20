@@ -40,7 +40,7 @@ trim_whitespace (char *str)
     end--;
   end[1] = '\0';
 }
-static void
+void
 set_default_config (EditorConfig *config)
 {
   config->version = 2;

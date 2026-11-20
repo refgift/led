@@ -133,6 +133,9 @@ typedef struct {
 
 /* Public API */
 ConfigError load_editor_config(EditorConfig* config);
+/** Fill config with the built-in defaults. Reads no file. Follow with
+ *  config_parse_syntax to prepare the keyword tables. */
+void set_default_config(EditorConfig* config);
 void config_parse_syntax(EditorConfig* config);
 int config_is_reserved_word(const EditorConfig* config, const char* word);
 int string_to_color(const char* str);

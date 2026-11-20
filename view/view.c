@@ -228,8 +228,55 @@ get_wrap_break (const char *line, int start, int line_len, int max_width, int ta
     max_chars = 1;             // always make progress on pathological input
   return max_chars;
 }
+/* A word has ended: full_line[start, end). Update the keyword nesting,
+ * and colour the word when colors is given. Both the colouring pass and
+ * the nesting-only pass end words here, so they cannot disagree. */
+static void
+finish_word (const char *full_line, int start, int end, int *colors,
+             EditorConfig *config, KeywordPair *pairs, int num_pairs,
+             int *kw_level, int *kw_top, int *kw_stack)
+{
+  char word[64];
+  int wlen = end - start;
+  if (wlen <= 0 || wlen >= (int) sizeof word)
+    return;                     /* too long to be a keyword */
+  memcpy (word, full_line + start, (size_t) wlen);
+  word[wlen] = '\0';
+  int color = 0;
+  int matched = 0;
+  for (int p = 0; p < num_pairs && !matched; p++)
+    {
+      if (strcmp (word, pairs[p].open) == 0)
+        {
+          if (*kw_top < 100)
+            kw_stack[(*kw_top)++] = *kw_level;
+          int lvl = *kw_level;
+          color = 3 + (lvl > 4 ? 4 : lvl);
+          (*kw_level)++;
+          matched = 1;
+        }
+      else if (strcmp (word, pairs[p].close) == 0)
+        {
+          if (*kw_top > 0)
+            {
+              int lvl = kw_stack[--(*kw_top)];
+              color = 3 + (lvl > 4 ? 4 : lvl);
+            }
+          *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
+          matched = 1;
+        }
+    }
+  if (!colors)
+    return;
+  if (!matched && config && config_is_reserved_word (config, word))
+    color = 8;
+  if (color)
+    for (int j = start; j < end; j++)
+      colors[j] = color;
+}
+
 // Compute color array for a line based on syntax highlighting
-// Returns an array of color indices (1-based, as per ncurses COLOR_PAIR)
+// Returns an array of color indices (1-based: the LED_Q_* qualities)
 // Caller must free the returned array.
 // highlight_pair: 1 to disable, else enable
 int *
@@ -246,187 +293,78 @@ compute_line_colors (const char *full_line, int line_len,
     return NULL;
   // Initialize all to normal color (1)
   for (int i = 0; i < line_len; i++)
-    {
-		
-
-
-
-      colors[i] = 1;
-    }
+    colors[i] = 1;
   if (!config)
     return colors;              // Safety check
   // Use pre-paired keyword pairs parsed once by load_editor_config
   KeywordPair *pairs = (KeywordPair *) config->syntax_pairs;
   int num_pairs = config->num_syntax_pairs;
-  // Copy starting stacks and levels
-  // State is updated in place via pointers
   int word_start = 0;
   int in_word = 0;
   int word_count = 0;
-  for (int i = 0; i < line_len; i++)
+  /* i == line_len is one step past the text, so a word that runs to the
+   * end of the line is ended by the same code as any other. */
+  for (int i = 0; i <= line_len; i++)
     {
-		
-
-
-
-      char c = full_line[i];
-      // Handle meta symbols (braces, etc.)
-      if (strchr (meta_symbols, c))
-        {
-          if (c == ';')
-            {
-              colors[i] = 3;    // Red for semicolons
-            }
-          else if (c == '{' || c == '(' || c == '[')
-            {
-              // Opening brace
-               if (*brace_top < 256)
-                 brace_stack[*brace_top] = *brace_level;
-               (*brace_top)++;
-               int lvl = *brace_level;
-               colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);  // Levels 4-7
-               (*brace_level)++;
-            }
-          else if (c == '}' || c == ')' || c == ']')
-            {
-              // Closing brace
-              if (*brace_top > 0)
-                {
-                  int lvl = brace_stack[--(*brace_top)];
-                  colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);
-                }
-              else
-                {
-                  colors[i] = 4;        // Default
-                }
-              *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
-            }
-          else
-            {
-              colors[i] = 4;    // Other meta like ','
-            }
-          continue;             // Skip word processing for meta chars
-        }
-      // Handle words (alphanumeric or underscore)
-      if (isalnum (c) || c == '_')
+      char c = (i < line_len) ? full_line[i] : '\0';
+      int is_word_char = (i < line_len) && (isalnum ((unsigned char) c) || c == '_');
+      if (is_word_char)
         {
           if (!in_word)
             {
               word_start = i;
               in_word = 1;
             }
+          continue;
+        }
+      /* Anything that is not a word character ends the word, a meta
+       * symbol included. "break;" is the word "break", then ';'. */
+      if (in_word)
+        {
+          /* Past 100 words the line is not coloured further, but the
+           * nesting is still counted so later lines stay right. */
+          finish_word (full_line, word_start, i,
+                       word_count++ > 100 ? NULL : colors, config, pairs,
+                       num_pairs, kw_level, kw_top, kw_stack);
+          in_word = 0;
+        }
+      if (i >= line_len || !strchr (meta_symbols, c))
+        continue;
+      // Meta symbols (braces, semicolons, commas)
+      if (c == ';')
+        {
+          colors[i] = 3;        // Red for semicolons
+        }
+      else if (c == '{' || c == '(' || c == '[')
+        {
+          // Opening brace
+          if (*brace_top < 256)
+            brace_stack[*brace_top] = *brace_level;
+          (*brace_top)++;
+          int lvl = *brace_level;
+          colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);      // Levels 4-7
+          (*brace_level)++;
+        }
+      else if (c == '}' || c == ')' || c == ']')
+        {
+          // Closing brace
+          if (*brace_top > 0)
+            {
+              /* Deeper than the stack holds: the depth is still counted,
+               * but there is no saved level to read. */
+              --(*brace_top);
+              int lvl = (*brace_top < 256) ? brace_stack[*brace_top] : 4;
+              colors[i] = 4 + (lvl > 4 ? 3 : lvl - 1);
+            }
+          else
+            {
+              colors[i] = 4;    // Default
+            }
+          *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
         }
       else
         {
-          if (in_word)
-            {
-              // Process the word
-              if (word_count++ > 100)
-                {
-                  in_word = 0;
-                  continue;     // Skip if too many words
-                }
-              int wlen = i - word_start;
-              char *word = xmalloc (wlen + 1);
-              if (word)
-                {
-                  memcpy (word, &full_line[word_start], wlen);
-                  word[wlen] = '\0';
-                  int colored = 0;
-                  // Check for paired keywords
-                  for (int p = 0; p < num_pairs && !colored; p++)
-                    {
-		
-
-
-
-                      if (strcmp (word, pairs[p].open) == 0)
-                        {
-                          if (*kw_top < 100)
-                            kw_stack[(*kw_top)++] = *kw_level;
-                          int lvl = *kw_level;
-                          int color = 3 + (lvl > 4 ? 4 : lvl);
-                          for (int j = word_start; j < i; j++)
-                            colors[j] = color;
-                          (*kw_level)++;
-                          colored = 1;
-                        }
-                      else if (strcmp (word, pairs[p].close) == 0)
-                        {
-                          if (*kw_top > 0)
-                            {
-                              int lvl = kw_stack[--(*kw_top)];
-                              int color = 3 + (lvl > 4 ? 4 : lvl);
-                              for (int j = word_start; j < i; j++)
-                                colors[j] = color;
-                            }
-                          *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
-                          colored = 1;
-                        }
-                    }
-                  // Check for reserved words (if not paired)
-                  if (!colored
-                      && config_is_reserved_word (config, word))
-                    {
-                      for (int j = word_start; j < i; j++)
-                        colors[j] = 8;
-                    }
-                  free (word);
-                }
-              in_word = 0;
-            }
-        }
-    }
-  // Handle word at end of line
-  if (in_word)
-    {
-      if (word_count++ <= 100)
-        {
-          int wlen = line_len - word_start;
-          char *word = xmalloc (wlen + 1);
-          if (word)
-            {
-              memcpy (word, &full_line[word_start], wlen);
-              word[wlen] = '\0';
-              int colored = 0;
-              for (int p = 0; p < num_pairs && !colored; p++)
-                {
-		
-
-
-
-                  if (strcmp (word, pairs[p].open) == 0)
-                    {
-                      if (*kw_top < 100)
-                        kw_stack[(*kw_top)++] = *kw_level;
-                      int lvl = *kw_level;
-                      int color = 3 + (lvl > 4 ? 4 : lvl);
-                      for (int j = word_start; j < line_len; j++)
-                        colors[j] = color;
-                      (*kw_level)++;
-                      colored = 1;
-                    }
-                  else if (strcmp (word, pairs[p].close) == 0)
-                    {
-                      if (*kw_top > 0)
-                        {
-                          int lvl = kw_stack[--(*kw_top)];
-                          int color = 3 + (lvl > 4 ? 4 : lvl);
-                          for (int j = word_start; j < line_len; j++)
-                            colors[j] = color;
-                        }
-                      *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
-                      colored = 1;
-                    }
-                }
-              if (!colored
-                  && config_is_reserved_word (config, word))
-                {
-                  for (int j = word_start; j < line_len; j++)
-                    colors[j] = 8;
-                }
-              free (word);
-            }
+          colors[i] = 4;        // Other meta like ','
         }
     }
   return colors;
@@ -435,77 +373,30 @@ compute_line_colors (const char *full_line, int line_len,
 static void update_nesting(const char *full_line, int line_len, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack, KeywordPair *pairs, int num_pairs) {
   int word_start = 0;
   int in_word = 0;
-  for (int i = 0; i < line_len; i++) {
-		
-
-
-
-    char c = full_line[i];
-    // Handle braces
-    if (strchr(";,{}()[]", c)) {
-      if (c == '{' || c == '(' || c == '[') {
-        if (*brace_top < 256) brace_stack[(*brace_top)++] = *brace_level;
-        (*brace_level)++;
-      } else if (c == '}' || c == ')' || c == ']') {
-        if (*brace_top > 0) --(*brace_top);
-        *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
-      }
-      continue;
-    }
-    // Handle words
-    if (isalnum(c) || c == '_') {
+  for (int i = 0; i <= line_len; i++) {
+    char c = (i < line_len) ? full_line[i] : '\0';
+    if (i < line_len && (isalnum((unsigned char) c) || c == '_')) {
       if (!in_word) {
         word_start = i;
         in_word = 1;
       }
-    } else {
-      if (in_word) {
-        int wlen = i - word_start;
-        char *word = malloc(wlen + 1);
-        if (!word) continue;
-        memcpy(word, full_line + word_start, wlen);
-        word[wlen] = '\0';
-        for (int p = 0; p < num_pairs; p++) {
-		
-
-
-
-          if (strcmp(word, pairs[p].open) == 0) {
-            if (*kw_top < 100) kw_stack[(*kw_top)++] = *kw_level;
-            (*kw_level)++;
-            break;
-          } else if (strcmp(word, pairs[p].close) == 0) {
-            if (*kw_top > 0) --(*kw_top);
-            *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
-            break;
-          }
-        }
-        free(word);
-        in_word = 0;
-      }
+      continue;
     }
-  }
-  // Word at end
-  if (in_word) {
-    int wlen = line_len - word_start;
-    char *word = malloc(wlen + 1);
-    if (!word) return;
-    memcpy(word, full_line + word_start, wlen);
-    word[wlen] = '\0';
-    for (int p = 0; p < num_pairs; p++) {
-		
-
-
-
-      if (strcmp(word, pairs[p].open) == 0) {
-        if (*kw_top < 100) kw_stack[(*kw_top)++] = *kw_level;
-        (*kw_level)++;
-      } else if (strcmp(word, pairs[p].close) == 0) {
-        if (*kw_top > 0) --(*kw_top);
-        *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
-      }
+    if (in_word) {
+      finish_word (full_line, word_start, i, NULL, NULL, pairs, num_pairs,
+                   kw_level, kw_top, kw_stack);
+      in_word = 0;
     }
-    free(word);
+    if (i >= line_len)
+      break;
+    if (c == '{' || c == '(' || c == '[') {
+      if (*brace_top < 256) brace_stack[*brace_top] = *brace_level;
+      (*brace_top)++;
+      (*brace_level)++;
+    } else if (c == '}' || c == ')' || c == ']') {
+      if (*brace_top > 0) --(*brace_top);
+      *brace_level = (*brace_level > 1) ? *brace_level - 1 : 1;
+    }
   }
 }
 // Compute starting nesting state for a line (with caching)

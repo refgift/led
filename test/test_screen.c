@@ -144,3 +144,93 @@ run_screen_tests (void)
   view_invalidate ();
   frontend_use (before);
 }
+
+int *compute_line_colors (const char *full_line, int line_len,
+                          int highlight_pair, EditorConfig *config,
+                          int *brace_level, int *brace_top, int *brace_stack,
+                          int *kw_level, int *kw_top, int *kw_stack);
+void run_color_tests (void);
+
+/* Colour every byte of one line with a fresh nesting state. */
+static int *
+colors_of (EditorConfig *cfg, const char *line, int *kw_level_out)
+{
+  int bl = 1, bt = 0, kl = 1, kt = 0;
+  static int bs[256], ks[100];
+  int *c = compute_line_colors (line, (int) strlen (line), 4, cfg,
+                                &bl, &bt, bs, &kl, &kt, ks);
+  if (kw_level_out)
+    *kw_level_out = kl;
+  return c;
+}
+
+void
+run_color_tests (void)
+{
+  fprintf (stderr, "\n=== Colour tests ===\n");
+  static EditorConfig cfg;
+  set_default_config (&cfg);
+  config_parse_syntax (&cfg);
+  int *c;
+
+  c = colors_of (&cfg, "  break;", NULL);
+  test_assert (c && c[2] == LED_Q_RESERVED && c[6] == LED_Q_RESERVED,
+               "a reserved word keeps its colour when ';' follows it");
+  test_assert (c && c[7] == LED_Q_SEMICOLON, "and the ';' has its own colour");
+  free (c);
+
+  c = colors_of (&cfg, "  break; x", NULL);
+  test_assert (c && c[2] == LED_Q_RESERVED && c[7] == LED_Q_SEMICOLON
+               && c[8] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL,
+               "the same with a space after the ';'");
+  free (c);
+
+  c = colors_of (&cfg, "return(x);", NULL);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[5] == LED_Q_RESERVED
+               && c[6] == LED_Q_LEVEL1 && c[7] == LED_Q_NORMAL
+               && c[8] == LED_Q_LEVEL1 && c[9] == LED_Q_SEMICOLON,
+               "a word ends at a bracket too");
+  free (c);
+
+  c = colors_of (&cfg, "int a,b;", NULL);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[4] == LED_Q_NORMAL
+               && c[5] == LED_Q_LEVEL1 && c[6] == LED_Q_NORMAL
+               && c[7] == LED_Q_SEMICOLON,
+               "a comma separates words and does not join them");
+  free (c);
+
+  c = colors_of (&cfg, "while", NULL);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[4] == LED_Q_RESERVED,
+               "a word at the end of the line is coloured");
+  free (c);
+
+  /* A paired keyword against a ';' must still count for nesting, or
+   * every later line is coloured one level off. */
+  int kl = 0;
+  c = colors_of (&cfg, "begin;", &kl);
+  test_assert (c && c[0] == LED_Q_LEVEL1 && c[5] == LED_Q_SEMICOLON && kl == 2,
+               "a paired keyword against ';' is coloured and opens a level");
+  free (c);
+
+  /* Deep nesting must not read past the level stack. */
+  char deep[700];
+  memset (deep, '(', 300);
+  memset (deep + 300, ')', 300);
+  deep[600] = '\0';
+  c = colors_of (&cfg, deep, NULL);
+  test_assert (c && c[0] == LED_Q_LEVEL1 && c[599] == LED_Q_LEVEL1,
+               "300 nested brackets colour without reading out of bounds");
+  free (c);
+
+  /* The nesting-only pass must agree with the colouring pass. */
+  Editor ed;
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  buffer_insert_line (&ed.model, 0, "begin;");
+  buffer_insert_line (&ed.model, 1, "begin x");
+  int bl = 0, bt = 0, kl2 = 0, kt = 0;
+  static int bs[256], ks[100];
+  get_starting_levels (&ed.model, 1, &bl, &bt, bs, &kl2, &kt, ks, &cfg);
+  test_assert (kl2 == 2, "nesting carried to the next line counts 'begin;'");
+  editor_cleanup (&ed);
+}

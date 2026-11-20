@@ -24,6 +24,7 @@ void test_buffer_manipulation ();
 void run_safety_tests (void);
 void run_screen_tests (void);
 void run_action_tests (void);
+void run_color_tests (void);
 void test_buffer_advanced ();
 void test_controller_simulation ();
 void test_selection_clipboard ();
@@ -1711,6 +1712,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   run_view_tests();
   run_screen_tests ();
   run_action_tests ();
+  run_color_tests ();
   
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,
            tests_failed);

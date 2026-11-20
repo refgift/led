@@ -30,4 +30,5 @@ void run_view_tests(void);
 void run_safety_tests(void);
 void run_screen_tests(void);
 void run_action_tests(void);
+void run_color_tests(void);
 void test_autosave_comprehensive(void);
