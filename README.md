@@ -13,7 +13,7 @@
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 347 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
+- **Tests**: 353 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
 ## What Fails
 - **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
@@ -89,7 +89,9 @@ man led           # after make doc
 ## Configuration
 `~/.config/led/colorization.conf` — `key=value`, `#` comments, created on first run.
 
-**Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
+**Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; a bright variant of each as `BRIGHT_BLUE` or `LIGHT_BLUE`; `GRAY`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
+
+The eight plain names are the dark set. Bright variants are colours 8–15 on a terminal with 16 or more colours; on an 8-colour terminal led shows the plain colour in bold instead (see `curs_color(3x)`). A number above what the terminal has falls back to white.
 
 **Display/Border**: `show_border=0` (default off, `1` shows box). Toggled by `F4`.
 

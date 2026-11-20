@@ -260,6 +260,29 @@ run_color_tests (void)
     free (c2);
   }
 
+  /* Colour names in colorization.conf. */
+  test_assert (string_to_color ("BLUE") == LED_COLOR_BLUE
+               && string_to_color ("blue") == LED_COLOR_BLUE
+               && string_to_color (" Blue ") == LED_COLOR_BLUE,
+               "a colour name is read in any letter case");
+  test_assert (string_to_color ("BRIGHT_BLUE") == LED_COLOR_BRIGHT + LED_COLOR_BLUE
+               && string_to_color ("LIGHT_BLUE") == LED_COLOR_BRIGHT + LED_COLOR_BLUE
+               && string_to_color ("lightblue") == LED_COLOR_BRIGHT + LED_COLOR_BLUE
+               && string_to_color ("BRIGHT_BLUE") != string_to_color ("BLUE"),
+               "each colour has a bright variant, distinct from the plain one");
+  test_assert (string_to_color ("BRIGHT_WHITE") == 15
+               && string_to_color ("GRAY") == 8 && string_to_color ("grey") == 8,
+               "bright white is colour 15 and gray is bright black");
+  test_assert (string_to_color ("208") == 208 && string_to_color ("0") == 0
+               && string_to_color ("256") == LED_COLOR_WHITE,
+               "a colour can be given by number, 0 to 255");
+  test_assert (string_to_color ("DEFAULT") == LED_COLOR_DEFAULT,
+               "DEFAULT is the terminal's own colour");
+  test_assert (string_to_color ("PURPLE") == LED_COLOR_WHITE
+               && string_to_color ("BRIGHT_") == LED_COLOR_WHITE
+               && string_to_color ("") == LED_COLOR_WHITE,
+               "an unknown name falls back to white");
+
   /* Deep nesting must not read past the level stack. */
   char deep[700];
   memset (deep, '(', 300);
