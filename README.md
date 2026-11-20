@@ -91,6 +91,19 @@ man led           # after make doc
 
 **Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; a bright variant of each as `BRIGHT_BLUE` or `LIGHT_BLUE`; `GRAY`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
 
+| Number | Dark (plain name) | Number | Light |
+|---|---|---|---|
+| 0 | `BLACK` | 8 | `GRAY` (or `BRIGHT_BLACK`) |
+| 1 | `RED` | 9 | `LIGHT_RED` |
+| 2 | `GREEN` | 10 | `LIGHT_GREEN` |
+| 3 | `YELLOW` | 11 | `LIGHT_YELLOW` |
+| 4 | `BLUE` | 12 | `LIGHT_BLUE` |
+| 5 | `MAGENTA` | 13 | `LIGHT_MAGENTA` |
+| 6 | `CYAN` | 14 | `LIGHT_CYAN` |
+| 7 | `WHITE` | 15 | `LIGHT_WHITE` |
+
+`BRIGHT_` works wherever `LIGHT_` does. Defaults: text `WHITE` on `BLACK`, selection `BLACK` on `WHITE`, semicolon and reserved words `RED`, nesting levels 1–4 `BLUE`, `CYAN`, `GREEN`, `YELLOW`.
+
 The eight plain names are the dark set. Bright variants are colours 8–15 on a terminal with 16 or more colours; on an 8-colour terminal led shows the plain colour in bold instead (see `curs_color(3x)`). A number above what the terminal has falls back to white.
 
 Example, light colours on the terminal's own background:
