@@ -11,7 +11,7 @@
 - **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic (arrows, Backspace, Delete, and undo work on whole characters).
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
 - **Border handling**: text in `derwin(stdscr, LINES-2,COLS-2,1,1)` (border on) or `derwin(stdscr, LINES-1,COLS,0,0)` (border off); border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` per line and drops pure `┌──┐` lines — replaces `tr -d`.
-- **Config**: `~/.config/led/colorization.conf` (colors, `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
+- **Config**: `~/.config/led/colorization.conf` (colors by name, bright variant, number or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
 - **Tests**: 353 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Open files in with .. in the path. It used to fail.
@@ -87,11 +87,23 @@ man led           # after make doc
 | `F4` | Border on/off (subwindow inset vs full-width; pasted `│` stripped) |
 
 ## Configuration
-`~/.config/led/colorization.conf` — `key=value`, `#` comments, created on first run.
+`~/.config/led/colorization.conf` — `key=value`, `#` comments. led does not create this file; without it the built-in defaults apply. Create it and list only the keys you want to change.
 
 **Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; a bright variant of each as `BRIGHT_BLUE` or `LIGHT_BLUE`; `GRAY`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
 
 The eight plain names are the dark set. Bright variants are colours 8–15 on a terminal with 16 or more colours; on an 8-colour terminal led shows the plain colour in bold instead (see `curs_color(3x)`). A number above what the terminal has falls back to white.
+
+Example, light colours on the terminal's own background:
+```
+normal_bg=DEFAULT
+reserved_words_fg=LIGHT_RED
+meta_level1_fg=LIGHT_BLUE
+meta_level2_fg=LIGHT_CYAN
+meta_level3_fg=LIGHT_GREEN
+meta_level4_fg=LIGHT_YELLOW
+semicolon_fg=208
+```
+Give every `_bg` key the same value, or the background changes from word to word.
 
 **Display/Border**: `show_border=0` (default off, `1` shows box). Toggled by `F4`.
 
