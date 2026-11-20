@@ -140,12 +140,6 @@ editor_bind_terminal_keys (Editor *ed)
   ed->key_word_right = LED_KEY_WORD_RIGHT;
 }
 
-static int
-is_search_chord (int ch)
-{
-  return ch == 31 || ch == LED_KEY_SEARCH || ch == LED_KEY_SEARCH_ALT;
-}
-
 void
 editor_init (Editor *ed, int argc, char *argv[])
 {
@@ -419,50 +413,6 @@ editor_draw_compat (Pane *win, Editor *ed)
 {
   editor_draw (win, NULL, ed);
 }
-static int
-goto_edit (Editor *ed, int ch)
-{
-  if (ch == 27)
-    {
-      ed->goto_mode = 0;
-      ed->goto_buffer[0] = '\0';
-      set_status_message (ed, "Cancelled");
-      return 0;
-    }
-  if (ch == 10 || ch == 13 || ch == LED_KEY_ENTER)
-    {
-      if (editor_apply_goto (ed, ed->goto_buffer) == 0)
-        {
-          char msg[64];
-          snprintf (msg, sizeof msg, "Line %d Col %d",
-                    ed->cursor_line + 1, ed->cursor_col + 1);
-          set_status_message (ed, msg);
-        }
-      else
-        set_status_message (ed, "Bad line number");
-      ed->goto_mode = 0;
-      return 0;
-    }
-  if (ch == 127 || ch == 8 || ch == LED_KEY_BACKSPACE)
-    {
-      int n = (int) strlen (ed->goto_buffer);
-      if (n > 0)
-        ed->goto_buffer[n - 1] = '\0';
-      return 0;
-    }
-  if ((ch >= '0' && ch <= '9') || ch == ':')
-    {
-      int n = (int) strlen (ed->goto_buffer);
-      if (n < (int) sizeof (ed->goto_buffer) - 1)
-        {
-          ed->goto_buffer[n] = (char) ch;
-          ed->goto_buffer[n + 1] = '\0';
-        }
-      return 0;
-    }
-  return 0;
-}
-
 int
 editor_handle_input (Editor *ed, int ch)
 {
@@ -481,120 +431,14 @@ editor_handle_input (Editor *ed, int ch)
     }
   ed->quit_armed = 0;
 
-  if (ed->goto_mode)
-    return goto_edit (ed, ch);
-  if (ch == 7 && !ed->search_mode && ed->replace_step == 0)
+  /* The controller turns the key into a symbol, a macro, or a token. */
+  unsigned long gen_before = ed->model.edit_generation;
+  (void) handle_input (ch, &ed->model, &ed->scroll_row, &ed->scroll_col,
+                       &ed->cursor_line, &ed->cursor_col,
+                       &ed->show_line_numbers, ed->search_buffer,
+                       &ed->search_mode, &ed->clipboard, ed->filename, ed);
+  if (controller_key_was_plain ())
     {
-      ed->goto_mode = 1;
-      ed->goto_buffer[0] = '\0';
-      ed->meta_pending = 0;
-      set_status_message (ed, "Go to line[:col]");
-      return 0;
-    }
-
-  // Handle config toggles
-  if (ch == LED_KEY_F (2))
-    {
-      ed->show_line_numbers = !ed->show_line_numbers;
-      return 0;
-    }
-  if (ch == LED_KEY_F (3))
-    {
-      ed->config.display.word_wrap = !ed->config.display.word_wrap;
-      set_status_message (ed, ed->config.display.word_wrap ? "Word wrap: ON" : "Word wrap: OFF");
-      return 0;
-    }
-  if (ch == LED_KEY_F (4))
-    {
-      ed->config.display.show_border = !ed->config.display.show_border;
-      // Invalidate view so next draw does a full repaint (border appears/disappears)
-      view_invalidate();
-      set_status_message (ed, ed->config.display.show_border ? "Border: ON" : "Border: OFF (xterm copy clean)");
-      return 0;
-    }
-  /* Byte 31 is traditional Ctrl+/ (and Ctrl+_). The other two codes
-   * are the same chord from a terminal that sends a modified-key
-   * sequence. Consume the chord either way so it is never inserted. */
-  if (is_search_chord (ch))
-    {
-      if (ed->config.search.enabled)
-        {
-          ed->search_mode = 1;
-          ed->replace_step = 0;
-          memset (ed->search_buffer, 0, sizeof (ed->search_buffer));
-          set_status_message (ed, "Search (Esc to cancel):");
-        }
-      return 0;
-    }
-  if (ch == 18 && ed->config.search.enabled)
-    {
-      if (ed->replace_step == 0)
-        {
-          ed->replace_step = 1;
-          ed->search_mode = 0;
-          memset (ed->search_buffer, 0, sizeof (ed->search_buffer));
-          memset (ed->replace_buffer, 0, sizeof (ed->replace_buffer));
-        }
-    }
-  else if (ed->replace_step == 1)
-    {
-      if (ch == 27)
-        ed->replace_step = 0;
-      else if (ch == 10 || ch == 13 || ch == LED_KEY_ENTER)
-        {
-          if (strlen (ed->search_buffer) > 0)
-            ed->replace_step = 2;
-        }
-      else if (((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
-               && strlen (ed->search_buffer) < sizeof (ed->search_buffer) - 1)
-        {
-          strncat (ed->search_buffer, (char *) &ch, 1);
-        }
-    }
-  else if (ed->replace_step == 2)
-    {
-      if (ch == 27)
-        ed->replace_step = 0;
-      else if (ch == 10 || ch == 13 || ch == LED_KEY_ENTER)
-        {
-          int n = buffer_replace_all (&ed->model, ed->search_buffer,
-                                      ed->replace_buffer);
-          ed->replace_step = 0;
-          if (n > 0)
-            {
-              /* Replace is not recorded for undo, and every position
-               * already on the stacks is now wrong. Drop them. */
-              free_undo_stacks (&ed->undo_stack, &ed->redo_stack);
-              ed->file_modified = 1;
-              ed->unsaved_keystrokes++;
-              int len = buffer_get_line_length (&ed->model, ed->cursor_line);
-              if (ed->cursor_col > len)
-                ed->cursor_col = len;
-              char msg[64];
-              snprintf (msg, sizeof msg, "Replaced %d (cannot be undone)", n);
-              set_status_message (ed, msg);
-            }
-          else
-            set_status_message (ed, n == 0 ? "Not found" : "Bad pattern");
-        }
-      else if (((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
-               && strlen (ed->replace_buffer) <
-               sizeof (ed->replace_buffer) - 1)
-        {
-          strncat (ed->replace_buffer, (char *) &ch, 1);
-        }
-    }
-  else
-    {
-      unsigned long gen_before = ed->model.edit_generation;
-      if (handle_input
-          (ch, &ed->model, &ed->scroll_row, &ed->scroll_col, &ed->cursor_line,
-           &ed->cursor_col, &ed->show_line_numbers, ed->search_buffer,
-            &ed->search_mode, &ed->clipboard, ed->filename, ed) != 0)
-        {
-          set_status_message (ed,
-                              "Error: Operation failed (insufficient memory?)");
-        }
       ed->prev_key = ch;
       /* Modified means the text changed, whatever key did it. That
        * covers undo and redo, and leaves out copy and cursor keys. */

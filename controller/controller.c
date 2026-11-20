@@ -209,7 +209,7 @@ free_undo_stacks (UndoStack *undo, UndoStack *redo)
     }
 }
 
-/* === Simple dispatch table (KISS) === */
+/* === The state every action works on === */
 typedef struct {
     Buffer   *buf;
     int      *scroll_row, *scroll_col;
@@ -221,11 +221,6 @@ typedef struct {
     const char *filename;
     Editor   *ed;
 } InputContext;
-
-typedef struct {
-    int  key;
-    void (*handler)(int ch, InputContext *ctx);
-} KeyHandler;
 
 /* Forward declarations for handlers */
 static void handle_left      (int ch, InputContext *ctx);
@@ -241,6 +236,8 @@ static void handle_redo      (int ch, InputContext *ctx);
 static void handle_select_all(int ch, InputContext *ctx);
 static void handle_copy      (int ch, InputContext *ctx);
 static void handle_enter     (int ch, InputContext *ctx);
+static void handle_newline   (int ch, InputContext *ctx);
+static void do_symbol (InputContext *ctx, int action, int value);
 static void handle_cut       (int ch, InputContext *ctx);
 static void handle_paste     (int ch, InputContext *ctx);
 static void handle_save      (int ch, InputContext *ctx);
@@ -254,69 +251,6 @@ static void handle_delete_word(int ch, InputContext *ctx);
 static void handle_match_brace(int ch, InputContext *ctx);
 static void handle_comment   (int ch, InputContext *ctx);
 static void handle_outdent   (int ch, InputContext *ctx);
-
-static const KeyHandler key_table[] = {
-    { LED_KEY_LEFT,   handle_left },
-    { LED_KEY_RIGHT,  handle_right },
-    { LED_KEY_UP,     handle_up },
-    { LED_KEY_DOWN,   handle_down },
-    { LED_KEY_HOME,   handle_home },
-    { LED_KEY_END,    handle_end },
-    { LED_KEY_PPAGE,  handle_ppage },
-    { LED_KEY_NPAGE,  handle_npage },
-    { 26,         handle_undo },        /* Ctrl+Z */
-    { 25,         handle_redo },        /* Ctrl+Y */
-    { 1,          handle_select_all },  /* Ctrl+A */
-    { 3,          handle_copy },        /* Ctrl+C */
-    { LED_KEY_ENTER,  handle_enter },
-    { 10,         handle_enter },
-    { 13,         handle_enter },
-    { 24,         handle_cut },         /* Ctrl+X */
-    { 22,         handle_paste },       /* Ctrl+V */
-    { 19,         handle_save },        /* Ctrl+S */
-    { LED_KEY_BACKSPACE, handle_backspace },
-    { 127,        handle_backspace },  /* DEL / ^? — common terminal Backspace */
-    { 8,          handle_backspace },  /* BS / Ctrl+H */
-    { LED_KEY_DC,     handle_delete },      /* Delete key */
-    { 9,          handle_tab },         /* TAB */
-    { 11,         handle_comment },     /* Ctrl+K toggle // comment */
-    { 23,         handle_delete_word }, /* Ctrl+W delete word backward */
-    { 29,         handle_match_brace }, /* Ctrl+] matching brace */
-    { LED_KEY_BTAB,   handle_outdent },     /* Shift-Tab outdent */
-    { 0,          NULL }                /* sentinel */
-};
-
-static void
-dispatch_key (int ch, InputContext *ctx)
-{
-  if (ctx->ed && ctx->ed->key_word_left > 0 && ch == ctx->ed->key_word_left)
-    {
-      handle_word_left (ch, ctx);
-      return;
-    }
-  if (ctx->ed && ctx->ed->key_word_right > 0 && ch == ctx->ed->key_word_right)
-    {
-      handle_word_right (ch, ctx);
-      return;
-    }
-  for (int i = 0; key_table[i].handler != NULL; i++)
-    {
-      if (key_table[i].key == ch)
-        {
-          /* Whatever one key press records is one undo step: an
-           * indented newline, a tab of spaces, a comment toggle. */
-          int grouped = (ctx->ed && ch != 26 && ch != 25);
-          int start = grouped ? ctx->ed->undo_stack.count : -1;
-          key_table[i].handler (ch, ctx);
-          if (grouped && ctx->ed->undo_stack.count > start)
-            chain_since (&ctx->ed->undo_stack, start);
-          return;
-        }
-    }
-  /* ASCII printables and UTF-8 continuation / lead bytes (128-255) */
-  if ((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
-    handle_printable (ch, ctx);
-}
 
 /* === Handler implementations === */
 
@@ -506,28 +440,28 @@ static void handle_down (int ch, InputContext *ctx)
 static void handle_home (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (ctx->ed && ctx->ed->prev_key == LED_KEY_HOME)
-    {
-      *ctx->cursor_line = 0;
-      *ctx->cursor_col = 0;
-      *ctx->scroll_row = 0;
-      *ctx->scroll_col = 0;
-    }
-  else
-    *ctx->cursor_col = 0;
+  *ctx->cursor_col = 0;
 }
 
 static void handle_end (int ch, InputContext *ctx)
 {
   (void)ch;
-  if (ctx->ed && ctx->ed->prev_key == LED_KEY_END)
-    {
-      *ctx->cursor_line = buffer_num_lines (ctx->buf) - 1;
-      *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
-      *ctx->scroll_row = *ctx->cursor_line > 5 ? *ctx->cursor_line - 5 : 0;
-    }
-  else
-    *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+  *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+}
+
+static void handle_top (InputContext *ctx)
+{
+  *ctx->cursor_line = 0;
+  *ctx->cursor_col = 0;
+  *ctx->scroll_row = 0;
+  *ctx->scroll_col = 0;
+}
+
+static void handle_bottom (InputContext *ctx)
+{
+  *ctx->cursor_line = buffer_num_lines (ctx->buf) - 1;
+  *ctx->cursor_col = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+  *ctx->scroll_row = *ctx->cursor_line > 5 ? *ctx->cursor_line - 5 : 0;
 }
 
 /* Lines a page key moves: the screen height less a little overlap. */
@@ -601,15 +535,7 @@ static void handle_select_all (int ch, InputContext *ctx)
     }
 }
 
-static void
-insert_with_undo (InputContext *ctx, char c)
-{
-  if (ctx->ed)
-    push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, c);
-  buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, c);
-  (*ctx->cursor_col)++;
-}
-
+/* One level of indent, typed as symbols. */
 static void
 insert_indent_unit (InputContext *ctx)
 {
@@ -618,13 +544,27 @@ insert_indent_unit (InputContext *ctx)
   int tabw = ctx->ed->config.display.tab_width;
   if (ctx->ed->config.display.spaces_for_tab)
     {
-      if (tabw < 1)
-        return;
       for (int i = 0; i < tabw; i++)
-        insert_with_undo (ctx, ' ');
+        do_symbol (ctx, S_INSERT, ' ');
     }
   else if (tabw != 0)
-    insert_with_undo (ctx, '\t');
+    do_symbol (ctx, S_INSERT, '\t');
+}
+
+/* Split the line at the cursor. Nothing else. */
+static void handle_newline (int ch, InputContext *ctx)
+{
+  (void)ch;
+  int row = *ctx->cursor_line;
+  int col = *ctx->cursor_col;
+  if (ctx->ed)
+    {
+      push_undo (&ctx->ed->undo_stack, true, row, col, '\n');
+      clear_redo (&ctx->ed->redo_stack);
+    }
+  buffer_insert_char (ctx->buf, row, col, '\n');
+  (*ctx->cursor_line)++;
+  *ctx->cursor_col = 0;
 }
 
 static void handle_enter (int ch, InputContext *ctx)
@@ -658,18 +598,12 @@ static void handle_enter (int ch, InputContext *ctx)
           free (line);
         }
     }
-  if (ctx->ed)
-    {
-      push_undo (&ctx->ed->undo_stack, true, row, col, '\n');
-      clear_redo (&ctx->ed->redo_stack);
-    }
-  buffer_insert_char (ctx->buf, row, col, '\n');
-  (*ctx->cursor_line)++;
-  *ctx->cursor_col = 0;
+  /* The macro itself: a newline, then the indent, typed as symbols. */
+  do_symbol (ctx, S_NEWLINE, 0);
   if (do_indent)
     {
       for (int i = 0; i < indent_n; i++)
-        insert_with_undo (ctx, indent[i]);
+        do_symbol (ctx, S_INSERT, (unsigned char) indent[i]);
       if (extra)
         insert_indent_unit (ctx);
     }
@@ -880,36 +814,22 @@ static void handle_tab (int ch, InputContext *ctx)
   if (ctx->ed && ctx->ed->config.display.tab_width == 0) return;
   if (ctx->ed && ctx->ed->config.display.spaces_for_tab)
     {
-      clear_redo (&ctx->ed->redo_stack);
+      /* Spaces up to the next tab stop, typed as symbols. */
       char *line = buffer_get_line (ctx->buf, *ctx->cursor_line);
       if (line)
         {
-          int line_len = strlen (line);
-          int current_vis = visual_column (line, line_len, *ctx->cursor_col,
-                                           ctx->ed->config.display.tab_width);
           int tabw = ctx->ed->config.display.tab_width;
+          int current_vis = visual_column (line, (int) strlen (line),
+                                           *ctx->cursor_col, tabw);
           int spaces = tabw - (current_vis % tabw);
           if (spaces == 0) spaces = tabw;
-          for (int i = 0; i < spaces; i++)
-            {
-              if (ctx->ed)
-                push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, ' ');
-              buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, ' ');
-              (*ctx->cursor_col)++;
-            }
           free (line);
+          for (int i = 0; i < spaces; i++)
+            do_symbol (ctx, S_INSERT, ' ');
         }
     }
-    else
-    {
-      if (ctx->ed)
-        {
-          push_undo (&ctx->ed->undo_stack, true, *ctx->cursor_line, *ctx->cursor_col, '\t');
-          clear_redo (&ctx->ed->redo_stack);
-        }
-      buffer_insert_char (ctx->buf, *ctx->cursor_line, *ctx->cursor_col, '\t');
-      (*ctx->cursor_col)++;
-    }
+  else
+    do_symbol (ctx, S_INSERT, '\t');
 }
 
 static void handle_printable (int ch, InputContext *ctx)
@@ -1056,7 +976,7 @@ handle_delete_word (int ch, InputContext *ctx)
   int guard = 0;
   while ((*ctx->cursor_line != tline || *ctx->cursor_col != tcol)
          && guard++ < 100000)
-    handle_backspace (0, ctx);
+    do_symbol (ctx, S_BACKSPACE, 1);
 }
 
 static int
@@ -1449,7 +1369,661 @@ handle_outdent (int ch, InputContext *ctx)
     }
   free (line);
 }
-/* === End of dispatch table === */
+/* === symbol / macro / token ===
+ *
+ * Every edit goes through one of three functions with one signature:
+ *
+ *   symbol (action, value)   one action            a key press
+ *   macro  (action, value)   several symbols       one undo step
+ *   token  (action, value)   keys collected into   a prompt
+ *                            a unit, then acted on
+ *
+ * They act on the attached context: an Editor (controller_attach), or
+ * the pieces handle_input was given.
+ */
+
+static InputContext *cx;        /* what the three functions act on */
+static InputContext attached;   /* storage for controller_attach */
+static int last_plain;          /* did the last key reach a symbol/macro? */
+
+void
+controller_attach (Editor *ed)
+{
+  if (!ed)
+    {
+      cx = NULL;
+      return;
+    }
+  attached = (InputContext) {
+    .buf = &ed->model,
+    .scroll_row = &ed->scroll_row,
+    .scroll_col = &ed->scroll_col,
+    .cursor_line = &ed->cursor_line,
+    .cursor_col = &ed->cursor_col,
+    .show_line_numbers = &ed->show_line_numbers,
+    .search_buffer = ed->search_buffer,
+    .search_mode = &ed->search_mode,
+    .clipboard = &ed->clipboard,
+    .filename = ed->filename,
+    .ed = ed
+  };
+  cx = &attached;
+}
+
+int
+controller_key_was_plain (void)
+{
+  return last_plain;
+}
+
+/* Keep the cursor on a real character of a real line. */
+static void
+settle (InputContext *ctx)
+{
+  int nl = buffer_num_lines (ctx->buf);
+  if (*ctx->cursor_line >= nl)
+    *ctx->cursor_line = nl > 0 ? nl - 1 : 0;
+  if (*ctx->cursor_line < 0)
+    *ctx->cursor_line = 0;
+  int clen = buffer_get_line_length (ctx->buf, *ctx->cursor_line);
+  if (*ctx->cursor_col > clen)
+    *ctx->cursor_col = clen;
+  if (*ctx->cursor_col < 0)
+    *ctx->cursor_col = 0;
+  /* Up/Down can land inside a multi-byte character. Step back to
+   * its first byte so the next edit cannot split it. */
+  int steps = 0;
+  while (*ctx->cursor_col > 0 && *ctx->cursor_col < clen && steps++ < 3
+         && is_utf8_cont (buffer_get_char (ctx->buf, *ctx->cursor_line,
+                                           *ctx->cursor_col)))
+    (*ctx->cursor_col)--;
+}
+
+/* --- symbol --- */
+
+static void
+do_symbol (InputContext *ctx, int action, int value)
+{
+  int times = value > 0 ? value : 1;
+  switch (action)
+    {
+    case S_INSERT:
+      handle_printable (value, ctx);
+      break;
+    case S_NEWLINE:
+      handle_newline (0, ctx);
+      break;
+    case S_LEFT:
+      while (times--) handle_left (0, ctx);
+      break;
+    case S_RIGHT:
+      while (times--) handle_right (0, ctx);
+      break;
+    case S_UP:
+      while (times--) handle_up (0, ctx);
+      break;
+    case S_DOWN:
+      while (times--) handle_down (0, ctx);
+      break;
+    case S_HOME:
+      handle_home (0, ctx);
+      break;
+    case S_END:
+      handle_end (0, ctx);
+      break;
+    case S_TOP:
+      handle_top (ctx);
+      break;
+    case S_BOTTOM:
+      handle_bottom (ctx);
+      break;
+    case S_PAGE_UP:
+      while (times--) handle_ppage (0, ctx);
+      break;
+    case S_PAGE_DOWN:
+      while (times--) handle_npage (0, ctx);
+      break;
+    case S_WORD_LEFT:
+      while (times--) handle_word_left (0, ctx);
+      break;
+    case S_WORD_RIGHT:
+      while (times--) handle_word_right (0, ctx);
+      break;
+    case S_MATCH_BRACE:
+      handle_match_brace (0, ctx);
+      break;
+    case S_BACKSPACE:
+      while (times--) handle_backspace (0, ctx);
+      break;
+    case S_DELETE:
+      while (times--) handle_delete (0, ctx);
+      break;
+    case S_UNDO:
+      while (times--) handle_undo (0, ctx);
+      break;
+    case S_REDO:
+      while (times--) handle_redo (0, ctx);
+      break;
+    case S_SELECT_ALL:
+      handle_select_all (0, ctx);
+      break;
+    case S_COPY:
+      handle_copy (0, ctx);
+      break;
+    case S_SAVE:
+      handle_save (0, ctx);
+      break;
+    case S_TOGGLE_NUMBERS:
+      *ctx->show_line_numbers = !*ctx->show_line_numbers;
+      break;
+    case S_TOGGLE_WRAP:
+      if (ctx->ed)
+        {
+          ctx->ed->config.display.word_wrap = !ctx->ed->config.display.word_wrap;
+          set_status_message (ctx->ed, ctx->ed->config.display.word_wrap
+                              ? "Word wrap: ON" : "Word wrap: OFF");
+        }
+      break;
+    case S_TOGGLE_BORDER:
+      if (ctx->ed)
+        {
+          ctx->ed->config.display.show_border = !ctx->ed->config.display.show_border;
+          /* The border appears or disappears: repaint everything. */
+          view_invalidate ();
+          set_status_message (ctx->ed, ctx->ed->config.display.show_border
+                              ? "Border: ON" : "Border: OFF (xterm copy clean)");
+        }
+      break;
+    default:
+      break;
+    }
+}
+
+/* A selection lasts until the next action that is not Select All or
+ * Copy. Otherwise the highlight would never go away. */
+static void
+end_selection (InputContext *ctx)
+{
+  if (ctx->ed)
+    ctx->ed->selection_active = 0;
+}
+
+int
+symbol (int action, int value)
+{
+  if (!cx)
+    return -1;
+  do_symbol (cx, action, value);
+  if (action != S_SELECT_ALL && action != S_COPY
+      && action != S_TOGGLE_NUMBERS && action != S_TOGGLE_WRAP
+      && action != S_TOGGLE_BORDER)
+    end_selection (cx);
+  settle (cx);
+  return 0;
+}
+
+/* --- macro --- */
+
+static void
+do_macro (InputContext *ctx, int action, int value)
+{
+  int times = value > 0 ? value : 1;
+  /* Whatever a macro records is one undo step. */
+  int start = ctx->ed ? ctx->ed->undo_stack.count : -1;
+  while (times--)
+    switch (action)
+      {
+      case M_ENTER:
+        handle_enter (0, ctx);
+        break;
+      case M_TAB:
+        handle_tab (0, ctx);
+        break;
+      case M_OUTDENT:
+        handle_outdent (0, ctx);
+        break;
+      case M_COMMENT:
+        handle_comment (0, ctx);
+        break;
+      case M_DELETE_WORD:
+        handle_delete_word (0, ctx);
+        break;
+      case M_CUT:
+        handle_cut (0, ctx);
+        break;
+      case M_PASTE:
+        handle_paste (0, ctx);
+        break;
+      default:
+        break;
+      }
+  if (ctx->ed && start >= 0 && ctx->ed->undo_stack.count > start)
+    chain_since (&ctx->ed->undo_stack, start);
+}
+
+int
+macro (int action, int value)
+{
+  if (!cx)
+    return -1;
+  do_macro (cx, action, value);
+  end_selection (cx);
+  settle (cx);
+  return 0;
+}
+
+/* --- token --- */
+
+/* Which prompt is collecting keys, if any. */
+static int
+token_open (InputContext *ctx)
+{
+  Editor *ed = ctx->ed;
+  if (ed && ed->goto_mode)
+    return K_GOTO;
+  if (ed && ed->replace_step)
+    return K_REPLACE;
+  if (*ctx->search_mode)
+    return K_SEARCH;
+  if (ed && ed->meta_pending)
+    return K_META;
+  return 0;
+}
+
+static void
+text_append (char *text, size_t size, int c)
+{
+  size_t n = strlen (text);
+  if (n + 1 < size)
+    {
+      text[n] = (char) c;
+      text[n + 1] = '\0';
+    }
+}
+
+static void
+text_erase (char *text)
+{
+  /* Remove one whole character, not one byte of it. */
+  size_t n = strlen (text);
+  while (n > 0 && is_utf8_cont (text[n - 1]))
+    n--;
+  if (n > 0)
+    n--;
+  text[n] = '\0';
+}
+
+static void
+token_begin (InputContext *ctx, int kind)
+{
+  Editor *ed = ctx->ed;
+  switch (kind)
+    {
+    case K_SEARCH:
+      *ctx->search_mode = 1;
+      memset (ctx->search_buffer, 0, 256);
+      if (ed)
+        {
+          ed->replace_step = 0;
+          set_status_message (ed, "Search (Esc to cancel):");
+        }
+      break;
+    case K_REPLACE:
+      if (ed && ed->replace_step == 0)
+        {
+          ed->replace_step = 1;
+          *ctx->search_mode = 0;
+          memset (ed->search_buffer, 0, sizeof ed->search_buffer);
+          memset (ed->replace_buffer, 0, sizeof ed->replace_buffer);
+        }
+      break;
+    case K_GOTO:
+      if (ed)
+        {
+          ed->goto_mode = 1;
+          ed->goto_buffer[0] = '\0';
+          ed->meta_pending = 0;
+          set_status_message (ed, "Go to line[:col]");
+        }
+      break;
+    case K_META:
+      if (ed)
+        {
+          ed->meta_pending = 1;
+          set_status_message (ed, "Esc-b back word  Esc-f forward word");
+        }
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+token_char (InputContext *ctx, int kind, int c)
+{
+  Editor *ed = ctx->ed;
+  switch (kind)
+    {
+    case K_SEARCH:
+      text_append (ctx->search_buffer, 256, c);
+      break;
+    case K_REPLACE:
+      if (ed->replace_step == 1)
+        text_append (ed->search_buffer, sizeof ed->search_buffer, c);
+      else
+        text_append (ed->replace_buffer, sizeof ed->replace_buffer, c);
+      break;
+    case K_GOTO:
+      if ((c >= '0' && c <= '9') || c == ':')
+        text_append (ed->goto_buffer, sizeof ed->goto_buffer, c);
+      break;
+    case K_META:
+      /* Esc then one key: the pair is the token. */
+      ed->meta_pending = 0;
+      if (c == 'b' || c == LED_KEY_LEFT)
+        do_symbol (ctx, S_WORD_LEFT, 1);
+      else if (c == 'f' || c == LED_KEY_RIGHT)
+        do_symbol (ctx, S_WORD_RIGHT, 1);
+      else if (c == LED_KEY_BACKSPACE || c == 127 || c == 8)
+        do_macro (ctx, M_DELETE_WORD, 1);
+      else
+        set_status_message (ed, "Cancelled");
+      end_selection (ctx);
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+token_erase (InputContext *ctx, int kind)
+{
+  Editor *ed = ctx->ed;
+  if (kind == K_SEARCH)
+    text_erase (ctx->search_buffer);
+  else if (kind == K_REPLACE)
+    text_erase (ed->replace_step == 1 ? ed->search_buffer : ed->replace_buffer);
+  else if (kind == K_GOTO)
+    text_erase (ed->goto_buffer);
+}
+
+static void
+token_done (InputContext *ctx, int kind)
+{
+  Editor *ed = ctx->ed;
+  if (kind == K_SEARCH)
+    {
+      /* Find next. The prompt stays open so Enter repeats the search. */
+      if (ctx->search_buffer[0] == '\0')
+        return;
+      int found = search_next (ctx->buf, ctx->cursor_line, ctx->cursor_col,
+                               ctx->search_buffer);
+      if (ed)
+        set_status_message (ed, found < 0 ? "Bad pattern"
+                            : found == 0 ? "Not found"
+                            : found == 2 ? "Search wrapped" : "Found");
+    }
+  else if (kind == K_REPLACE && ed->replace_step == 1)
+    {
+      if (ed->search_buffer[0] != '\0')
+        ed->replace_step = 2;
+    }
+  else if (kind == K_REPLACE)
+    {
+      int n = buffer_replace_all (ctx->buf, ed->search_buffer,
+                                  ed->replace_buffer);
+      ed->replace_step = 0;
+      if (n > 0)
+        {
+          /* Replace is not recorded for undo, and every position
+           * already on the stacks is now wrong. Drop them. */
+          free_undo_stacks (&ed->undo_stack, &ed->redo_stack);
+          ed->file_modified = 1;
+          ed->unsaved_keystrokes++;
+          char msg[64];
+          snprintf (msg, sizeof msg, "Replaced %d (cannot be undone)", n);
+          set_status_message (ed, msg);
+        }
+      else
+        set_status_message (ed, n == 0 ? "Not found" : "Bad pattern");
+    }
+  else if (kind == K_GOTO)
+    {
+      if (editor_apply_goto (ed, ed->goto_buffer) == 0)
+        {
+          char msg[64];
+          snprintf (msg, sizeof msg, "Line %d Col %d",
+                    ed->cursor_line + 1, ed->cursor_col + 1);
+          set_status_message (ed, msg);
+        }
+      else
+        set_status_message (ed, "Bad line number");
+      ed->goto_mode = 0;
+    }
+}
+
+static void
+token_cancel (InputContext *ctx, int kind)
+{
+  Editor *ed = ctx->ed;
+  if (kind == K_SEARCH)
+    {
+      *ctx->search_mode = 0;
+      ctx->search_buffer[0] = '\0';
+    }
+  else if (kind == K_REPLACE)
+    ed->replace_step = 0;
+  else if (kind == K_GOTO)
+    {
+      ed->goto_mode = 0;
+      ed->goto_buffer[0] = '\0';
+      set_status_message (ed, "Cancelled");
+    }
+  else if (kind == K_META)
+    ed->meta_pending = 0;
+}
+
+static void
+do_token (InputContext *ctx, int action, int value)
+{
+  if (action == T_BEGIN)
+    {
+      token_begin (ctx, value);
+      return;
+    }
+  int kind = token_open (ctx);
+  if (!kind)
+    return;
+  if (action == T_CHAR)
+    token_char (ctx, kind, value);
+  else if (action == T_ERASE)
+    token_erase (ctx, kind);
+  else if (action == T_DONE)
+    token_done (ctx, kind);
+  else if (action == T_CANCEL)
+    token_cancel (ctx, kind);
+}
+
+int
+token (int action, int value)
+{
+  if (!cx)
+    return -1;
+  do_token (cx, action, value);
+  settle (cx);
+  return 0;
+}
+
+/* === Keys ===
+ * What each key means, as data: which of the three functions, which
+ * action, which value. */
+
+typedef int (*control_fn) (int action, int value);
+
+typedef struct {
+  int key;
+  control_fn level;
+  int action;
+  int value;
+} KeyBinding;
+
+static const KeyBinding bindings[] = {
+  { LED_KEY_LEFT,      symbol, S_LEFT, 1 },
+  { LED_KEY_RIGHT,     symbol, S_RIGHT, 1 },
+  { LED_KEY_UP,        symbol, S_UP, 1 },
+  { LED_KEY_DOWN,      symbol, S_DOWN, 1 },
+  { LED_KEY_HOME,      symbol, S_HOME, 0 },
+  { LED_KEY_END,       symbol, S_END, 0 },
+  { LED_KEY_PPAGE,     symbol, S_PAGE_UP, 1 },
+  { LED_KEY_NPAGE,     symbol, S_PAGE_DOWN, 1 },
+  { 26,                symbol, S_UNDO, 1 },          /* Ctrl+Z */
+  { 25,                symbol, S_REDO, 1 },          /* Ctrl+Y */
+  { 1,                 symbol, S_SELECT_ALL, 0 },    /* Ctrl+A */
+  { 3,                 symbol, S_COPY, 0 },          /* Ctrl+C */
+  { 19,                symbol, S_SAVE, 0 },          /* Ctrl+S */
+  { LED_KEY_BACKSPACE, symbol, S_BACKSPACE, 1 },
+  { 127,               symbol, S_BACKSPACE, 1 },     /* DEL / ^? */
+  { 8,                 symbol, S_BACKSPACE, 1 },     /* BS / Ctrl+H */
+  { LED_KEY_DC,        symbol, S_DELETE, 1 },
+  { 29,                symbol, S_MATCH_BRACE, 0 },   /* Ctrl+] */
+  { LED_KEY_ENTER,     macro,  M_ENTER, 1 },
+  { 10,                macro,  M_ENTER, 1 },
+  { 13,                macro,  M_ENTER, 1 },
+  { 9,                 macro,  M_TAB, 1 },
+  { LED_KEY_BTAB,      macro,  M_OUTDENT, 1 },       /* Shift+Tab */
+  { 11,                macro,  M_COMMENT, 1 },       /* Ctrl+K */
+  { 23,                macro,  M_DELETE_WORD, 1 },   /* Ctrl+W */
+  { 24,                macro,  M_CUT, 1 },           /* Ctrl+X */
+  { 22,                macro,  M_PASTE, 1 },         /* Ctrl+V */
+  { 0, NULL, 0, 0 }
+};
+
+static int
+is_enter (int ch)
+{
+  return ch == '\n' || ch == 13 || ch == LED_KEY_ENTER;
+}
+
+static int
+is_erase (int ch)
+{
+  return ch == 127 || ch == 8 || ch == LED_KEY_BACKSPACE;
+}
+
+/* ASCII printables and the bytes of UTF-8 text. */
+static int
+is_text (int ch)
+{
+  return (ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255);
+}
+
+/* A key typed into an open prompt. */
+static void
+key_to_token (int ch)
+{
+  if (ch == 27)
+    token (T_CANCEL, 0);
+  else if (is_enter (ch))
+    token (T_DONE, 0);
+  else if (is_erase (ch))
+    token (T_ERASE, 0);
+  else if (is_text (ch))
+    token (T_CHAR, ch);
+}
+
+/* Turn one key into one call of symbol, macro, or token. */
+static void
+route_key (int ch)
+{
+  Editor *ed = cx->ed;
+  last_plain = 0;
+  if (ed)
+    {
+      if (ed->goto_mode)
+        {
+          key_to_token (ch);
+          return;
+        }
+      if (ch == 7 && !*cx->search_mode && ed->replace_step == 0)
+        {
+          token (T_BEGIN, K_GOTO);      /* Ctrl+G */
+          return;
+        }
+      if (ch == LED_KEY_F (2) || ch == LED_KEY_F (3) || ch == LED_KEY_F (4))
+        {
+          symbol (ch == LED_KEY_F (2) ? S_TOGGLE_NUMBERS
+                  : ch == LED_KEY_F (3) ? S_TOGGLE_WRAP : S_TOGGLE_BORDER, 0);
+          return;
+        }
+      /* Byte 31 is traditional Ctrl+/ (and Ctrl+_). The other two codes
+       * are the same chord from a terminal that sends a modified-key
+       * sequence. Consume the chord either way so it is never inserted. */
+      if (ch == 31 || ch == LED_KEY_SEARCH || ch == LED_KEY_SEARCH_ALT)
+        {
+          if (ed->config.search.enabled)
+            token (T_BEGIN, K_SEARCH);
+          return;
+        }
+      if (ch == 18 && ed->config.search.enabled)
+        {
+          token (T_BEGIN, K_REPLACE);   /* Ctrl+R */
+          return;
+        }
+      if (ed->replace_step)
+        {
+          key_to_token (ch);
+          return;
+        }
+    }
+  last_plain = 1;
+  if (*cx->search_mode)
+    {
+      key_to_token (ch);
+      return;
+    }
+  if (ed && ed->meta_pending)
+    {
+      token (T_CHAR, ch);       /* the key after Esc */
+      return;
+    }
+  if (ch == 27 && ed)
+    {
+      token (T_BEGIN, K_META);
+      end_selection (cx);
+      return;
+    }
+  if (ed && ed->key_word_left > 0 && ch == ed->key_word_left)
+    {
+      symbol (S_WORD_LEFT, 1);
+      return;
+    }
+  if (ed && ed->key_word_right > 0 && ch == ed->key_word_right)
+    {
+      symbol (S_WORD_RIGHT, 1);
+      return;
+    }
+  /* Home or End pressed twice in a row goes to the top or the bottom. */
+  if (ed && ch == LED_KEY_HOME && ed->prev_key == LED_KEY_HOME)
+    {
+      symbol (S_TOP, 0);
+      return;
+    }
+  if (ed && ch == LED_KEY_END && ed->prev_key == LED_KEY_END)
+    {
+      symbol (S_BOTTOM, 0);
+      return;
+    }
+  for (int i = 0; bindings[i].level != NULL; i++)
+    if (bindings[i].key == ch)
+      {
+        bindings[i].level (bindings[i].action, bindings[i].value);
+        return;
+      }
+  if (is_text (ch))
+    symbol (S_INSERT, ch);
+  else
+    end_selection (cx);
+}
 
 int
 handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
@@ -1457,114 +2031,25 @@ handle_input (int ch, Buffer *buf, int *scroll_row, int *scroll_col,
               char *search_buffer, int *search_mode, char **clipboard,
               const char *filename, Editor *ed)
 {
-  int error_occurred = 0;
-  if (*search_mode)
-    {
-      if (ch == '\n' || ch == 13 || ch == LED_KEY_ENTER)
-        {
-          if (strlen (search_buffer) > 0)
-            {
-              int found = search_next (buf, cursor_line, cursor_col, search_buffer);
-              if (ed)
-                {
-                  if (found < 0)
-                    set_status_message (ed, "Bad pattern");
-                  else if (found == 0)
-                    set_status_message (ed, "Not found");
-                  else if (found == 2)
-                    set_status_message (ed, "Search wrapped");
-                  else
-                    set_status_message (ed, "Found");
-                }
-            }
-        }
-      else if (ch == 27)
-        {
-          *search_mode = 0;
-          search_buffer[0] = 0;
-        }
-      else if ((ch >= 32 && ch <= 126) || (ch >= 128 && ch <= 255))
-        {
-          int len = strlen (search_buffer);
-          if (len < 255)
-            {
-              search_buffer[len] = (char) ch;
-              search_buffer[len + 1] = 0;
-            }
-        }
-      else if (ch == 127 || ch == 8 || ch == LED_KEY_BACKSPACE)
-        {
-          int len = strlen (search_buffer);
-          if (len > 0)
-            search_buffer[len - 1] = 0;
-        }
-    }
-  else
-    {
-      InputContext ctx = {
-        .buf = buf,
-        .scroll_row = scroll_row,
-        .scroll_col = scroll_col,
-        .cursor_line = cursor_line,
-        .cursor_col = cursor_col,
-        .show_line_numbers = show_line_numbers,
-        .search_buffer = search_buffer,
-        .search_mode = search_mode,
-        .clipboard = clipboard,
-        .filename = filename,
-        .ed = ed
-      };
-      if (ed && ed->meta_pending)
-        {
-          ed->meta_pending = 0;
-          if (ch == 'b' || ch == LED_KEY_LEFT)
-            word_backward (buf, cursor_line, cursor_col);
-          else if (ch == 'f' || ch == LED_KEY_RIGHT)
-            word_forward (buf, cursor_line, cursor_col);
-          else if (ch == LED_KEY_BACKSPACE || ch == 127 || ch == 8)
-            {
-              int start = ed->undo_stack.count;
-              handle_delete_word (0, &ctx);
-              if (ed->undo_stack.count > start)
-                chain_since (&ed->undo_stack, start);
-            }
-          else
-            set_status_message (ed, "Cancelled");
-        }
-      else if (ch == 27 && ed)
-        {
-          ed->meta_pending = 1;
-          set_status_message (ed, "Esc-b back word  Esc-f forward word");
-        }
-      else
-        dispatch_key (ch, &ctx);
-      /* A selection lasts until the next key that is not Select All
-       * or Copy. Otherwise the highlight would never go away. */
-      if (ed && ch != 1 && ch != 3)
-        ed->selection_active = 0;
-    }
-  // Clamp cursor after input
-  {
-    int nl = buffer_num_lines (buf);
-    if (*cursor_line >= nl)
-      *cursor_line = nl > 0 ? nl - 1 : 0;
-    if (*cursor_line < 0)
-      *cursor_line = 0;
-    int clen = buffer_get_line_length (buf, *cursor_line);
-    if (*cursor_col > clen)
-      {
-        *cursor_col = clen;
-      }
-    if (*cursor_col < 0)
-      *cursor_col = 0;
-    /* Up/Down can land inside a multi-byte character. Step back to
-     * its first byte so the next edit cannot split it. */
-    int steps = 0;
-    while (*cursor_col > 0 && *cursor_col < clen && steps++ < 3
-           && is_utf8_cont (buffer_get_char (buf, *cursor_line, *cursor_col)))
-      (*cursor_col)--;
-  }
-  return error_occurred ? -1 : 0;
+  InputContext ctx = {
+    .buf = buf,
+    .scroll_row = scroll_row,
+    .scroll_col = scroll_col,
+    .cursor_line = cursor_line,
+    .cursor_col = cursor_col,
+    .show_line_numbers = show_line_numbers,
+    .search_buffer = search_buffer,
+    .search_mode = search_mode,
+    .clipboard = clipboard,
+    .filename = filename,
+    .ed = ed
+  };
+  InputContext *before = cx;
+  cx = &ctx;
+  route_key (ch);
+  settle (&ctx);
+  cx = before;
+  return 0;
 }
 
 /* Search [from_line, from_col) .. exclusive end (to_line, to_col).
