@@ -172,6 +172,10 @@ run_color_tests (void)
   fprintf (stderr, "\n=== Colour tests ===\n");
   static EditorConfig cfg;
   set_default_config (&cfg);
+  test_assert (cfg.syntax.paired_keywords[0] == '\0',
+               "no word pairs by default: C nests with brackets");
+  /* Word pairs are for languages that nest with words; give one here. */
+  strcpy (cfg.syntax.paired_keywords, "begin-end");
   config_parse_syntax (&cfg);
   int *c;
 
