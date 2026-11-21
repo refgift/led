@@ -110,39 +110,22 @@ The keys are
 A value is one of the following, in any letter case.
 .TP
 .B BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE
-The eight standard colors. These are the dark set.
-.TP
-.B BRIGHT_\fIname\fB, LIGHT_\fIname\fB
-The bright variant of one of the eight, for example \fCLIGHT_BLUE\fR.
-.B GRAY
-is bright black.
+The eight curses colors, numbers 0 to 7 in this order.
+Curses has no light or dark shade of them, so there are no LIGHT_ or BRIGHT_ names.
 .TP
 .B 0 \fRto\fB 255
-A color by number, for a terminal with extended colors.
+A color by number. This is how a color past the eight is given.
 .TP
 .B DEFAULT
 The terminal's own foreground or background.
-.PP
-The sixteen named colors and their numbers:
-.PP
-.nf
-\fC0  BLACK      8  GRAY
-1  RED        9  LIGHT_RED
-2  GREEN     10  LIGHT_GREEN
-3  YELLOW    11  LIGHT_YELLOW
-4  BLUE      12  LIGHT_BLUE
-5  MAGENTA   13  LIGHT_MAGENTA
-6  CYAN      14  LIGHT_CYAN
-7  WHITE     15  LIGHT_WHITE\fR
-.fi
 .PP
 Defaults: text WHITE on BLACK, selection BLACK on WHITE,
 semicolon and reserved words RED,
 nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW.
 .PP
-The bright variants are colors 8 to 15 on a terminal with 16 or more colors.
-On a terminal with eight, a bright foreground is shown as the plain color in bold,
-and a bright background as the plain color.
+On a terminal with 16 or more colors, 8 to 15 are the bright forms of 0 to 7 (12 is bright blue).
+On a terminal with eight, such a foreground is shown as the color eight below in bold,
+and such a background as the color eight below.
 A number the terminal does not have is shown as white.
 Give every \fC_bg\fR key the same value, or the background changes from word to word.
 See
@@ -151,8 +134,8 @@ See
 Example:
 .PP
 .nf
-\fCmeta_level1_fg=LIGHT_BLUE
-reserved_words_fg=LIGHT_RED
+\fCmeta_level1_fg=12
+reserved_words_fg=9
 normal_bg=DEFAULT\fR
 .fi
 .SS Syntax

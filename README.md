@@ -11,7 +11,7 @@
 - **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic (arrows, Backspace, Delete, and undo work on whole characters).
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
 - **Border handling**: text lives in its own pane inside the screen: rows-2 × cols-2 at (1,1) with the border on, rows-1 × cols at (0,0) with it off; border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ┃ ━` from the ends of each line and drops pure `┌──┐` lines — replaces `tr -d`.
-- **Config**: two files in `~/.config/led/`, written on first run with every default as a comment: `led.conf` (general settings) and `colorization.conf` (colors by name, bright variant, number or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`). `--prefix DIR` keeps them in `DIR/led/` where `~/.config` is not the place. Env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
+- **Config**: two files in `~/.config/led/`, written on first run with every default as a comment: `led.conf` (general settings) and `colorization.conf` (the eight curses colours by name, any colour by number, or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`). `--prefix DIR` keeps them in `DIR/led/` where `~/.config` is not the place. Env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
 - **Tests**: 363 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, config files, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Paths**: a file with `..` in its path (`../src/file.c`) opens. It used to fail.
@@ -95,31 +95,20 @@ Either file may hold any key, so a `colorization.conf` from before `led.conf` ex
 
 `led --prefix DIR file` uses `DIR/led/` in place of `~/.config/led/`, for systems that keep settings somewhere else.
 
-**Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; a bright variant of each as `BRIGHT_BLUE` or `LIGHT_BLUE`; `GRAY`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
+**Colors** (the eight curses colours `BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
 
-| Number | Dark (plain name) | Number | Light |
-|---|---|---|---|
-| 0 | `BLACK` | 8 | `GRAY` (or `BRIGHT_BLACK`) |
-| 1 | `RED` | 9 | `LIGHT_RED` |
-| 2 | `GREEN` | 10 | `LIGHT_GREEN` |
-| 3 | `YELLOW` | 11 | `LIGHT_YELLOW` |
-| 4 | `BLUE` | 12 | `LIGHT_BLUE` |
-| 5 | `MAGENTA` | 13 | `LIGHT_MAGENTA` |
-| 6 | `CYAN` | 14 | `LIGHT_CYAN` |
-| 7 | `WHITE` | 15 | `LIGHT_WHITE` |
+Defaults: text `WHITE` on `BLACK`, selection `BLACK` on `WHITE`, semicolon and reserved words `RED`, nesting levels 1–4 `BLUE`, `CYAN`, `GREEN`, `YELLOW`.
 
-`BRIGHT_` works wherever `LIGHT_` does. Defaults: text `WHITE` on `BLACK`, selection `BLACK` on `WHITE`, semicolon and reserved words `RED`, nesting levels 1–4 `BLUE`, `CYAN`, `GREEN`, `YELLOW`.
+Curses names eight colours, numbers 0–7 in the order above, and no light or dark shade of them, so led has no `LIGHT_` or `BRIGHT_` names. A colour past the eight is given by its number. On a terminal with 16 or more colours, 8–15 are the bright forms of 0–7 (12 is bright blue); on an 8-colour terminal led shows the colour eight below in bold instead (see `curs_color(3x)`). A number above what the terminal has falls back to white, and so does a name led does not know.
 
-The eight plain names are the dark set. Bright variants are colours 8–15 on a terminal with 16 or more colours; on an 8-colour terminal led shows the plain colour in bold instead (see `curs_color(3x)`). A number above what the terminal has falls back to white.
-
-Example, light colours on the terminal's own background:
+Example, bright colours by number on the terminal's own background:
 ```
 normal_bg=DEFAULT
-reserved_words_fg=LIGHT_RED
-meta_level1_fg=LIGHT_BLUE
-meta_level2_fg=LIGHT_CYAN
-meta_level3_fg=LIGHT_GREEN
-meta_level4_fg=LIGHT_YELLOW
+reserved_words_fg=9
+meta_level1_fg=12
+meta_level2_fg=14
+meta_level3_fg=10
+meta_level4_fg=11
 semicolon_fg=208
 ```
 Give every `_bg` key the same value, or the background changes from word to word.
