@@ -19,18 +19,20 @@
 - **First frame, resize, `F4`**: these draw through the same painter as a key press. Before, they showed no status line, dropped word wrap, and cut a line with non-ASCII characters short (sometimes ending in `??`) until the next key.
 
 ## What Fails
-- **Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
-- **Long lines**: a line past `max_line_length` (default 10000) is cut on load. The status line says `Long line truncated`. Cut lines skip highlighting and use basic rendering. A file with cut lines opens read-only (`Ctrl+S` and autosave refuse). Raise `max_line_length` to edit it.
-- **Limits**: `max_file_size_mb` (1–100, default 10), `memory_limit_mb` (1–200, default 50), and `max_line_length` (80–100000, default 10000) are keys in `led.conf`. A value outside its range keeps the default.
-- **Language support**: highlighting and parsing are built for C/C++; other languages may be incomplete. Turn highlighting off in config if a file fights you. Strings, character literals and comments are left plain: brackets and keywords inside them are not coloured and do not nest. A `paired_keywords` pair is used only when both words, or neither, are in `reserved_words`.
-- **Error handling**: not fully standardized across modules.
-- **No per-buffer undo persistence** across sessions.
-- **Replace** (`Ctrl+R`) cannot be undone and clears the undo history. The status line says so.
-- **No fuzzing harness** yet. Empty-file, size, null-byte, truncation, and memory-ceiling loads are tested.
-- **Input sanitization**: `is_filename_safe` rejects only empty names, names over 255 bytes, and control characters. There is no directory-traversal check; `..` is allowed.
-- **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
-- **Other languages**: a file such as Python is not highlighted by default. Add its extension to `syntax_extensions` in `colorization.conf` (for example `syntax_extensions=.c,.h,.cpp,.py`) and it is highlighted with the C rules.
-- **Garbled display**: seen on Haiku only, in an assembly file (`.s`) with line numbers off, as stale rows after inserting or joining lines. Not reproduced on Linux, and not yet confirmed fixed on Haiku. Press `F4` twice (border on, then off again) to repaint the whole screen; `F2` is not a repaint key. Set `show_line_numbers=1` in `led.conf` to show line numbers in every file.
+Priority: P1 function (it does not work), P2 form (it works, but the docs or layout are wrong), P3 tests.
+
+- **P1 Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when the next line would push the nesting cache past `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Raise those keys to accept the cost, or split the file first.
+- **P1 Long lines**: a line past `max_line_length` (default 10000) is cut on load. The status line says `Long line truncated`. Cut lines skip highlighting and use basic rendering. A file with cut lines opens read-only (`Ctrl+S` and autosave refuse). Raise `max_line_length` to edit it.
+- **P2 Limits**: `max_file_size_mb` (1–100, default 10), `memory_limit_mb` (1–200, default 50), and `max_line_length` (80–100000, default 10000) are keys in `led.conf`. A value outside its range keeps the default.
+- **P1 Language support**: highlighting and parsing are built for C/C++; other languages may be incomplete. Turn highlighting off in config if a file fights you. Strings, character literals and comments are left plain: brackets and keywords inside them are not coloured and do not nest. A `paired_keywords` pair is used only when both words, or neither, are in `reserved_words`.
+- **P2 Error handling**: not fully standardized across modules.
+- **P1 No per-buffer undo persistence** across sessions.
+- **P1 Replace** (`Ctrl+R`) cannot be undone and clears the undo history. The status line says so.
+- **P3 No fuzzing harness** yet. Empty-file, size, null-byte, truncation, and memory-ceiling loads are tested.
+- **P1 Input sanitization**: `is_filename_safe` rejects only empty names, names over 255 bytes, and control characters. There is no directory-traversal check; `..` is allowed.
+- **P1 Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
+- **P2 Other languages**: a file such as Python is not highlighted by default. Add its extension to `syntax_extensions` in `colorization.conf` (for example `syntax_extensions=.c,.h,.cpp,.py`) and it is highlighted with the C rules.
+- **P1 Garbled display**: seen on Haiku only, in an assembly file (`.s`) with line numbers off, as stale rows after inserting or joining lines. Not reproduced on Linux, and not yet confirmed fixed on Haiku. Press `F4` twice (border on, then off again) to repaint the whole screen; `F2` is not a repaint key. Set `show_line_numbers=1` in `led.conf` to show line numbers in every file.
 
 Bugs: size and type (`file`, `head` sample), or a `gdb ./led` backtrace, at https://github.com/refgift/led/issues
 
