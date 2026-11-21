@@ -15,7 +15,7 @@
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
 - **Tests**: 364 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, config files, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Paths**: a file with `..` in its path (`../src/file.c`) opens. It used to fail.
-- **No terminal scrolling**: when several rows change at once, led has curses write those rows out whole. Before, in a file drawn without line numbers (a `.txt`, or any extension not in `syntax_extensions`), curses moved rows with the terminal's scroll region when a line was inserted or joined, and a terminal that handles that badly showed stale rows until `F4`.
+- **No terminal scrolling**: when several rows change at once, led has curses write those rows out whole. Before, in a file drawn without line numbers (a `.txt`, or any extension not in `syntax_extensions`), curses moved rows with the terminal's scroll region when a line was inserted or joined, and a terminal that handles that badly showed stale rows until `F4`. The corruption was seen only on Haiku; Linux terminals were not affected. Not yet confirmed on Haiku.
 - **First frame, resize, `F4`**: these draw through the same painter as a key press. Before, they showed no status line, dropped word wrap, and cut a line with non-ASCII characters short (sometimes ending in `??`) until the next key.
 
 ## What Fails
