@@ -110,12 +110,13 @@ The keys are
 A value is one of the following, in any letter case.
 .TP
 .B BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE
-The eight standard colors. These are the dark set.
+The eight curses colors, 0 to 7. Curses has no light or dark shade of them.
 .TP
 .B BRIGHT_\fIname\fB, LIGHT_\fIname\fB
-The bright variant of one of the eight, for example \fCLIGHT_BLUE\fR.
+One of the ANSI extended colors, 8 to 15, for example \fCLIGHT_BLUE\fR.
+Curses has no names for these; the names are led's own.
 .B GRAY
-is bright black.
+is extended color 8.
 .TP
 .B 0 \fRto\fB 255
 A color by number, for a terminal with extended colors.
@@ -140,9 +141,9 @@ Defaults: text WHITE on BLACK, selection BLACK on WHITE,
 semicolon and reserved words RED,
 nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW.
 .PP
-The bright variants are colors 8 to 15 on a terminal with 16 or more colors.
-On a terminal with eight, a bright foreground is shown as the plain color in bold,
-and a bright background as the plain color.
+The extended colors exist on a terminal with 16 or more colors.
+On a terminal with eight, an extended foreground is shown as the matching curses color in bold,
+and an extended background as the matching curses color.
 A number the terminal does not have is shown as white.
 Give every \fC_bg\fR key the same value, or the background changes from word to word.
 See
