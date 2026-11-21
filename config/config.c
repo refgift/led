@@ -7,12 +7,13 @@
 #include <sys/stat.h>
 #include <errno.h>
 /* A colour from colorization.conf. Accepted, in any letter case:
- *   BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE   the eight curses colours
+ *   BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE   the eight standard ones
+ *   BRIGHT_BLUE, LIGHT_BLUE, BRIGHTBLUE, LIGHTBLUE   ANSI extended colours 8-15
+ *   GRAY / GREY                                      extended colour 8
  *   DEFAULT                                          the terminal's own colour
  *   0 .. 255                                         a colour by number
- * Curses names eight colours and no shades of them, so there are no
- * LIGHT_ or BRIGHT_ names: a colour past the eight is given by its
- * number. Anything else is WHITE. */
+ * curses has no standard names past the first eight, so the bright
+ * names are led's own. Anything else is WHITE. */
 int
 string_to_color (const char *str)
 {
@@ -35,6 +36,9 @@ string_to_color (const char *str)
 
   if (strcmp (up, "DEFAULT") == 0)
     return LED_COLOR_DEFAULT;
+  if (strcmp (up, "GRAY") == 0 || strcmp (up, "GREY") == 0)
+    return LED_COLOR_BRIGHT + LED_COLOR_BLACK;
+
   int all_digits = 1;
   for (size_t i = 0; i < n; i++)
     if (!isdigit ((unsigned char) up[i]))
@@ -45,9 +49,23 @@ string_to_color (const char *str)
       return (v >= 0 && v <= 255) ? (int) v : LED_COLOR_WHITE;
     }
 
+  const char *base = up;
+  int bright = 0;
+  if (strncmp (up, "BRIGHT", 6) == 0)
+    {
+      base = up + 6;
+      bright = 1;
+    }
+  else if (strncmp (up, "LIGHT", 5) == 0)
+    {
+      base = up + 5;
+      bright = 1;
+    }
+  if (bright && (*base == '_' || *base == '-' || *base == ' '))
+    base++;
   for (int c = 0; c < 8; c++)
-    if (strcmp (up, names[c]) == 0)
-      return c;
+    if (strcmp (base, names[c]) == 0)
+      return bright ? LED_COLOR_BRIGHT + c : c;
   return LED_COLOR_WHITE;           // default
 }
 static void
@@ -425,7 +443,10 @@ color_to_string (int c, char *buf, size_t size)
     return "DEFAULT";
   if (c >= 0 && c < 8)
     return color_names[c];
-  snprintf (buf, size, "%d", c);
+  if (c >= LED_COLOR_BRIGHT && c < LED_COLOR_BRIGHT + 8)
+    snprintf (buf, size, "LIGHT_%s", color_names[c - LED_COLOR_BRIGHT]);
+  else
+    snprintf (buf, size, "%d", c);
   return buf;
 }
 
@@ -473,9 +494,10 @@ color_body (FILE *f, const EditorConfig *d)
            "# and change the value to override it. General settings are in\n"
            "# led.conf, next to this file.\n#\n"
            "# Colours: the eight curses colours BLACK RED GREEN YELLOW BLUE\n"
-           "# MAGENTA CYAN WHITE, DEFAULT for the terminal's own colour, or a\n"
-           "# number 0-255 for a colour past the eight (9 to 15 are the bright\n"
-           "# ones on a terminal with 16 colours).\n\n");
+           "# MAGENTA CYAN WHITE (0-7). The ANSI extended colours 8-15, on a\n"
+           "# terminal that has them, are LIGHT_BLUE (or BRIGHT_BLUE) and so on,\n"
+           "# and GRAY. DEFAULT is the terminal's own colour. A number 0-255\n"
+           "# also works.\n\n");
 #define PAIR(name) \
   fprintf (f, "#" #name "_fg=%s\n#" #name "_bg=%s\n", \
            color_to_string (c->name##_fg, a, sizeof a), \

@@ -265,12 +265,14 @@ run_color_tests (void)
                && string_to_color ("blue") == LED_COLOR_BLUE
                && string_to_color (" Blue ") == LED_COLOR_BLUE,
                "a colour name is read in any letter case");
-  test_assert (string_to_color ("LIGHT_BLUE") == LED_COLOR_WHITE
-               && string_to_color ("BRIGHT_BLUE") == LED_COLOR_WHITE
-               && string_to_color ("GRAY") == LED_COLOR_WHITE,
-               "there are no LIGHT_ or BRIGHT_ names: curses has eight colours");
-  test_assert (string_to_color ("12") == LED_COLOR_BRIGHT + LED_COLOR_BLUE,
-               "a colour past the eight is given by number");
+  test_assert (string_to_color ("BRIGHT_BLUE") == LED_COLOR_BRIGHT + LED_COLOR_BLUE
+               && string_to_color ("LIGHT_BLUE") == LED_COLOR_BRIGHT + LED_COLOR_BLUE
+               && string_to_color ("lightblue") == LED_COLOR_BRIGHT + LED_COLOR_BLUE
+               && string_to_color ("BRIGHT_BLUE") != string_to_color ("BLUE"),
+               "each colour has a bright variant, distinct from the plain one");
+  test_assert (string_to_color ("BRIGHT_WHITE") == 15
+               && string_to_color ("GRAY") == 8 && string_to_color ("grey") == 8,
+               "bright white is colour 15 and gray is bright black");
   test_assert (string_to_color ("208") == 208 && string_to_color ("0") == 0
                && string_to_color ("256") == LED_COLOR_WHITE,
                "a colour can be given by number, 0 to 255");

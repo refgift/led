@@ -48,10 +48,10 @@ enum {
   LED_COLOR_MAGENTA = 5,
   LED_COLOR_CYAN = 6,
   LED_COLOR_WHITE = 7,
-  /* Colours 8 to 15, given by number: a terminal with 16 or more
-   * colours shows each as the bright form of the colour eight below
-   * it. On one with only eight, a front end shows that colour in bold
-   * instead. */
+  /* Each of the eight has a bright variant, eight further on:
+   * LED_COLOR_BRIGHT + LED_COLOR_BLUE is light blue. A terminal with
+   * 16 or more colours has these as colours 8 to 15. On one with only
+   * eight, a front end shows the plain colour in bold instead. */
   LED_COLOR_BRIGHT = 8,
   /* The terminal's own foreground or background, whatever it is. */
   LED_COLOR_DEFAULT = -1
