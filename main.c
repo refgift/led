@@ -79,6 +79,28 @@ run_tests (int argc, char *argv[])
 int
 main (int argc, char *argv[])
 {
+  /* "--prefix DIR": keep the config files under DIR, not $HOME/.config.
+   * Taken out of argv here so the rest sees only the file arguments. */
+  int kept = 1;
+  for (int i = 1; i < argc; i++)
+    {
+      if (strcmp (argv[i], "--prefix") == 0)
+        {
+          if (i + 1 >= argc)
+            {
+              fprintf (stderr, "led: --prefix needs a directory\n");
+              return 2;
+            }
+          config_set_prefix (argv[++i]);
+        }
+      else if (strncmp (argv[i], "--prefix=", 9) == 0)
+        config_set_prefix (argv[i] + 9);
+      else
+        argv[kept++] = argv[i];
+    }
+  argc = kept;
+  argv[argc] = NULL;
+
   if (getenv ("LED_TEST"))
     {
       frontend_use (frontend_memory ());
@@ -88,6 +110,8 @@ main (int argc, char *argv[])
   if (argc > 1 && strcmp (argv[1], "-t") == 0)
     return run_tests (argc - 1, argv + 1);
 
+  /* First run: leave both config files behind, defaults commented. */
+  (void) config_write_defaults ();
   Editor ed;
   editor_init (&ed, argc, argv);
 

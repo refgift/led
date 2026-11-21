@@ -11,9 +11,9 @@
 - **Display**: `F2` line numbers, `F3` word wrap, `F4` border toggle (see below), status bar (version/time/position/key-meter `show_key_meter`), Unicode/Cyrillic (arrows, Backspace, Delete, and undo work on whole characters).
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
 - **Border handling**: text lives in its own pane inside the screen: rows-2 × cols-2 at (1,1) with the border on, rows-1 × cols at (0,0) with it off; border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ┃ ━` from the ends of each line and drops pure `┌──┐` lines — replaces `tr -d`.
-- **Config**: `~/.config/led/colorization.conf` (colors by name, bright variant, number or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`), env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
+- **Config**: two files in `~/.config/led/`, written on first run with every default as a comment: `led.conf` (general settings) and `colorization.conf` (colors by name, bright variant, number or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`). `--prefix DIR` keeps them in `DIR/led/` where `~/.config` is not the place. Env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 353 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, screen contents, controller actions, colours). `./led -t` on your machine.
+- **Tests**: 363 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, config files, screen contents, controller actions, colours). `./led -t` on your machine.
 - **Paths**: a file with `..` in its path (`../src/file.c`) opens. It used to fail.
 - **First frame, resize, `F4`**: these draw through the same painter as a key press. Before, they showed no status line, dropped word wrap, and cut a line with non-ASCII characters short (sometimes ending in `??`) until the next key.
 
@@ -30,7 +30,6 @@
 - **Terminal**: `xterm` block-select still copies screen cells — use `F4` off or filter; no OSC 52 system clipboard.
 - **Other languages**: a file such as Python is not highlighted by default. Add its extension to `syntax_extensions` in `colorization.conf` (for example `syntax_extensions=.c,.h,.cpp,.py`) and it is highlighted with the C rules.
 - **Garbled display**: if the screen looks corrupted, press `F4` twice (border on, then off again). `F4` repaints the whole screen. `F2` is not a repaint key. A file whose extension is not in `syntax_extensions` should need no workaround; if one does, that is a bug to report.
-- **Config file**: led does not write a default `colorization.conf`. The one file holds every setting, not only colours; it should become a general config file, or two files.
 
 Bugs: size and type (`file`, `head` sample), or a `gdb ./led` backtrace, at https://github.com/refgift/led/issues
 
@@ -65,6 +64,7 @@ make doc          # installs led.1
 ./led file.c
 ./led +142 file.c       # open at a line (compiler output)
 ./led file.c:142:8      # file:line or file:line:col
+./led --prefix DIR file.c   # config files in DIR/led, not ~/.config/led
 ./led -t          # test mode (stderr, no curses) — also LED_TEST=1 ./led
 man led           # after make doc
 ```
@@ -89,7 +89,11 @@ man led           # after make doc
 | `F4` | Border on/off (subwindow inset vs full-width; pasted `│` stripped) |
 
 ## Configuration
-`~/.config/led/colorization.conf` — `key=value`, `#` comments. led does not create this file; without it the built-in defaults apply. Create it and list only the keys you want to change.
+Two files in `~/.config/led/`, both `key=value` with `#` comments: `led.conf` for general settings and `colorization.conf` for colours and syntax words. led writes each one on first run if it is missing, with every default shown as a comment; remove the `#` from a line to change it. An existing file is never rewritten.
+
+Either file may hold any key, so a `colorization.conf` from before `led.conf` existed keeps working. `led.conf` is read last and wins when both set a key.
+
+`led --prefix DIR file` uses `DIR/led/` in place of `~/.config/led/`, for systems that keep settings somewhere else.
 
 **Colors** (`BLACK,RED,GREEN,YELLOW,BLUE,MAGENTA,CYAN,WHITE`; a bright variant of each as `BRIGHT_BLUE` or `LIGHT_BLUE`; `GRAY`; `DEFAULT` for the terminal's own colour; or a number `0`–`255`; any letter case): `normal_fg/bg`, `selection_fg/bg`, `semicolon_fg/bg`, `meta_level1..4_fg/bg`, `reserved_words_fg/bg`.
 

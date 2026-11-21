@@ -104,7 +104,8 @@ typedef enum {
 
 /**
  * EditorConfig - The root configuration object.
- * Loaded once at startup from ~/.config/led/colorization.conf (if present).
+ * Loaded once at startup from colorization.conf, then led.conf, in
+ * ~/.config/led (or under --prefix). Either file may hold any key.
  */
 typedef struct {
     int version;            /* config file format version */
@@ -133,6 +134,14 @@ typedef struct {
 
 /* Public API */
 ConfigError load_editor_config(EditorConfig* config);
+/** Use dir in place of $HOME/.config (the --prefix option): the files
+ *  are then dir/led/led.conf and dir/led/colorization.conf. NULL or ""
+ *  goes back to $HOME/.config. Call before load_editor_config. */
+void config_set_prefix(const char* dir);
+/** Create led.conf and colorization.conf, with every default shown as a
+ *  comment, where one is missing. An existing file is never touched.
+ *  Returns how many files were created. */
+int config_write_defaults(void);
 /** Fill config with the built-in defaults. Reads no file. Follow with
  *  config_parse_syntax to prepare the keyword tables. */
 void set_default_config(EditorConfig* config);

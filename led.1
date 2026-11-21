@@ -17,6 +17,9 @@ A name that already exists, colon and all, is opened as itself.
 .TP
 .B \-t
 Test mode: run model/view/controller tests to stderr, exit.
+.TP
+.BI \-\-prefix " dir"
+Keep the config files in \fIdir\fR/led/, not ~/.config/led/.
 .SH KEYBINDINGS
 .SS Navigation
 .TP
@@ -93,9 +96,12 @@ No fuzzing, still needs input sanitization, no OSC 52 clipboard.
 .IP \(bu 2
 xterm copy still sees screen cells — use F4 off.
 .SH CONFIGURATION
-\fC~/.config/led/colorization.conf\fR holds \fCkey=value\fR lines; \fC#\fR starts a comment.
+Two files in \fC~/.config/led/\fR hold \fCkey=value\fR lines; \fC#\fR starts a comment.
+\fCled.conf\fR has the general settings and \fCcolorization.conf\fR the colours and syntax words.
 .B led
-does not create the file. Without it the built-in defaults apply.
+writes each on first run if it is missing, with every default shown as a comment. An existing file is never rewritten.
+Either file may hold any key; \fCled.conf\fR is read last and wins.
+\fB\-\-prefix\fR \fIdir\fR uses \fIdir\fR\fC/led/\fR in place of \fC~/.config/led/\fR.
 List only the keys to change.
 .SS Colors
 The keys are
@@ -161,6 +167,8 @@ so the default \fCif-then\fR is ignored for C.
 \fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
 Env \fCLED_NO_BORDER=1\fR.
 .SH FILES
+.I ~/.config/led/led.conf
+.br
 .I ~/.config/led/colorization.conf
 .SH SEE ALSO
 .BR curs_color (3X),
