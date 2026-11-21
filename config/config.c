@@ -8,8 +8,8 @@
 #include <errno.h>
 /* A colour from colorization.conf. Accepted, in any letter case:
  *   BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE   the eight standard ones
- *   BRIGHT_BLUE, LIGHT_BLUE, BRIGHTBLUE, LIGHTBLUE   ANSI extended colours 8-15
- *   GRAY / GREY                                      extended colour 8
+ *   BRIGHT_BLUE, LIGHT_BLUE, BRIGHTBLUE, LIGHTBLUE   the bright variant of each
+ *   GRAY / GREY                                      bright black
  *   DEFAULT                                          the terminal's own colour
  *   0 .. 255                                         a colour by number
  * curses has no standard names past the first eight, so the bright
@@ -493,11 +493,9 @@ color_body (FILE *f, const EditorConfig *d)
            "# Each line below shows the built-in default. Remove the leading '#'\n"
            "# and change the value to override it. General settings are in\n"
            "# led.conf, next to this file.\n#\n"
-           "# Colours: the eight curses colours BLACK RED GREEN YELLOW BLUE\n"
-           "# MAGENTA CYAN WHITE (0-7). The ANSI extended colours 8-15, on a\n"
-           "# terminal that has them, are LIGHT_BLUE (or BRIGHT_BLUE) and so on,\n"
-           "# and GRAY. DEFAULT is the terminal's own colour. A number 0-255\n"
-           "# also works.\n\n");
+           "# Colours: BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE, a bright\n"
+           "# variant as LIGHT_BLUE or BRIGHT_BLUE, GRAY, DEFAULT for the\n"
+           "# terminal's own colour, or a number 0-255.\n\n");
 #define PAIR(name) \
   fprintf (f, "#" #name "_fg=%s\n#" #name "_bg=%s\n", \
            color_to_string (c->name##_fg, a, sizeof a), \
