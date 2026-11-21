@@ -359,6 +359,73 @@ test_blocked_saves (void)
     unsetenv ("HOME");
 }
 
+/* led.conf and colorization.conf: written once with every default as
+ * a comment, read from the --prefix directory, led.conf read last. */
+static void
+test_config_files (void)
+{
+  char dir[] = "/tmp/led_conf_XXXXXX";
+  if (!mkdtemp (dir))
+    {
+      test_assert (0, "mkdtemp");
+      return;
+    }
+  char general[300], colors[300], cmd[800];
+  snprintf (general, sizeof general, "%s/led/led.conf", dir);
+  snprintf (colors, sizeof colors, "%s/led/colorization.conf", dir);
+  config_set_prefix (dir);
+
+  test_assert (config_write_defaults () == 2, "first run writes both config files");
+  test_assert (access (general, R_OK) == 0 && access (colors, R_OK) == 0,
+               "led.conf and colorization.conf are under the prefix");
+  test_assert (config_write_defaults () == 0, "existing config files are left alone");
+
+  EditorConfig *def = malloc (sizeof *def);
+  EditorConfig *cfg = malloc (sizeof *cfg);
+  set_default_config (def);
+  load_editor_config (cfg);
+  test_assert (cfg->display.tab_width == def->display.tab_width
+               && cfg->colors.reserved_words_fg == def->colors.reserved_words_fg
+               && cfg->display.line_numbers_configured == 0
+               && strcmp (cfg->syntax.reserved_words, def->syntax.reserved_words) == 0,
+               "the written files change nothing: every line is a comment");
+
+  /* Take the '#' off every setting: the files must say what the
+   * defaults are, the long reserved_words line included. */
+  snprintf (cmd, sizeof cmd, "sed -i 's/^#\\([a-z0-9_]*=\\)/\\1/' '%s' '%s'",
+            general, colors);
+  test_assert (system (cmd) == 0, "uncomment the written defaults");
+  load_editor_config (cfg);
+  test_assert (strcmp (cfg->syntax.reserved_words, def->syntax.reserved_words) == 0
+               && strcmp (cfg->syntax.extensions, def->syntax.extensions) == 0
+               && strcmp (cfg->syntax.paired_keywords, def->syntax.paired_keywords) == 0,
+               "uncommented syntax lines read back as the defaults");
+  test_assert (memcmp (&cfg->colors, &def->colors, sizeof def->colors) == 0,
+               "uncommented colours read back as the defaults");
+  test_assert (cfg->display.tab_width == def->display.tab_width
+               && cfg->performance.max_line_length == def->performance.max_line_length
+               && cfg->autosave.keystrokes == def->autosave.keystrokes
+               && cfg->search.max_pattern_length == def->search.max_pattern_length
+               && cfg->display.line_numbers_configured == 1,
+               "uncommented general lines read back as the defaults");
+
+  /* An old single file still sets general keys; led.conf wins a tie. */
+  write_file (colors, "tab_width=3\nmax_line_length=500\nnormal_fg=CYAN\n");
+  write_file (general, "tab_width=5\n");
+  load_editor_config (cfg);
+  test_assert (cfg->performance.max_line_length == 500
+               && cfg->colors.normal_fg == LED_COLOR_CYAN,
+               "colorization.conf may still hold any key");
+  test_assert (cfg->display.tab_width == 5, "led.conf is read last and wins");
+
+  free (def);
+  free (cfg);
+  config_set_prefix (NULL);
+  snprintf (cmd, sizeof cmd, "rm -rf '%s'", dir);
+  if (system (cmd) != 0)
+    fprintf (stderr, "cleanup failed: %s\n", dir);
+}
+
 void
 run_safety_tests (void)
 {
@@ -369,4 +436,5 @@ run_safety_tests (void)
   test_utf8_keys ();
   test_replace_all_fixes ();
   test_blocked_saves ();
+  test_config_files ();
 }

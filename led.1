@@ -17,6 +17,9 @@ A name that already exists, colon and all, is opened as itself.
 .TP
 .B \-t
 Test mode: run model/view/controller tests to stderr, exit.
+.TP
+.BI \-\-prefix " dir"
+Keep the config files in \fIdir\fR/led/, not ~/.config/led/.
 .SH KEYBINDINGS
 .SS Navigation
 .TP
@@ -93,9 +96,12 @@ No fuzzing, still needs input sanitization, no OSC 52 clipboard.
 .IP \(bu 2
 xterm copy still sees screen cells — use F4 off.
 .SH CONFIGURATION
-\fC~/.config/led/colorization.conf\fR holds \fCkey=value\fR lines; \fC#\fR starts a comment.
+Two files in \fC~/.config/led/\fR hold \fCkey=value\fR lines; \fC#\fR starts a comment.
+\fCled.conf\fR has the general settings and \fCcolorization.conf\fR the colours and syntax words.
 .B led
-does not create the file. Without it the built-in defaults apply.
+writes each on first run if it is missing, with every default shown as a comment. An existing file is never rewritten.
+Either file may hold any key; \fCled.conf\fR is read last and wins.
+\fB\-\-prefix\fR \fIdir\fR uses \fIdir\fR\fC/led/\fR in place of \fC~/.config/led/\fR.
 List only the keys to change.
 .SS Colors
 The keys are
@@ -104,12 +110,13 @@ The keys are
 A value is one of the following, in any letter case.
 .TP
 .B BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE
-The eight standard colors. These are the dark set.
+The eight curses colors, 0 to 7. Curses has no light or dark shade of them.
 .TP
 .B BRIGHT_\fIname\fB, LIGHT_\fIname\fB
-The bright variant of one of the eight, for example \fCLIGHT_BLUE\fR.
+One of the ANSI extended colors, 8 to 15, for example \fCLIGHT_BLUE\fR.
+Curses has no names for these; the names are led's own.
 .B GRAY
-is bright black.
+is extended color 8.
 .TP
 .B 0 \fRto\fB 255
 A color by number, for a terminal with extended colors.
@@ -134,9 +141,9 @@ Defaults: text WHITE on BLACK, selection BLACK on WHITE,
 semicolon and reserved words RED,
 nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW.
 .PP
-The bright variants are colors 8 to 15 on a terminal with 16 or more colors.
-On a terminal with eight, a bright foreground is shown as the plain color in bold,
-and a bright background as the plain color.
+The extended colors exist on a terminal with 16 or more colors.
+On a terminal with eight, an extended foreground is shown as the matching curses color in bold,
+and an extended background as the matching curses color.
 A number the terminal does not have is shown as white.
 Give every \fC_bg\fR key the same value, or the background changes from word to word.
 See
@@ -161,6 +168,8 @@ so the default \fCif-then\fR is ignored for C.
 \fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
 Env \fCLED_NO_BORDER=1\fR.
 .SH FILES
+.I ~/.config/led/led.conf
+.br
 .I ~/.config/led/colorization.conf
 .SH SEE ALSO
 .BR curs_color (3X),

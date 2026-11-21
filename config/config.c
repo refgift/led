@@ -8,8 +8,8 @@
 #include <errno.h>
 /* A colour from colorization.conf. Accepted, in any letter case:
  *   BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE   the eight standard ones
- *   BRIGHT_BLUE, LIGHT_BLUE, BRIGHTBLUE, LIGHTBLUE   the bright variant of each
- *   GRAY / GREY                                      bright black
+ *   BRIGHT_BLUE, LIGHT_BLUE, BRIGHTBLUE, LIGHTBLUE   ANSI extended colours 8-15
+ *   GRAY / GREY                                      extended colour 8
  *   DEFAULT                                          the terminal's own colour
  *   0 .. 255                                         a colour by number
  * curses has no standard names past the first eight, so the bright
@@ -273,27 +273,42 @@ config_is_reserved_word (const EditorConfig *config, const char *word)
   return 0;
 }
 
-ConfigError
-load_editor_config (EditorConfig *config)
+/* Where the config files live. "--prefix DIR" replaces "$HOME/.config",
+ * for systems that keep settings somewhere else; the files are then
+ * DIR/led/led.conf and DIR/led/colorization.conf. */
+static char g_prefix[400];
+
+void
+config_set_prefix (const char *dir)
 {
-  set_default_config (config);
+  snprintf (g_prefix, sizeof g_prefix, "%s", dir ? dir : "");
+  size_t n = strlen (g_prefix);
+  while (n > 1 && g_prefix[n - 1] == '/')
+    g_prefix[--n] = '\0';
+}
+
+/* The led config directory, or 0 when there is nowhere to look. */
+static int
+config_dir (char *out, size_t size)
+{
+  if (g_prefix[0])
+    return snprintf (out, size, "%s/led", g_prefix) < (int) size;
   const char *home = getenv ("HOME");
-  if (!home)
-    {
-      config_parse_syntax (config);
-      config_apply_env_overrides (config);
-      return CONFIG_SUCCESS;
-    }
-  char path[512];
-  snprintf (path, sizeof (path), "%s/.config/led/colorization.conf", home);
+  if (!home || !*home)
+    return 0;
+  return snprintf (out, size, "%s/.config/led", home) < (int) size;
+}
+
+/* Read one file of key=value lines. Every key is accepted in either
+ * file, so a colorization.conf written before led.conf existed still
+ * sets everything it used to. A missing file changes nothing. */
+static void
+config_read_file (EditorConfig *config, const char *path)
+{
   FILE *file = fopen (path, "r");
   if (!file)
-    {
-      config_parse_syntax (config);
-      config_apply_env_overrides (config);
-      return CONFIG_SUCCESS;     // use defaults
-    }
-  char line[256];
+    return;
+  char line[4096];
   while (fgets (line, (int) sizeof (line), file))
     {
 		
@@ -396,7 +411,139 @@ load_editor_config (EditorConfig *config)
         }
     }
   fclose (file);
+}
+
+ConfigError
+load_editor_config (EditorConfig *config)
+{
+  set_default_config (config);
+  char dir[512];
+  if (config_dir (dir, sizeof dir))
+    {
+      char path[600];
+      /* led.conf is read last, so what it sets wins. */
+      snprintf (path, sizeof path, "%s/colorization.conf", dir);
+      config_read_file (config, path);
+      snprintf (path, sizeof path, "%s/led.conf", dir);
+      config_read_file (config, path);
+    }
   config_parse_syntax (config);
   config_apply_env_overrides (config);
   return CONFIG_SUCCESS;
+}
+
+static const char *const color_names[8] = {
+  "BLACK", "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN", "WHITE"
+};
+
+static const char *
+color_to_string (int c, char *buf, size_t size)
+{
+  if (c == LED_COLOR_DEFAULT)
+    return "DEFAULT";
+  if (c >= 0 && c < 8)
+    return color_names[c];
+  if (c >= LED_COLOR_BRIGHT && c < LED_COLOR_BRIGHT + 8)
+    snprintf (buf, size, "LIGHT_%s", color_names[c - LED_COLOR_BRIGHT]);
+  else
+    snprintf (buf, size, "%d", c);
+  return buf;
+}
+
+/* Create path with the given text unless something is already there. */
+static int
+write_new_file (const char *path, void (*body) (FILE *, const EditorConfig *),
+                const EditorConfig *d)
+{
+  FILE *f = fopen (path, "wx");
+  if (!f)
+    return 0;
+  body (f, d);
+  return fclose (f) == 0;
+}
+
+static void
+general_body (FILE *f, const EditorConfig *d)
+{
+  fprintf (f, "# led.conf - general settings for led.\n"
+           "# Each line below shows the built-in default. Remove the leading '#'\n"
+           "# and change the value to override it. Colours and syntax words are\n"
+           "# in colorization.conf, next to this file.\n\n");
+  fprintf (f, "# Display\n#tab_width=%d\n#spaces_for_tab=%d\n#show_border=%d\n"
+           "#show_key_meter=%d\n", d->display.tab_width,
+           d->display.spaces_for_tab, d->display.show_border,
+           d->statusbar.show_key_meter);
+  fprintf (f, "# Source files show line numbers and other files do not, unless this is set.\n"
+           "#show_line_numbers=%d\n\n", d->display.show_line_numbers);
+  fprintf (f, "# Limits\n#max_file_size_mb=%d\n#memory_limit_mb=%d\n"
+           "#max_line_length=%d\n\n", d->performance.max_file_size_mb,
+           d->performance.memory_limit_mb, d->performance.max_line_length);
+  fprintf (f, "# Auto-save\n#auto_save_timeout=%d\n#auto_save_keystrokes=%d\n\n",
+           d->autosave.timeout, d->autosave.keystrokes);
+  fprintf (f, "# Search\n#search_enabled=%d\n#search_max_pattern_length=%d\n",
+           d->search.enabled, d->search.max_pattern_length);
+}
+
+static void
+color_body (FILE *f, const EditorConfig *d)
+{
+  char a[32], b[32];
+  const ColorScheme *c = &d->colors;
+  fprintf (f, "# colorization.conf - colours and syntax words for led.\n"
+           "# Each line below shows the built-in default. Remove the leading '#'\n"
+           "# and change the value to override it. General settings are in\n"
+           "# led.conf, next to this file.\n#\n"
+           "# Colours: the eight curses colours BLACK RED GREEN YELLOW BLUE\n"
+           "# MAGENTA CYAN WHITE (0-7). The ANSI extended colours 8-15, on a\n"
+           "# terminal that has them, are LIGHT_BLUE (or BRIGHT_BLUE) and so on,\n"
+           "# and GRAY. DEFAULT is the terminal's own colour. A number 0-255\n"
+           "# also works.\n\n");
+#define PAIR(name) \
+  fprintf (f, "#" #name "_fg=%s\n#" #name "_bg=%s\n", \
+           color_to_string (c->name##_fg, a, sizeof a), \
+           color_to_string (c->name##_bg, b, sizeof b))
+  PAIR (normal);
+  PAIR (selection);
+  PAIR (semicolon);
+  PAIR (reserved_words);
+  PAIR (meta_level1);
+  PAIR (meta_level2);
+  PAIR (meta_level3);
+  PAIR (meta_level4);
+#undef PAIR
+  fprintf (f, "\n# Files with these extensions are highlighted.\n"
+           "#syntax_extensions=%s\n#reserved_words=%s\n#paired_keywords=%s\n",
+           d->syntax.extensions, d->syntax.reserved_words,
+           d->syntax.paired_keywords);
+}
+
+int
+config_write_defaults (void)
+{
+  char dir[512];
+  if (!config_dir (dir, sizeof dir))
+    return 0;
+  /* Make each directory on the way; one that exists is fine. */
+  for (char *p = dir + 1; ; p++)
+    if (*p == '/' || *p == '\0')
+      {
+        char keep = *p;
+        *p = '\0';
+        (void) mkdir (dir, 0755);
+        *p = keep;
+        if (!keep)
+          break;
+      }
+  EditorConfig *d = malloc (sizeof *d);
+  if (!d)
+    return 0;
+  set_default_config (d);
+  char path[600];
+  int made = 0;
+  snprintf (path, sizeof path, "%s/led.conf", dir);
+  made += write_new_file (path, general_body, d);
+  snprintf (path, sizeof path, "%s/colorization.conf", dir);
+  made += write_new_file (path, color_body, d);
+  free (d);
+  return made;
 }
