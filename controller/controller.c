@@ -1747,6 +1747,52 @@ token_erase (InputContext *ctx, int kind)
     text_erase (ed->goto_buffer);
 }
 
+/* Record one changed line as undo steps: the old characters are
+ * deleted from its start, then the new ones inserted. Undo replays
+ * these in reverse, which restores the old line exactly. */
+static void
+record_line_replace (UndoStack *u, int line, const char *old_text,
+                     const char *new_text)
+{
+  int old_len = (int) strlen (old_text);
+  int new_len = (int) strlen (new_text);
+  for (int k = 0; k < old_len; k++)
+    push_undo (u, false, line, 0, old_text[k]);
+  for (int k = 0; k < new_len; k++)
+    push_undo (u, true, line, k, new_text[k]);
+}
+
+/* Replace all, and record it so one undo takes it back. Returns the
+ * number of matches, as buffer_replace_all does. */
+static int
+replace_all_recorded (InputContext *ctx, Editor *ed)
+{
+  int lines = buffer_num_lines (ctx->buf);
+  char **before = xcalloc ((size_t) (lines > 0 ? lines : 1), sizeof *before);
+  for (int i = 0; i < lines; i++)
+    before[i] = buffer_get_line (ctx->buf, i);
+  int n = buffer_replace_all (ctx->buf, ed->search_buffer, ed->replace_buffer);
+  if (n > 0)
+    {
+      int start = ed->undo_stack.count;
+      for (int i = 0; i < lines; i++)
+        {
+          char *after = buffer_get_line (ctx->buf, i);
+          if (after && before[i] && strcmp (before[i], after) != 0)
+            record_line_replace (&ed->undo_stack, i, before[i], after);
+          free (after);
+        }
+      if (ed->undo_stack.count > start)
+        chain_since (&ed->undo_stack, start);
+      /* A new edit ends the redo history, as typing does. */
+      ed->redo_stack.count = 0;
+    }
+  for (int i = 0; i < lines; i++)
+    free (before[i]);
+  free (before);
+  return n;
+}
+
 static void
 token_done (InputContext *ctx, int kind)
 {
@@ -1770,18 +1816,14 @@ token_done (InputContext *ctx, int kind)
     }
   else if (kind == K_REPLACE)
     {
-      int n = buffer_replace_all (ctx->buf, ed->search_buffer,
-                                  ed->replace_buffer);
+      int n = replace_all_recorded (ctx, ed);
       ed->replace_step = 0;
       if (n > 0)
         {
-          /* Replace is not recorded for undo, and every position
-           * already on the stacks is now wrong. Drop them. */
-          free_undo_stacks (&ed->undo_stack, &ed->redo_stack);
           ed->file_modified = 1;
           ed->unsaved_keystrokes++;
           char msg[64];
-          snprintf (msg, sizeof msg, "Replaced %d (cannot be undone)", n);
+          snprintf (msg, sizeof msg, "Replaced %d (Ctrl+Z undoes it)", n);
           set_status_message (ed, msg);
         }
       else
