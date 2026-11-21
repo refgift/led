@@ -237,11 +237,32 @@ test_replace_all_fixes (void)
   editor_handle_input (&ed, '\n');
   test_assert (line_is (&ed.model, 0, "xdat dat") && ed.file_modified == 1,
                "replace-all marks the buffer modified");
-  test_assert (ed.undo_stack.count == 0,
-               "replace-all drops undo history it has made stale");
-  editor_handle_input (&ed, 26);
+  test_assert (ed.undo_stack.count > 0,
+               "replace-all is recorded for undo");
+  editor_handle_input (&ed, 26);        /* Ctrl+Z: one step takes it all back */
+  test_assert (line_is (&ed.model, 0, "xcat cat"),
+               "one undo restores every replaced line");
+  editor_handle_input (&ed, 25);        /* Ctrl+Y */
   test_assert (line_is (&ed.model, 0, "xdat dat"),
-               "undo after replace-all cannot corrupt the text");
+               "redo repeats replace-all");
+  /* A replacement with multi-byte text undoes to the exact old bytes. */
+  Editor ue;
+  memset (&ue, 0, sizeof ue);
+  buffer_init (&ue.model);
+  buffer_insert_line (&ue.model, 0, "a b a");
+  ue.config.search.enabled = 1;
+  ue.auto_save_threshold = 1000;
+  editor_handle_input (&ue, 18);        /* Ctrl+R */
+  editor_handle_input (&ue, 'a');
+  editor_handle_input (&ue, '\n');
+  for (const char *p = "\xc3\xa9"; *p; p++)
+    editor_handle_input (&ue, (unsigned char) *p);
+  editor_handle_input (&ue, '\n');
+  test_assert (line_is (&ue.model, 0, "\xc3\xa9 b \xc3\xa9"),
+               "replace-all with a multi-byte replacement");
+  editor_handle_input (&ue, 26);
+  test_assert (line_is (&ue.model, 0, "a b a"),
+               "undo restores the exact bytes of a multi-byte replace");
 
   ed.file_modified = 0;
   editor_handle_input (&ed, 3);         /* Ctrl+C */
