@@ -109,7 +109,10 @@ set_default_config (EditorConfig *config)
           ".c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx");
   strcpy (config->syntax.reserved_words,
           "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void,restrict,bool,true,false,nullptr,class,namespace,template,typename,public,private,protected,virtual,new,delete,try,catch,throw,using,operator,friend,inline,explicit,constexpr,noexcept,override,this,wchar_t,static_assert,concept,requires,co_await,co_return,co_yield,export,import,module,mutable,typeid,decltype");
-  strcpy (config->syntax.paired_keywords, "if-then,begin-end,(,)");
+  /* C nests with brackets, which the scanner always knows: () [] {}.
+   * Word pairs are for languages that nest with words (if-then and
+   * begin-end are FORTH), so there are none by default. */
+  config->syntax.paired_keywords[0] = '\0';
   // Auto-save
   config->autosave.timeout = 80000000;
   config->autosave.keystrokes = 500;
@@ -512,9 +515,12 @@ color_body (FILE *f, const EditorConfig *d)
   PAIR (meta_level4);
 #undef PAIR
   fprintf (f, "\n# Files with these extensions are highlighted.\n"
-           "#syntax_extensions=%s\n#reserved_words=%s\n#paired_keywords=%s\n",
-           d->syntax.extensions, d->syntax.reserved_words,
-           d->syntax.paired_keywords);
+           "#syntax_extensions=%s\n#reserved_words=%s\n",
+           d->syntax.extensions, d->syntax.reserved_words);
+  fprintf (f, "\n# Brackets () [] {} are always coloured by nesting depth. Word pairs\n"
+           "# are for a language that nests with words, written open-close, for\n"
+           "# example FORTH: paired_keywords=if-then,begin-end\n"
+           "#paired_keywords=%s\n", d->syntax.paired_keywords);
 }
 
 int

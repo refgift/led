@@ -159,9 +159,10 @@ normal_bg=DEFAULT\fR
 .SS Syntax
 \fCsyntax_extensions\fR lists the file endings that are highlighted.
 \fCreserved_words\fR lists the words colored as reserved.
-\fCpaired_keywords\fR lists \fIopen\fR-\fIclose\fR word pairs colored by nesting depth.
-A pair is used only when both of its words, or neither, are reserved words,
-so the default \fCif-then\fR is ignored for C.
+Brackets ( ) [ ] { } are always colored by nesting depth.
+\fCpaired_keywords\fR adds \fIopen\fR-\fIclose\fR word pairs for a language that nests with words,
+for example FORTH: \fCpaired_keywords=if-then,begin-end\fR. It is empty by default.
+A pair is used only when both of its words, or neither, are reserved words.
 .SS Other keys
 \fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,

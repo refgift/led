@@ -24,9 +24,47 @@ static int started;
 static attr_t quality_attr[LED_Q_COUNT];        /* A_BOLD where bold stands in for bright */
 static int word_left_code, word_right_code;
 
+/* Rows written since the last key was read. led sends every changed
+ * cell itself and never asks for a scroll, but curses still notices
+ * when rows moved (a line inserted or joined in a file drawn without
+ * line numbers) and moves them with the terminal's scroll region. A
+ * terminal that gets a scroll region wrong then shows stale rows that
+ * curses believes are right, and only repainting every row clears
+ * them. So when several rows changed at once, curses is told to write
+ * those rows out whole (wredrawln), which leaves it nothing to scroll.
+ * One edited row plus the status line stays an ordinary small update. */
+#define TOUCH_ROWS 1024
+static unsigned char row_touched[TOUCH_ROWS];
+static int touched_count, touched_first, touched_last;
+
+static void
+touch_row (int y)
+{
+  if (y < 0 || y >= TOUCH_ROWS || row_touched[y])
+    return;
+  row_touched[y] = 1;
+  if (touched_count++ == 0)
+    touched_first = touched_last = y;
+  if (y < touched_first)
+    touched_first = y;
+  if (y > touched_last)
+    touched_last = y;
+}
+
+static void
+write_moved_rows_whole (void)
+{
+  if (touched_count > 2)
+    wredrawln (stdscr, touched_first, touched_last - touched_first + 1);
+  for (int y = touched_first; touched_count > 0 && y <= touched_last; y++)
+    row_touched[y] = 0;
+  touched_count = 0;
+}
+
 static void
 curses_mark (int x, int y, int c)
 {
+  touch_row (y);
   wchar_t w[2] = { (wchar_t) c, L'\0' };
   cchar_t cc;
   if (setcchar (&cc, w, A_NORMAL, LED_Q_NORMAL, NULL) == OK)
@@ -44,6 +82,7 @@ curses_show (int x, int y, int c)
 static void
 curses_hide (int x, int y, int c)
 {
+  touch_row (y);
   mvaddch (y, x, (chtype) (unsigned char) c | COLOR_PAIR (LED_Q_NORMAL));
 }
 
@@ -142,6 +181,7 @@ curses_size (int *cols, int *rows)
 static int
 curses_read_key (void)
 {
+  write_moved_rows_whole ();
   int ch = getch ();            /* refreshes the screen first */
   if (ch == ERR)
     return LED_KEY_NONE;
