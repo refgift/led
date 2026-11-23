@@ -429,3 +429,173 @@ run_large_file_tests (void)
   view_invalidate ();
   frontend_use (before);
 }
+
+#include <sys/stat.h>
+
+void run_language_tests (void);
+
+/* Colours of one line in the language now chosen, fresh nesting state. */
+static int *
+lang_colors (EditorConfig *cfg, const char *line, int *kw_level_out)
+{
+  return colors_of (cfg, line, kw_level_out);
+}
+
+/* A file's extension chooses its language: its words, its comments,
+ * its strings. */
+void
+run_language_tests (void)
+{
+  fprintf (stderr, "\n=== Language tests ===\n");
+  static EditorConfig cfg;
+  set_default_config (&cfg);
+  config_parse_syntax (&cfg);
+  const Language *l;
+  int *c;
+  int kl = 0;
+
+  l = config_select_language (&cfg, "prog.c");
+  test_assert (l && strcmp (l->name, "c") == 0, ".c is C");
+  l = config_select_language (&cfg, "dir.fst/Makefile");
+  test_assert (l == NULL, "a file with no extension has no language");
+  l = config_select_language (&cfg, "notes.txt");
+  test_assert (l && strcmp (l->name, "text") == 0 && l->highlight == 0,
+               ".txt is plain text, shown without colours");
+  l = config_select_language (&cfg, "/some/dir/zda.fst");
+  test_assert (l && strcmp (l->name, "first") == 0 && l->highlight == 1,
+               ".fst is FIRST");
+
+  /* FIRST: words nest, upper case, no comments. */
+  c = lang_colors (&cfg, "\tIF ACCUMULATOR = 100 THEN JUMP S2;", &kl);
+  test_assert (c && c[1] == LED_Q_LEVEL1 && c[2] == LED_Q_LEVEL1
+               && c[4] == LED_Q_NORMAL && c[22] == LED_Q_LEVEL1
+               && c[27] == LED_Q_RESERVED && c[32] == LED_Q_NORMAL
+               && c[34] == LED_Q_SEMICOLON && kl == 1,
+               "IF and THEN pair on one line; JUMP is reserved; names are plain");
+  free (c);
+  c = lang_colors (&cfg, "BEGIN BEGIN END", &kl);
+  test_assert (c && c[0] == LED_Q_LEVEL1 && c[6] == LED_Q_LEVEL2
+               && c[12] == LED_Q_LEVEL2 && kl == 2,
+               "BEGIN opens a level and END takes the colour of its BEGIN");
+  free (c);
+  c = lang_colors (&cfg, "OUTPUT \"IF BEGIN (\"; OUTPUT NEWLINE", &kl);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[8] == LED_Q_NORMAL
+               && c[11] == LED_Q_NORMAL && c[17] == LED_Q_NORMAL
+               && c[19] == LED_Q_SEMICOLON && c[28] == LED_Q_RESERVED && kl == 1,
+               "words inside a denotation are text, not code");
+  free (c);
+  c = lang_colors (&cfg, "OUTPUT \"a\\\"; IF", NULL);
+  test_assert (c && c[11] == LED_Q_SEMICOLON && c[13] == LED_Q_LEVEL1,
+               "FIRST has no escapes: a backslash does not hide the closing quote");
+  free (c);
+  c = lang_colors (&cfg, "A := B // C; IF /* D */ THEN", NULL);
+  test_assert (c && c[13] == LED_Q_LEVEL1 && c[19] == LED_Q_NORMAL
+               && c[24] == LED_Q_LEVEL1,
+               "FIRST has no comments: // and /* are not special");
+  free (c);
+  c = lang_colors (&cfg, "if (x) return;", NULL);
+  test_assert (c && c[0] == LED_Q_NORMAL && c[7] == LED_Q_NORMAL,
+               "C's lower-case words mean nothing in FIRST");
+  free (c);
+
+  /* Back to C: its own rules again. */
+  config_select_language (&cfg, "prog.c");
+  c = lang_colors (&cfg, "if (x) return; // BEGIN", &kl);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[7] == LED_Q_RESERVED
+               && c[18] == LED_Q_NORMAL && kl == 1,
+               "choosing C again restores C's words and comments");
+  free (c);
+
+  /* In the editor: FIRST. */
+  char dir[] = "/tmp/led_lang_XXXXXX";
+  if (!mkdtemp (dir))
+    {
+      test_assert (0, "mkdtemp");
+      return;
+    }
+  char sub[300], path[300], conf[320];
+  snprintf (sub, sizeof sub, "%s/led", dir);
+  mkdir (sub, 0700);
+  config_set_prefix (dir);
+  snprintf (path, sizeof path, "%s/p.fst", dir);
+  FILE *fp = fopen (path, "w");
+  fputs ("BEGIN\n\tOUTPUT \"hi\";\nEND\n", fp);
+  fclose (fp);
+  char *argv1[] = { "led", path };
+  Editor ed;
+  editor_init (&ed, 2, argv1);
+  ed.auto_save_threshold = 100000;
+  test_assert (ed.syntax_highlight == 1 && ed.show_line_numbers == 1,
+               "a .fst file is highlighted and numbered like other source");
+  editor_handle_input (&ed, LED_KEY_END);
+  editor_handle_input (&ed, '\n');
+  char *got = buffer_get_line (&ed.model, 1);
+  test_assert (got && strcmp (got, "\t") == 0,
+               "Enter after BEGIN indents one level");
+  free (got);
+  editor_handle_input (&ed, 26);
+  editor_handle_input (&ed, 11);                /* Ctrl+K */
+  got = buffer_get_line (&ed.model, 0);
+  test_assert (got && strcmp (got, "BEGIN") == 0
+               && strstr (ed.status_message, "no line comment") != NULL,
+               "Ctrl+K in FIRST says there is no comment and changes nothing");
+  free (got);
+  editor_cleanup (&ed);
+
+  /* Plain text: an apostrophe is not a quote. */
+  snprintf (path, sizeof path, "%s/n.txt", dir);
+  fp = fopen (path, "w");
+  fputs ("don't (stop) now\n", fp);
+  fclose (fp);
+  char *argv2[] = { "led", path };
+  editor_init (&ed, 2, argv2);
+  test_assert (ed.syntax_highlight == 0 && ed.show_line_numbers == 0,
+               "a .txt file is plain, without line numbers");
+  ed.cursor_col = 6;
+  editor_handle_input (&ed, 29);                /* Ctrl+] */
+  test_assert (ed.cursor_col == 11,
+               "in text, bracket matching is not thrown by an apostrophe");
+  editor_cleanup (&ed);
+
+  /* A language of the user's own, and a change to a built-in one. */
+  snprintf (conf, sizeof conf, "%s/led/colorization.conf", dir);
+  fp = fopen (conf, "w");
+  fputs ("py.extensions=.py\npy.reserved_words=def,return\n"
+         "py.line_comment=#\npy.block_comment=\npy.quotes=\"'\n"
+         "first.reserved_words=BEGIN,END,OUTPUT,SHOUT\n", fp);
+  fclose (fp);
+  snprintf (path, sizeof path, "%s/s.py", dir);
+  fp = fopen (path, "w");
+  fputs ("def f(): # return (\n", fp);
+  fclose (fp);
+  char *argv3[] = { "led", path };
+  editor_init (&ed, 2, argv3);
+  ed.auto_save_threshold = 100000;
+  c = lang_colors (&ed.config, "def f(): # return (", &kl);
+  test_assert (ed.syntax_highlight == 1 && c && c[0] == LED_Q_RESERVED
+               && c[5] == LED_Q_LEVEL1 && c[11] == LED_Q_NORMAL
+               && c[18] == LED_Q_NORMAL,
+               "a language defined in colorization.conf is used");
+  free (c);
+  editor_handle_input (&ed, 11);
+  got = buffer_get_line (&ed.model, 0);
+  test_assert (got && strncmp (got, "# def", 5) == 0,
+               "Ctrl+K uses that language's comment mark");
+  free (got);
+  editor_handle_input (&ed, 11);
+  got = buffer_get_line (&ed.model, 0);
+  test_assert (got && strncmp (got, "def", 3) == 0, "and removes it again");
+  free (got);
+  config_select_language (&ed.config, "x.fst");
+  c = lang_colors (&ed.config, "SHOUT JUMP", NULL);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[6] == LED_Q_NORMAL,
+               "a built-in language's words can be replaced");
+  free (c);
+  editor_cleanup (&ed);
+
+  config_set_prefix (NULL);
+  char cmd[400];
+  snprintf (cmd, sizeof cmd, "rm -rf '%s'", dir);
+  if (system (cmd) != 0)
+    fprintf (stderr, "cleanup failed: %s\n", dir);
+}

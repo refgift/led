@@ -598,6 +598,19 @@ static void handle_enter (int ch, InputContext *ctx)
             end--;
           if (end > 0 && (line[end - 1] == '{' || line[end - 1] == '('))
             extra = 1;
+          /* A language that nests with words: one level deeper after a
+           * line that ends with an opening word, such as BEGIN. */
+          int ws = end;
+          while (ws > 0 && (isalnum ((unsigned char) line[ws - 1])
+                            || line[ws - 1] == '_'))
+            ws--;
+          for (int p = 0; p < ctx->ed->config.num_syntax_pairs && ws < end; p++)
+            {
+              const char *open = ctx->ed->config.syntax_pairs[p].open;
+              if ((int) strlen (open) == end - ws
+                  && memcmp (line + ws, open, (size_t) (end - ws)) == 0)
+                extra = 1;
+            }
           free (line);
         }
     }
@@ -1102,8 +1115,14 @@ typedef struct {
 /* Jump between () [] {}. Strings, comments, and C++ raw strings are skipped.
  * Returns 1 if the cursor moved. */
 static int
-jump_brace (Buffer *buf, int *cursor_line, int *cursor_col)
+jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
+            const Language *lang)
 {
+  /* Comments and strings are the language's: text has neither, so an
+   * apostrophe in prose does not hide the bracket after it. */
+  int lc = (int) strlen (lang->line_comment);
+  int bo = (int) strlen (lang->block_open);
+  int bc = (int) strlen (lang->block_close);
   int nlines = buffer_num_lines (buf);
   if (nlines <= 0)
     return 0;
@@ -1153,10 +1172,11 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col)
             break;
           if (st.state == SC_BLOCK)
             {
-              if (c == '*' && i + 1 < len && s[i + 1] == '/')
+              if (bc && i + bc <= len
+                  && memcmp (s + i, lang->block_close, (size_t) bc) == 0)
                 {
                   st.state = SC_NORM;
-                  i += 2;
+                  i += bc;
                   continue;
                 }
               i++;
@@ -1191,7 +1211,7 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col)
                   i++;
                   continue;
                 }
-              if (c == '\\')
+              if (c == '\\' && lang->escapes)
                 {
                   if (i + 1 >= len)
                     {
@@ -1208,25 +1228,27 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col)
               continue;
             }
 
-          if (c == '/' && i + 1 < len && s[i + 1] == '/')
+          if (lc && i + lc <= len
+              && memcmp (s + i, lang->line_comment, (size_t) lc) == 0)
             {
               st.state = SC_LINE;
               break;
             }
-          if (c == '/' && i + 1 < len && s[i + 1] == '*')
+          if (bo && bc && i + bo <= len
+              && memcmp (s + i, lang->block_open, (size_t) bo) == 0)
             {
               st.state = SC_BLOCK;
-              i += 2;
+              i += bo;
               continue;
             }
-          if (c == '\'')
+          if (c == '\'' && strchr (lang->quotes, '\''))
             {
               st.state = SC_SQ;
               st.escape = 0;
               i++;
               continue;
             }
-          if (c == '"')
+          if (c == '"' && strchr (lang->quotes, '"'))
             {
               int resume = 0;
               if (try_enter_raw (&st, s, len, i, &resume))
@@ -1301,7 +1323,8 @@ static void
 handle_match_brace (int ch, InputContext *ctx)
 {
   (void) ch;
-  if (!jump_brace (ctx->buf, ctx->cursor_line, ctx->cursor_col) && ctx->ed)
+  if (!jump_brace (ctx->buf, ctx->cursor_line, ctx->cursor_col,
+                   config_language (ctx->ed ? &ctx->ed->config : NULL)) && ctx->ed)
     set_status_message (ctx->ed, "No match");
 }
 
@@ -1309,6 +1332,15 @@ static void
 handle_comment (int ch, InputContext *ctx)
 {
   (void) ch;
+  /* The comment mark is the language's. Some have none. */
+  const Language *lang = config_language (ctx->ed ? &ctx->ed->config : NULL);
+  int mark_n = (int) strlen (lang->line_comment);
+  if (mark_n == 0)
+    {
+      if (ctx->ed)
+        set_status_message (ctx->ed, "This language has no line comment");
+      return;
+    }
   int row = *ctx->cursor_line;
   char *line = buffer_get_line (ctx->buf, row);
   if (!line)
@@ -1317,14 +1349,15 @@ handle_comment (int ch, InputContext *ctx)
   int ind = 0;
   while (ind < len && (line[ind] == ' ' || line[ind] == '\t'))
     ind++;
-  int uncomment = (ind + 1 < len && line[ind] == '/' && line[ind + 1] == '/');
+  int uncomment = (ind + mark_n <= len
+                   && memcmp (line + ind, lang->line_comment, (size_t) mark_n) == 0);
   if (ctx->ed)
     clear_redo (&ctx->ed->redo_stack);
   if (uncomment)
     {
-      int n = 2;
-      if (ind + 2 < len && line[ind + 2] == ' ')
-        n = 3;
+      int n = mark_n;
+      if (ind + mark_n < len && line[ind + mark_n] == ' ')
+        n = mark_n + 1;
       for (int c = ind + n - 1; c >= ind; c--)
         {
           char deleted = buffer_get_char (ctx->buf, row, c);
@@ -1339,15 +1372,16 @@ handle_comment (int ch, InputContext *ctx)
     }
   else
     {
-      const char *ins = "// ";
-      for (int k = 0; k < 3; k++)
+      /* The mark, then a space. */
+      for (int k = 0; k <= mark_n; k++)
         {
+          char c = (k < mark_n) ? lang->line_comment[k] : ' ';
           if (ctx->ed)
-            push_undo (&ctx->ed->undo_stack, true, row, ind + k, ins[k]);
-          buffer_insert_char (ctx->buf, row, ind + k, ins[k]);
+            push_undo (&ctx->ed->undo_stack, true, row, ind + k, c);
+          buffer_insert_char (ctx->buf, row, ind + k, c);
         }
       if (*ctx->cursor_col >= ind)
-        *ctx->cursor_col += 3;
+        *ctx->cursor_col += mark_n + 1;
     }
   free (line);
 }

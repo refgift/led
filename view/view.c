@@ -294,17 +294,28 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
   int in_word = 0;
   int word_count = 0;
   int i = 0;
+  /* What counts as a comment or a string is the language's to say. */
+  const Language *lang = config_language (config);
+  int lc = (int) strlen (lang->line_comment);
+  int bo = (int) strlen (lang->block_open);
+  int bc = (int) strlen (lang->block_close);
   /* i == len is one step past the text, so a word that runs to the end
    * of the line is ended by the same code as any other. */
   while (i <= len)
     {
       if (*in_comment)
         {
-          while (i < len && !(s[i] == '*' && i + 1 < len && s[i + 1] == '/'))
+          if (bc == 0)
+            {
+              *in_comment = 0;  /* this language has no block comments */
+              continue;
+            }
+          while (i < len && !(i + bc <= len
+                              && memcmp (s + i, lang->block_close, (size_t) bc) == 0))
             i++;
           if (i >= len)
             break;              /* still open at the end of the line */
-          i += 2;
+          i += bc;
           *in_comment = 0;
           continue;
         }
@@ -332,23 +343,26 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         }
       if (i >= len)
         break;
-      if (c == '/' && i + 1 < len && s[i + 1] == '/')
+      if (lc && i + lc <= len
+          && memcmp (s + i, lang->line_comment, (size_t) lc) == 0)
         break;                  /* line comment: the rest is not code */
-      if (c == '/' && i + 1 < len && s[i + 1] == '*')
+      if (bo && bc && i + bo <= len
+          && memcmp (s + i, lang->block_open, (size_t) bo) == 0)
         {
           *in_comment = 1;
-          i += 2;
+          i += bo;
           continue;
         }
       /* A quote opens a literal. An apostrophe straight after a letter
        * or digit does not: that is 1'000'000 or a word like don't. */
-      if (c == '"' || (c == '\'' && !(i > 0 && (isalnum ((unsigned char) s[i - 1])
-                                                || s[i - 1] == '_'))))
+      if (strchr (lang->quotes, c)
+          && !(c == '\'' && i > 0 && (isalnum ((unsigned char) s[i - 1])
+                                      || s[i - 1] == '_')))
         {
           i++;
           while (i < len && s[i] != c)
             {
-              if (s[i] == '\\' && i + 1 < len)
+              if (lang->escapes && s[i] == '\\' && i + 1 < len)
                 i++;
               i++;
             }

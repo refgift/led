@@ -110,9 +110,48 @@ set_default_config (EditorConfig *config)
   strcpy (config->syntax.reserved_words,
           "int,char,return,if,else,for,while,do,switch,case,default,break,continue,goto,sizeof,typedef,struct,union,enum,static,extern,auto,register,volatile,const,signed,unsigned,short,long,double,float,void,restrict,bool,true,false,nullptr,class,namespace,template,typename,public,private,protected,virtual,new,delete,try,catch,throw,using,operator,friend,inline,explicit,constexpr,noexcept,override,this,wchar_t,static_assert,concept,requires,co_await,co_return,co_yield,export,import,module,mutable,typeid,decltype");
   /* C nests with brackets, which the scanner always knows: () [] {}.
-   * Word pairs are for languages that nest with words (if-then and
-   * begin-end are FORTH), so there are none by default. */
+   * Word pairs are for languages that nest with words, so C has none. */
   config->syntax.paired_keywords[0] = '\0';
+
+  /* The languages led knows. The first is C, and `syntax` above holds
+   * its words until a file chooses another. */
+  memset (config->languages, 0, sizeof config->languages);
+  Language *c = &config->languages[0];
+  strcpy (c->name, "c");
+  strcpy (c->extensions, config->syntax.extensions);
+  strcpy (c->reserved_words, config->syntax.reserved_words);
+  strcpy (c->line_comment, "//");
+  strcpy (c->block_open, "/*");
+  strcpy (c->block_close, "*/");
+  strcpy (c->quotes, "\"'");
+  c->escapes = 1;
+  c->highlight = 1;
+
+  /* FIRST (github.com/refgift/first): upper-case words, BEGIN ... END
+   * and IF ... THEN nest, a denotation is "...", and there are no
+   * comments and no escapes. */
+  Language *f = &config->languages[1];
+  strcpy (f->name, "first");
+  strcpy (f->extensions, ".fst");
+  strcpy (f->reserved_words,
+          "BEGIN,END,IF,THEN,GOTO,JUMP,RETURN,INTEGER,DENOTED,INPUT,OUTPUT,"
+          "YIELD,RANDOM,ROOT,COUNT,TIMED,GET,PUT,IN,OUT,TRUE,FALSE,"
+          "SPACE,TAB,NEWLINE,CR,"
+          "RED,BLUE,GREEN,WHITE,BLACK,CLEAR,YELLOW,MAGENTA,CYAN,BLANK,"
+          "LEFT,RIGHT,UP,DOWN,HOME");
+  strcpy (f->paired_keywords, "BEGIN-END,IF-THEN");
+  strcpy (f->quotes, "\"");
+  f->escapes = 0;
+  f->highlight = 1;
+
+  /* Plain text: nothing is code, so nothing is coloured. */
+  Language *t = &config->languages[2];
+  strcpy (t->name, "text");
+  strcpy (t->extensions, ".txt,.text,.md");
+  t->highlight = 0;
+
+  config->num_languages = 3;
+  config->active_language = 0;
   // Auto-save
   config->autosave.timeout = 80000000;
   config->autosave.keystrokes = 500;
@@ -255,6 +294,148 @@ config_parse_syntax (EditorConfig *config)
   config->num_syntax_pairs = kept;
 }
 
+const Language *
+config_language (const EditorConfig *config)
+{
+  /* A config no file has chosen a language for (tests build these by
+   * hand) is read as C, which is what led did before it had languages. */
+  static const Language c_rules = {
+    "c", "", "", "", "//", "/*", "*/", "\"'", 1, 1
+  };
+  if (config && config->active_language >= 0
+      && config->active_language < config->num_languages)
+    return &config->languages[config->active_language];
+  return &c_rules;
+}
+
+/* True if ext (".c") is one of the comma-separated extensions. */
+static int
+extension_listed (const char *list, const char *ext)
+{
+  size_t elen = strlen (ext);
+  const char *p = list;
+  while (*p)
+    {
+      const char *comma = strchr (p, ',');
+      size_t tlen = comma ? (size_t) (comma - p) : strlen (p);
+      while (tlen > 0 && (*p == ' ' || *p == '\t'))
+        {
+          p++;
+          tlen--;
+        }
+      while (tlen > 0 && (p[tlen - 1] == ' ' || p[tlen - 1] == '\t'))
+        tlen--;
+      if (tlen == elen && memcmp (p, ext, elen) == 0)
+        return 1;
+      if (!comma)
+        break;
+      p = comma + 1;
+    }
+  return 0;
+}
+
+const Language *
+config_select_language (EditorConfig *config, const char *filename)
+{
+  if (!config || !filename)
+    return NULL;
+  const char *slash = strrchr (filename, '/');
+  const char *ext = strrchr (slash ? slash + 1 : filename, '.');
+  if (!ext)
+    return NULL;
+  for (int i = 0; i < config->num_languages; i++)
+    {
+      Language *l = &config->languages[i];
+      if (!extension_listed (l->extensions, ext))
+        continue;
+      config->active_language = i;
+      snprintf (config->syntax.extensions, sizeof config->syntax.extensions,
+                "%s", l->extensions);
+      snprintf (config->syntax.reserved_words,
+                sizeof config->syntax.reserved_words, "%s", l->reserved_words);
+      snprintf (config->syntax.paired_keywords,
+                sizeof config->syntax.paired_keywords, "%s", l->paired_keywords);
+      config_parse_syntax (config);
+      return l;
+    }
+  return NULL;
+}
+
+/* The language called name, made if there is room and it is new. */
+static Language *
+language_named (EditorConfig *config, const char *name)
+{
+  for (int i = 0; i < config->num_languages; i++)
+    if (strcmp (config->languages[i].name, name) == 0)
+      return &config->languages[i];
+  if (config->num_languages >= LED_MAX_LANGUAGES
+      || strlen (name) >= sizeof config->languages[0].name)
+    return NULL;
+  Language *l = &config->languages[config->num_languages++];
+  memset (l, 0, sizeof *l);
+  strcpy (l->name, name);
+  strcpy (l->quotes, "\"");
+  l->escapes = 1;
+  l->highlight = 1;
+  return l;
+}
+
+/* One "NAME.KEY=value" line. Returns 1 if it was a language key. */
+static int
+language_key (EditorConfig *config, const char *key, const char *value)
+{
+  const char *dot = strchr (key, '.');
+  if (!dot || dot == key || !dot[1])
+    return 0;
+  char name[32];
+  size_t n = (size_t) (dot - key);
+  if (n >= sizeof name)
+    return 0;
+  memcpy (name, key, n);
+  name[n] = '\0';
+  const char *what = dot + 1;
+  static const char *known[] = {
+    "extensions", "reserved_words", "paired_keywords", "line_comment",
+    "block_comment", "quotes", "escapes", "highlight", NULL
+  };
+  int is_known = 0;
+  for (int i = 0; known[i]; i++)
+    if (strcmp (what, known[i]) == 0)
+      is_known = 1;
+  if (!is_known)
+    return 0;
+  Language *l = language_named (config, name);
+  if (!l)
+    return 1;
+  if (strcmp (what, "extensions") == 0)
+    snprintf (l->extensions, sizeof l->extensions, "%s", value);
+  else if (strcmp (what, "reserved_words") == 0)
+    snprintf (l->reserved_words, sizeof l->reserved_words, "%s", value);
+  else if (strcmp (what, "paired_keywords") == 0)
+    snprintf (l->paired_keywords, sizeof l->paired_keywords, "%s", value);
+  else if (strcmp (what, "line_comment") == 0)
+    snprintf (l->line_comment, sizeof l->line_comment, "%s", value);
+  else if (strcmp (what, "block_comment") == 0)
+    {
+      /* "OPEN CLOSE", for example: slash-star star-slash. Empty for none. */
+      char open[8] = "", close[8] = "";
+      if (sscanf (value, "%7s %7s", open, close) == 2)
+        {
+          strcpy (l->block_open, open);
+          strcpy (l->block_close, close);
+        }
+      else
+        l->block_open[0] = l->block_close[0] = '\0';
+    }
+  else if (strcmp (what, "quotes") == 0)
+    snprintf (l->quotes, sizeof l->quotes, "%s", value);
+  else if (strcmp (what, "escapes") == 0)
+    l->escapes = atoi (value) ? 1 : 0;
+  else if (strcmp (what, "highlight") == 0)
+    l->highlight = atoi (value) ? 1 : 0;
+  return 1;
+}
+
 int
 config_is_reserved_word (const EditorConfig *config, const char *word)
 {
@@ -368,12 +549,30 @@ config_read_file (EditorConfig *config, const char *path)
       else if (strcmp (key, "reserved_words_bg") == 0)
         config->colors.reserved_words_bg = string_to_color (value);
       // Syntax
+      /* These three, with no language name, are C's: they are older
+       * than languages, and c.extensions and so on mean the same. */
       else if (strcmp (key, "syntax_extensions") == 0)
-        snprintf (config->syntax.extensions, sizeof (config->syntax.extensions), "%s", value);
+        {
+          snprintf (config->syntax.extensions, sizeof (config->syntax.extensions), "%s", value);
+          snprintf (config->languages[0].extensions, sizeof (config->languages[0].extensions), "%s", value);
+        }
       else if (strcmp (key, "reserved_words") == 0)
-        snprintf (config->syntax.reserved_words, sizeof (config->syntax.reserved_words), "%s", value);
+        {
+          snprintf (config->syntax.reserved_words, sizeof (config->syntax.reserved_words), "%s", value);
+          snprintf (config->languages[0].reserved_words, sizeof (config->languages[0].reserved_words), "%s", value);
+        }
       else if (strcmp (key, "paired_keywords") == 0)
-        snprintf (config->syntax.paired_keywords, sizeof (config->syntax.paired_keywords), "%s", value);
+        {
+          snprintf (config->syntax.paired_keywords, sizeof (config->syntax.paired_keywords), "%s", value);
+          snprintf (config->languages[0].paired_keywords, sizeof (config->languages[0].paired_keywords), "%s", value);
+        }
+      else if (language_key (config, key, value))
+        {
+          /* A change to C under its name also reaches the words in use. */
+          snprintf (config->syntax.extensions, sizeof (config->syntax.extensions), "%s", config->languages[0].extensions);
+          snprintf (config->syntax.reserved_words, sizeof (config->syntax.reserved_words), "%s", config->languages[0].reserved_words);
+          snprintf (config->syntax.paired_keywords, sizeof (config->syntax.paired_keywords), "%s", config->languages[0].paired_keywords);
+        }
       // Auto-save
       else if (strcmp (key, "auto_save_timeout") == 0)
         config->autosave.timeout = atoi (value);
@@ -530,9 +729,30 @@ color_body (FILE *f, const EditorConfig *d)
            "#syntax_extensions=%s\n#reserved_words=%s\n",
            d->syntax.extensions, d->syntax.reserved_words);
   fprintf (f, "\n# Brackets () [] {} are always coloured by nesting depth. Word pairs\n"
-           "# are for a language that nests with words, written open-close, for\n"
-           "# example FORTH: paired_keywords=if-then,begin-end\n"
+           "# are for a language that nests with words, written open-close.\n"
            "#paired_keywords=%s\n", d->syntax.paired_keywords);
+  fprintf (f, "\n# Languages. A file's extension chooses one. The three keys above are\n"
+           "# C's. Any language, these or one of your own, is set with NAME.KEY:\n"
+           "#   NAME.extensions       .py,.pyw\n"
+           "#   NAME.reserved_words   def,class,return\n"
+           "#   NAME.paired_keywords  BEGIN-END,IF-THEN\n"
+           "#   NAME.line_comment     #            (empty: the language has none)\n"
+           "#   NAME.block_comment    /* */        (open, a space, close; empty: none)\n"
+           "#   NAME.quotes           \"'           (each character that opens a string)\n"
+           "#   NAME.escapes          1            (a backslash escapes inside a string)\n"
+           "#   NAME.highlight        1            (0: shown as plain text)\n");
+  for (int i = 1; i < d->num_languages; i++)
+    {
+      const Language *l = &d->languages[i];
+      fprintf (f, "\n#%s.extensions=%s\n#%s.reserved_words=%s\n"
+               "#%s.paired_keywords=%s\n#%s.line_comment=%s\n"
+               "#%s.block_comment=%s%s%s\n#%s.quotes=%s\n#%s.escapes=%d\n"
+               "#%s.highlight=%d\n", l->name, l->extensions, l->name,
+               l->reserved_words, l->name, l->paired_keywords, l->name,
+               l->line_comment, l->name, l->block_open,
+               l->block_open[0] ? " " : "", l->block_close, l->name,
+               l->quotes, l->name, l->escapes, l->name, l->highlight);
+    }
 }
 
 int
