@@ -206,6 +206,10 @@ Each character that opens a string.
 .B \fINAME\fB.comment_starts_word
 1 if the line comment mark counts only at the start of a word, as \fC#\fR does in shell.
 .TP
+.B \fINAME\fB.multiline_strings
+1 if a string left open at the end of a line goes on to the next, as in shell.
+Without it a string goes on only after a trailing backslash, as in C.
+.TP
 .B \fINAME\fB.indent_after
 Words after which Enter indents one level, for example \fCthen,do,else\fR.
 .TP

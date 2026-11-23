@@ -73,6 +73,10 @@ typedef struct {
     int highlight;               /* 0: shown as plain text */
     int comment_starts_word;     /* the line comment mark counts only at the
                                     start of a word: "#" in shell, not "$#" */
+    int multiline_strings;       /* a string left open at the end of a line
+                                    goes on to the next (shell). Without it a
+                                    string goes on only after a trailing
+                                    backslash, where escapes are on (C). */
     char indent_after[128];      /* Enter indents after a line ending in one
                                     of these words: "then,do,else" */
     char interpreters[128];      /* a file with no known extension whose first

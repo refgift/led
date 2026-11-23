@@ -1414,7 +1414,8 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
         break;
       if (st.state == SC_LINE)
         st.state = SC_NORM;
-      else if ((st.state == SC_SQ || st.state == SC_DQ) && !cont)
+      else if ((st.state == SC_SQ || st.state == SC_DQ) && !cont
+               && !lang->multiline_strings)
         st.state = SC_NORM;
       st.escape = 0;
     }

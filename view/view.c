@@ -287,7 +287,8 @@ finish_word (const char *full_line, int start, int end, int *colors,
  * Text inside a string, a character literal or a comment is not code:
  * it takes the comment or string colour, and a bracket or keyword in
  * it does not nest. A word that starts with a digit is a number.
- * *in_comment carries an open block comment from line to line. */
+ * *in_comment carries an open block comment, or an open string
+ * (LED_OPEN_STRING + its quote), from line to line. */
 /* Give colors[from..to) one quality; nothing when only nesting is wanted. */
 static void
 paint (int *colors, int from, int to, int quality)
@@ -296,6 +297,42 @@ paint (int *colors, int from, int to, int quality)
     return;
   for (int j = from; j < to; j++)
     colors[j] = quality;
+}
+
+/* Find the end of a string whose opening quote q is already passed.
+ * *i moves past the closing quote, or to the end of the line. Returns
+ * 1 when the string closed. When it did not, g_string_continues says
+ * whether it goes on to the next line: always with multiline_strings,
+ * otherwise only after a trailing backslash where escapes are on. */
+static int g_string_continues;
+
+static int
+string_end (const char *s, int len, int *i, char q, const Language *lang)
+{
+  int dangling = 0;
+  g_string_continues = 0;
+  while (*i < len)
+    {
+      if (lang->escapes && s[*i] == '\\')
+        {
+          if (*i + 1 < len)
+            {
+              *i += 2;
+              continue;
+            }
+          dangling = 1;         /* a backslash at the end of the line */
+          (*i)++;
+          break;
+        }
+      if (s[*i] == q)
+        {
+          (*i)++;
+          return 1;
+        }
+      (*i)++;
+    }
+  g_string_continues = lang->multiline_strings || dangling;
+  return 0;
 }
 
 static void
@@ -317,6 +354,23 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
    * of the line is ended by the same code as any other. */
   while (i <= len)
     {
+      if (*in_comment >= LED_OPEN_STRING)
+        {
+          /* A string carried over from the line above. */
+          char q = (char) (*in_comment - LED_OPEN_STRING);
+          int from = i;
+          int closed = string_end (s, len, &i, q, lang);
+          paint (colors, from, i, LED_Q_STRING);
+          if (!closed)
+            {
+              /* Still open: on to the next line, or ended by the line. */
+              if (!g_string_continues)
+                *in_comment = 0;
+              break;
+            }
+          *in_comment = 0;
+          continue;
+        }
       if (*in_comment)
         {
           if (bc == 0)
@@ -398,15 +452,13 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         {
           int from = i;
           i++;
-          while (i < len && s[i] != c)
+          int closed = string_end (s, len, &i, c, lang);
+          paint (colors, from, i, LED_Q_STRING);
+          if (!closed && g_string_continues)
             {
-              if (lang->escapes && s[i] == '\\' && i + 1 < len)
-                i++;
-              i++;
+              *in_comment = LED_OPEN_STRING + (unsigned char) c;
+              break;            /* the string goes on to the next line */
             }
-          if (i < len)
-            i++;                /* the closing quote */
-          paint (colors, from, i > len ? len : i, LED_Q_STRING);
           continue;
         }
       if (c == '{' || c == '(' || c == '[')
@@ -551,7 +603,7 @@ static unsigned long
 hash_start_state (int bl, int bt, const int *bs, int kl, int kt, const int *ks,
                   int in_comment)
 {
-  unsigned long h = 1469598103934665603UL ^ (in_comment ? 0x9E3779B9UL : 0);
+  unsigned long h = 1469598103934665603UL ^ ((unsigned long) in_comment * 0x9E3779B9UL);
   unsigned long vals[8];
   int n = 0;
   vals[n++] = (unsigned long) bl;

@@ -254,6 +254,33 @@ run_color_tests (void)
                "a block comment has the comment colour, and code after it is coloured");
   free (c);
 
+  /* A C string goes on to the next line only after a backslash. */
+  {
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *s1 = compute_line_colors ("s = \"ab (\\", 10, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (s1 && ic == LED_OPEN_STRING + '"' && s1[4] == LED_Q_STRING
+                 && s1[8] == LED_Q_STRING && bl == 1,
+                 "a C string ending in a backslash goes on to the next line");
+    int *s2 = compute_line_colors ("cd ) \"; f(1)", 13, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (s2 && ic == 0 && s2[0] == LED_Q_STRING && s2[3] == LED_Q_STRING
+                 && s2[5] == LED_Q_STRING && s2[9] == LED_Q_LEVEL1 && bl == 1,
+                 "the continued string closes, and code after it nests");
+    free (s1);
+    free (s2);
+    ic = 0;
+    int *s3 = compute_line_colors ("s = \"ab", 7, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    int *s4 = compute_line_colors ("f(1)", 4, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (s3 && s4 && ic == 0 && s4[1] == LED_Q_LEVEL1,
+                 "an unclosed C string without a backslash ends with its line");
+    free (s3);
+    free (s4);
+  }
+
   /* A block comment left open carries to the next line. */
   {
     int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
@@ -716,6 +743,20 @@ run_shell_lex_tests (void)
   test_assert (l && strcmp (l->name, "shell") == 0, ".sh is shell");
   l = config_select_language (&cfg, "run.bash");
   test_assert (l && strcmp (l->name, "shell") == 0, ".bash is shell");
+  {
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *m1 = compute_line_colors ("echo \"a (", 9, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    int *m2 = compute_line_colors ("b ) if\" (x)", 11, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (m1 && m2 && m1[8] == LED_Q_STRING && m2[2] == LED_Q_STRING
+                 && m2[4] == LED_Q_STRING && m2[6] == LED_Q_STRING
+                 && m2[8] == LED_Q_LEVEL1 && ic == 0 && bl == 1,
+                 "a shell string spans lines; a bracket inside it does not nest");
+    free (m1);
+    free (m2);
+  }
   c = colors_of (&cfg, "if [ $# -gt 0 ];then echo \"x\";fi", &kl);
   test_assert (c && c[0] == LED_Q_LEVEL1 && c[5] == LED_Q_NORMAL
                && c[6] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL

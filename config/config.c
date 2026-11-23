@@ -174,6 +174,7 @@ set_default_config (EditorConfig *config)
   sh->escapes = 1;
   sh->highlight = 1;
   sh->comment_starts_word = 1;
+  sh->multiline_strings = 1;
   strcpy (sh->indent_after, "then,do,else,elif,in");
   strcpy (sh->interpreters, "sh,bash,dash,ksh,zsh,ash");
 
@@ -509,7 +510,8 @@ language_key (EditorConfig *config, const char *key, const char *value)
   static const char *known[] = {
     "extensions", "reserved_words", "paired_keywords", "line_comment",
     "block_comment", "quotes", "escapes", "highlight",
-    "comment_starts_word", "indent_after", "interpreters", NULL
+    "comment_starts_word", "multiline_strings", "indent_after",
+    "interpreters", NULL
   };
   int is_known = 0;
   for (int i = 0; known[i]; i++)
@@ -548,6 +550,8 @@ language_key (EditorConfig *config, const char *key, const char *value)
     l->highlight = atoi (value) ? 1 : 0;
   else if (strcmp (what, "comment_starts_word") == 0)
     l->comment_starts_word = atoi (value) ? 1 : 0;
+  else if (strcmp (what, "multiline_strings") == 0)
+    l->multiline_strings = atoi (value) ? 1 : 0;
   else if (strcmp (what, "indent_after") == 0)
     snprintf (l->indent_after, sizeof l->indent_after, "%s", value);
   else if (strcmp (what, "interpreters") == 0)
@@ -880,6 +884,7 @@ color_body (FILE *f, const EditorConfig *d)
            "#   NAME.highlight        1            (0: shown as plain text)\n"
            "#   NAME.comment_starts_word 1         (the comment mark counts only at the\n"
            "#                                       start of a word: # but not $#)\n"
+           "#   NAME.multiline_strings 1           (a string may go on to the next line)\n"
            "#   NAME.indent_after     then,do      (Enter indents after these words)\n"
            "#   NAME.interpreters     sh,bash      (chosen by a first line #!/bin/sh)\n");
   for (int i = 1; i < d->num_languages; i++)
@@ -889,13 +894,15 @@ color_body (FILE *f, const EditorConfig *d)
                "#%s.paired_keywords=%s\n#%s.line_comment=%s\n"
                "#%s.block_comment=%s%s%s\n#%s.quotes=%s\n#%s.escapes=%d\n"
                "#%s.highlight=%d\n#%s.comment_starts_word=%d\n"
+               "#%s.multiline_strings=%d\n"
                "#%s.indent_after=%s\n#%s.interpreters=%s\n",
                l->name, l->extensions, l->name,
                l->reserved_words, l->name, l->paired_keywords, l->name,
                l->line_comment, l->name, l->block_open,
                l->block_open[0] ? " " : "", l->block_close, l->name,
                l->quotes, l->name, l->escapes, l->name, l->highlight,
-               l->name, l->comment_starts_word, l->name, l->indent_after,
+               l->name, l->comment_starts_word, l->name,
+               l->multiline_strings, l->name, l->indent_after,
                l->name, l->interpreters);
     }
 }
