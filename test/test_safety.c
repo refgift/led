@@ -5,8 +5,10 @@
 #include "test_controller.h"
 #include "controller.h"
 #include "editor.h"
+#include "utils/utils.h"
 #include "frontend/frontend.h"
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -358,14 +360,89 @@ test_blocked_saves (void)
                "the autosave timer does not write an unmodified buffer");
   editor_cleanup (&ed);
 
-  /* A truncated load must not be written back. */
+  /* A line far past max_line_length is kept whole, edited, and saved. */
   snprintf (file, sizeof file, "%s/long.txt", dir);
-  write_file (file, "0123456789");
-  Buffer b;
-  buffer_init (&b);
-  test_assert (buffer_load_from_file (&b, file, 0, 4, 0) == BUFFER_LOAD_TRUNCATED,
-               "long line is cut on load");
-  buffer_free (&b);
+  {
+    FILE *lf = fopen (file, "wb");
+    for (int i = 0; i < 30000; i++)
+      fputc ('a' + i % 26, lf);
+    fputs ("\nsecond\n", lf);
+    fclose (lf);
+  }
+  char *argv5[] = { "led", file };
+  editor_init (&ed, 2, argv5);
+  ed.auto_save_threshold = 1000;
+  test_assert (ed.save_blocked == 0
+               && buffer_get_line_length (&ed.model, 0) == 30000
+               && buffer_get_char (&ed.model, 0, 29999) == 'a' + 29999 % 26,
+               "a 30,000-character line loads whole and can be saved");
+  editor_handle_input (&ed, LED_KEY_END);
+  editor_handle_input (&ed, '!');
+  editor_handle_input (&ed, 19);
+  {
+    struct stat lst;
+    FILE *lf = fopen (file, "rb");
+    int last = 0;
+    if (lf)
+      {
+        fseek (lf, 30000, SEEK_SET);
+        last = fgetc (lf);
+        fclose (lf);
+      }
+    test_assert (stat (file, &lst) == 0 && lst.st_size == 30000 + 1 + 8
+                 && last == '!',
+                 "an edit at the end of the long line is saved, nothing lost");
+  }
+  editor_cleanup (&ed);
+
+  /* A path longer than 255 bytes is an ordinary path. */
+  {
+    char deep[1200];
+    int n = snprintf (deep, sizeof deep, "%s", dir);
+    for (int level = 0; level < 4; level++)
+      {
+        n += snprintf (deep + n, sizeof deep - (size_t) n, "/%s",
+                       "a_directory_name_that_is_eighty_characters_long_to_make_the_whole_path_long_0123");
+        mkdir (deep, 0700);
+      }
+    snprintf (deep + n, sizeof deep - (size_t) n, "/file.txt");
+    write_file (deep, "deep");
+    test_assert (strlen (deep) > 255 && is_filename_safe (deep),
+                 "a path over 255 bytes is accepted");
+    char *argv6[] = { "led", deep };
+    editor_init (&ed, 2, argv6);
+    ed.auto_save_threshold = 2;
+    test_assert (ed.filename != NULL && line_is (&ed.model, 0, "deep"),
+                 "and opens");
+    editor_handle_input (&ed, 'x');
+    editor_handle_input (&ed, 'y');     /* autosave fires */
+    char bak[1300];
+    snprintf (bak, sizeof bak, "%s.bak.1", deep);
+    test_assert (file_is (deep, "xydeep") && file_is (bak, "xydeep"),
+                 "it autosaves, and the backup has the whole name");
+    editor_handle_input (&ed, 'z');
+    snprintf (bak, sizeof bak, "%s.recovery", deep);
+    test_assert (editor_write_recovery (&ed) == 0 && file_is (bak, "xyzdeep"),
+                 "its recovery file has the whole name too");
+    unlink (bak);
+    editor_cleanup (&ed);
+  }
+
+  /* Names that are refused say so instead of opening nothing in silence. */
+  {
+    char *argv7[] = { "led", "bad\033[2Jname.txt" };
+    editor_init (&ed, 2, argv7);
+    test_assert (ed.filename == NULL
+                 && strstr (ed.status_message, "not usable") != NULL,
+                 "a name with a control character is refused, with a message");
+    editor_cleanup (&ed);
+    static char huge[PATH_MAX + 100];
+    memset (huge, 'a', sizeof huge - 1);
+    huge[sizeof huge - 1] = '\0';
+    test_assert (!is_filename_safe (huge), "a path past the system limit is refused");
+    huge[LED_PATH_LIMIT] = '\0';
+    test_assert (is_filename_safe (huge), "a path at led's limit is accepted");
+  }
 
   char cmd[400];
   snprintf (cmd, sizeof cmd, "rm -rf '%s'", dir);

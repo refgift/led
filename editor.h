@@ -2,6 +2,7 @@
 
 #include "frontend/frontend.h"
 #include <time.h>
+#include <limits.h>
 #include "model.h"
 #include "config.h"
 #include "view/screen.h"
@@ -139,7 +140,7 @@ struct Editor {
     int save_blocked;
 
     /* Owns the filename when it was peeled from "path:line". */
-    char filename_storage[512];
+    char filename_storage[PATH_MAX];
 };
 
 /* === Public API === */

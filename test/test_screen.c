@@ -363,7 +363,7 @@ run_large_file_tests (void)
         fprintf (fp, "  if (a[%d]) { f (b[%d]); } /* %d ( */\n", i, i, i);
       fclose (fp);
       buffer_init (&b);
-      int rc = buffer_load_from_file (&b, path, 0, 0, 0);
+      int rc = buffer_load_from_file (&b, path, 0, 0);
       test_assert (rc == BUFFER_LOAD_OK && buffer_num_lines (&b) == 100001,
                    "a 100,000-line file loads under the default limits");
 

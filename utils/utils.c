@@ -50,8 +50,10 @@ is_filename_safe (const char *fn)
 {
   if (!fn || !*fn)
     return false;
+  /* A whole path, not one name: the limit is the system's, less room
+   * for the suffixes led adds beside it (.recovery, .bak.N, .ledtmp.PID). */
   size_t n = strlen (fn);
-  if (n > 255)
+  if (n > LED_PATH_LIMIT)
     return false;
   for (size_t i = 0; i < n; i++)
     {
