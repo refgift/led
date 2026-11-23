@@ -26,7 +26,6 @@
 Priority: P1 function (it does not work), P2 form (it works, but the docs or layout are wrong), P3 tests.
 
 - **P1 Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when its lines would take more than `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Each line costs about 90 bytes beyond its text, so with the defaults (10 MB, 50 MB) the size limit is reached first for ordinary source: a 150,000-line, 9.5 MB file opens in about 26 MB. Raise the keys to open larger files.
-- **P2 Limits**: `max_file_size_mb` (1–100, default 10), `memory_limit_mb` (1–200, default 50), and `max_line_length` (80–100000, default 10000) are keys in `led.conf`. `max_line_length` cuts nothing: a longer line is loaded whole and shown without syntax colours. A value outside its range keeps the default.
 - **P2 Language support**: a language is its reserved words, its word pairs, its comment marks and its string quotes. That colours and nests most languages, but not everything: numbers, strings and comments have no colour of their own, there are no multi-line strings, and `Ctrl+]` matches brackets only, not `BEGIN`/`END`. C, FIRST, shell, lex and plain text are built in; others are added in `colorization.conf`. Shell here-documents are read as code.
 - **P2 Error handling**: not fully standardized across modules.
 - **P3 No fuzzing harness** yet. Empty-file, size, null-byte, long-line, and memory-ceiling loads are tested.
@@ -131,7 +130,7 @@ Give every `_bg` key the same value, or the background changes from word to word
 
 **Other**: `syntax_extensions=.c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx`, `reserved_words=...` (C and C++ keywords), `paired_keywords=` (empty; brackets `()` `[]` `{}` always nest, and word pairs such as FORTH's `if-then,begin-end` can be added), `tab_width=8`, `spaces_for_tab=0`, `show_key_meter=1`, `show_line_numbers=0`, `system_clipboard=1`, `persistent_undo=1`.
 
-**Limits**: `max_file_size_mb=10` (1–100), `memory_limit_mb=50` (1–200), `max_line_length=10000` (80–100000). A file over the size or memory ceiling is not opened. A line longer than `max_line_length` is loaded whole, edited and saved like any other; it is only shown without syntax colours. A null byte is refused with `Binary file`.
+**Limits**: `max_file_size_mb=10` (1–100), `memory_limit_mb=50` (1–200), `max_highlight_length=10000` (80–100000; the old name `max_line_length` still works). A file over the size or memory ceiling is not opened. A line longer than `max_highlight_length` is loaded whole, edited and saved like any other; it is only shown without syntax colours. A null byte is refused with `Binary file`.
 
 Example, a language of your own:
 ```

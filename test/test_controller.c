@@ -245,7 +245,16 @@ test_load_limits (void)
       test_assert (cfg.performance.memory_limit_mb == 80,
                    "memory_limit_mb is read");
       test_assert (cfg.performance.max_line_length == 4000,
-                   "max_line_length is read");
+                   "max_line_length, the old name, is still read");
+      fp = fopen (conf, "w");
+      if (fp)
+        {
+          fputs ("max_highlight_length=5000\n", fp);
+          fclose (fp);
+        }
+      load_editor_config (&cfg);
+      test_assert (cfg.performance.max_line_length == 5000,
+                   "max_highlight_length is read");
 
       fp = fopen (conf, "w");
       if (fp)

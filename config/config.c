@@ -722,7 +722,10 @@ config_read_file (EditorConfig *config, const char *path)
           if (v >= 1 && v <= 200)
             config->performance.memory_limit_mb = v;
         }
-      else if (strcmp (key, "max_line_length") == 0)
+      /* max_highlight_length was called max_line_length when long
+       * lines were cut on load; the old name still works. */
+      else if (strcmp (key, "max_highlight_length") == 0
+               || strcmp (key, "max_line_length") == 0)
         {
           int v = atoi (value);
           if (v >= 80 && v <= 100000)
@@ -796,7 +799,7 @@ general_body (FILE *f, const EditorConfig *d)
            "#show_line_numbers=%d\n\n", d->display.show_line_numbers);
   fprintf (f, "# Limits\n#max_file_size_mb=%d\n#memory_limit_mb=%d\n"
            "# A longer line is loaded whole, but shown without syntax colours.\n"
-           "#max_line_length=%d\n\n", d->performance.max_file_size_mb,
+           "#max_highlight_length=%d\n\n", d->performance.max_file_size_mb,
            d->performance.memory_limit_mb, d->performance.max_line_length);
   fprintf (f, "# Auto-save\n#auto_save_timeout=%d\n#auto_save_keystrokes=%d\n\n",
            d->autosave.timeout, d->autosave.keystrokes);

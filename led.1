@@ -90,7 +90,7 @@ Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 452 tests.
 .SH WHAT FAILS
 .IP \(bu 2
-Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
+Whole-file in memory, no mmap. A line longer than \fCmax_highlight_length\fR is shown without syntax colours.
 .IP \(bu 2
 Errors not standardized.
 .IP \(bu 2
@@ -213,7 +213,7 @@ The older keys \fCsyntax_extensions\fR, \fCreserved_words\fR and \fCpaired_keywo
 .SS Other keys
 \fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR, \fCpersistent_undo\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,
-\fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
+\fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_highlight_length\fR (old name \fCmax_line_length\fR).
 Env \fCLED_NO_BORDER=1\fR.
 .SH FILES
 .I ~/.config/led/led.conf
