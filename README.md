@@ -16,7 +16,7 @@
 - **Incremental rendering**: cursor moves repaint only status line, single-line edits repaint only that row (75x less output); `view_decide()` + nesting cache.
 - **Border handling**: text lives in its own pane inside the screen: rows-2 × cols-2 at (1,1) with the border on, rows-1 × cols at (0,0) with it off; border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ┃ ━` from the ends of each line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: two files in `~/.config/led/`, written on first run with every default as a comment: `led.conf` (general settings) and `colorization.conf` (the eight curses colours by name, the ANSI extended colours by `LIGHT_` name or number, or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`). `--prefix DIR` keeps them in `DIR/led/` where `~/.config` is not the place. Env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
-- **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
+- **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces and word pairs, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
 - **Tests**: 452 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, config files, screen contents, controller actions, system clipboard, undo history, colours, languages, large files). `./led -t` on your machine.
 - **Paths**: a file with `..` in its path (`../src/file.c`) opens. It used to fail.
 - **No terminal scrolling**: when several rows change at once, led has curses write those rows out whole. Before, in a file drawn without line numbers (a `.txt`, or any extension not in `syntax_extensions`), curses moved rows with the terminal's scroll region when a line was inserted or joined, and a terminal that handles that badly showed stale rows until `F4`. The corruption was seen only on Haiku; Linux terminals were not affected. Not yet confirmed on Haiku.
@@ -26,7 +26,7 @@
 Priority: P1 function (it does not work), P2 form (it works, but the docs or layout are wrong), P3 tests.
 
 - **P1 Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when its lines would take more than `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Each line costs about 90 bytes beyond its text, so with the defaults (10 MB, 50 MB) the size limit is reached first for ordinary source: a 150,000-line, 9.5 MB file opens in about 26 MB. Raise the keys to open larger files.
-- **P2 Language support**: a language is its reserved words, its word pairs, its comment marks and its string quotes. That colours and nests most languages, but not everything: there are no multi-line strings, and `Ctrl+]` matches brackets only, not `BEGIN`/`END`. C, FIRST, shell, lex and plain text are built in; others are added in `colorization.conf`. Shell here-documents are read as code.
+- **P2 Language support**: a language is its reserved words, its word pairs, its comment marks and its string quotes. That colours and nests most languages, but not everything: there are no multi-line strings. C, FIRST, shell, lex and plain text are built in; others are added in `colorization.conf`. Shell here-documents are read as code.
 - **P3 No fuzzing harness** yet. Empty-file, size, null-byte, long-line, and memory-ceiling loads are tested.
 - **P2 Terminal**: copy and cut reach the system clipboard only where the terminal accepts OSC 52. `xterm` needs `allowWindowOps`, and `tmux` needs `set-clipboard on`; a terminal that does not know the sequence ignores it and the copy stays inside led. led does not read the system clipboard: `Ctrl+V` pastes led's own, and the system's arrives through the terminal's paste key. Selecting with the mouse still copies screen cells (line numbers, border) — use `Ctrl+C` instead. Copies over 100,000 bytes stay inside led.
 - **P1 Garbled display**: seen on Haiku only, in an assembly file (`.s`) with line numbers off, as stale rows after inserting or joining lines. Not reproduced on Linux, and not yet confirmed fixed on Haiku. Press `F4` twice (border on, then off again) to repaint the whole screen; `F2` is not a repaint key. Set `show_line_numbers=1` in `led.conf` to show line numbers in every file.
@@ -74,7 +74,7 @@ man led           # after make doc
 |---|---|
 | Arrows, Home/End (×2 top/bottom), PgUp/PgDn | Navigation |
 | `Ctrl+Left` / `Ctrl+Right`, or `Esc` then `b` / `f` | Previous / next word (`_` counts as part of a word) |
-| `Ctrl+]` | Jump to the matching `()` `[]` `{}` (skips strings and comments) |
+| `Ctrl+]` | Jump to the matching `()` `[]` `{}`, or the other word of a pair such as `BEGIN`/`END` (skips strings and comments) |
 | `Ctrl+G` | Go to line, or `line:col` |
 | Printable, Enter, Backspace/Delete, Tab, Shift+Tab | Insert / delete / outdent |
 | Enter at end of line | Copy indent; one extra level after `{` or `(` |

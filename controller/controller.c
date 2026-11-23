@@ -1114,14 +1114,41 @@ typedef struct {
   int line;
   int col;
   char ch;
+  int pair;                     /* word pair index, or -1 for a bracket */
 } BraceFrame;
+
+/* Which word pair s[0..n) belongs to, or -1. *is_close says which end. */
+static int
+pair_of_word (const SyntaxPair *pairs, int np, const char *s, int n,
+              int *is_close)
+{
+  for (int p = 0; p < np; p++)
+    {
+      if ((int) strlen (pairs[p].open) == n
+          && memcmp (s, pairs[p].open, (size_t) n) == 0)
+        {
+          *is_close = 0;
+          return p;
+        }
+      if ((int) strlen (pairs[p].close) == n
+          && memcmp (s, pairs[p].close, (size_t) n) == 0)
+        {
+          *is_close = 1;
+          return p;
+        }
+    }
+  return -1;
+}
 
 /* Jump between () [] {}. Strings, comments, and C++ raw strings are skipped.
  * Returns 1 if the cursor moved. */
 static int
 jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
-            const Language *lang)
+            const Language *lang, const EditorConfig *cfg)
 {
+  /* Word pairs (BEGIN END, IF THEN) match like brackets. */
+  const SyntaxPair *pairs = cfg ? cfg->syntax_pairs : NULL;
+  int np = cfg ? cfg->num_syntax_pairs : 0;
   /* Comments and strings are the language's: text has neither, so an
    * apostrophe in prose does not hide the bracket after it. */
   int lc = (int) strlen (lang->line_comment);
@@ -1147,8 +1174,29 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
       tcol--;
       target = ttext[tcol];
     }
+  /* Not on a bracket: on (or just after) a word of a pair? */
+  int tpair = -1;
+  if (!target && np > 0)
+    {
+      int ws = tcol;
+      if ((ws >= tlen || !is_word_char (ttext[ws])) && ws > 0
+          && is_word_char (ttext[ws - 1]))
+        ws--;
+      if (ws >= 0 && ws < tlen && is_word_char (ttext[ws]))
+        {
+          while (ws > 0 && is_word_char (ttext[ws - 1]))
+            ws--;
+          int we = ws;
+          while (we < tlen && is_word_char (ttext[we]))
+            we++;
+          int is_close = 0;
+          tpair = pair_of_word (pairs, np, ttext + ws, we - ws, &is_close);
+          if (tpair >= 0)
+            tcol = ws;
+        }
+    }
   free (ttext);
-  if (!target)
+  if (!target && tpair < 0)
     return 0;
 
   BraceFrame stack[4096];
@@ -1272,6 +1320,53 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
               i++;
               continue;
             }
+          if (np > 0 && is_word_char (c) && (i == 0 || !is_word_char (s[i - 1])))
+            {
+              int j = i;
+              while (j < len && is_word_char (s[j]))
+                j++;
+              int is_close = 0;
+              int p = pair_of_word (pairs, np, s + i, j - i, &is_close);
+              int here = (tpair >= 0 && line == tline && i == tcol);
+              if (p >= 0 && !is_close)
+                {
+                  if (top >= 4096)
+                    {
+                      free (s);
+                      return 0;
+                    }
+                  stack[top].line = line;
+                  stack[top].col = i;
+                  stack[top].ch = 0;
+                  stack[top].pair = p;
+                  if (here)
+                    watch = top;
+                  top++;
+                }
+              else if (p >= 0 && here)
+                {
+                  if (top > 0 && stack[top - 1].pair == p)
+                    {
+                      mline = stack[top - 1].line;
+                      mcol = stack[top - 1].col;
+                      found = 1;
+                    }
+                  stop = 1;
+                  break;
+                }
+              else if (p >= 0 && top > 0 && stack[top - 1].pair == p)
+                {
+                  top--;
+                  if (watch >= 0 && top == watch)
+                    {
+                      mline = line;
+                      mcol = i;
+                      found = 1;
+                    }
+                }
+              i = j;
+              continue;
+            }
           if (brace_partner (c))
             {
               int here = (line == tline && i == tcol);
@@ -1285,6 +1380,7 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
                   stack[top].line = line;
                   stack[top].col = i;
                   stack[top].ch = c;
+                  stack[top].pair = -1;
                   if (here)
                     watch = top;
                   top++;
@@ -1335,7 +1431,8 @@ handle_match_brace (int ch, InputContext *ctx)
 {
   (void) ch;
   if (!jump_brace (ctx->buf, ctx->cursor_line, ctx->cursor_col,
-                   config_language (ctx->ed ? &ctx->ed->config : NULL)) && ctx->ed)
+                   config_language (ctx->ed ? &ctx->ed->config : NULL),
+                   ctx->ed ? &ctx->ed->config : NULL) && ctx->ed)
     set_status_message (ctx->ed, "No match");
 }
 

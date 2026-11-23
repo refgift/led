@@ -30,7 +30,9 @@ Move and scroll.
 Previous / next word. Ctrl+W deletes the previous word.
 .TP
 .B Ctrl+]
-Jump to the matching parenthesis, bracket, or brace. Strings, comments, and C++ raw strings are skipped.
+Jump to the matching parenthesis, bracket, or brace, or to the other word of a
+\fCpaired_keywords\fR pair (BEGIN to END, IF to THEN).
+Strings, comments, and C++ raw strings are skipped.
 .TP
 .B Ctrl+G
 Go to a 1-based line, or line:col. Esc cancels.

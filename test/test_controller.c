@@ -1239,6 +1239,49 @@ test_programmer_motions (void)
   test_assert (ctx.cursor_line == 6 && ctx.cursor_col == stay_c,
                "brace inside a C++ raw string is not a match");
 
+  /* Word pairs match like brackets: FIRST's BEGIN END and IF THEN. */
+  {
+    TestContext w;
+    test_init (&w);
+    set_default_config (&w.ed.config);
+    w.ed.config.display.tab_width = 8;
+    config_select_language (&w.ed.config, "prog.fst");
+    const char *fsrc[] = {
+      "BEGIN",
+      "  IF X THEN",
+      "  OUTPUT \"END\";",
+      "  BEGIN Y END",
+      "END"
+    };
+    for (int i = 0; i < 5; i++)
+      buffer_insert_line (&w.buf, i, fsrc[i]);
+    w.cursor_line = 0;
+    w.cursor_col = 2;               /* inside BEGIN */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 4 && w.cursor_col == 0,
+                 "Ctrl+] on BEGIN jumps to its END, past a nested pair and a string");
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 0 && w.cursor_col == 0,
+                 "Ctrl+] on END jumps back to its BEGIN");
+    w.cursor_line = 1;
+    w.cursor_col = 2;               /* on IF */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 1 && w.cursor_col == 7,
+                 "Ctrl+] on IF jumps to THEN");
+    w.cursor_line = 3;
+    w.cursor_col = 13;              /* just after the inner END */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 3 && w.cursor_col == 2,
+                 "Ctrl+] just after END finds the inner BEGIN");
+    w.cursor_line = 1;
+    w.cursor_col = 5;               /* on X: not a pair word */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 1 && w.cursor_col == 5
+                 && strstr (w.ed.status_message, "No match") != NULL,
+                 "a word outside any pair is not a match");
+    test_cleanup (&w);
+  }
+
   ctx.cursor_line = 0;
   ctx.cursor_col = col_of (&ctx.buf, 0, '(', 1);
   test_handle_input (&ctx, 29);
