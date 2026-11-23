@@ -30,6 +30,7 @@ void run_color_tests (void);
 void run_language_tests (void);
 void run_shell_lex_tests (void);
 void run_repaint_tests (void);
+void run_fuzz_tests (void);
 void run_large_file_tests (void);
 void test_buffer_advanced ();
 void test_controller_simulation ();
@@ -1794,6 +1795,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   run_language_tests ();
   run_shell_lex_tests ();
   run_repaint_tests ();
+  run_fuzz_tests ();
   run_large_file_tests ();
   
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,

@@ -715,6 +715,14 @@ run_repaint_tests (void)
                "opening a comment turns the lines below plain");
   test_assert (typed_matches_fresh ("a.fst", f_lines, 4, k3, 5),
                "completing the word BEGIN recolours the pairs below");
+  /* Found by the fuzzer: cutting BEGIN leaves an empty line, which
+   * draws no text; pasting it back must still recolour the lines below. */
+  {
+    const char *g_lines[] = { "BEGIN", "  IF X THEN", "  BEGIN Y END", "END" };
+    const int k5[] = { 24, 22 };              /* Ctrl+X, Ctrl+V */
+    test_assert (typed_matches_fresh ("a.fst", g_lines, 4, k5, 2),
+                 "cut a line empty and paste it back: the lines below recolour");
+  }
   test_assert (typed_matches_fresh ("a.c", d_lines, 3, k4, 3),
                "deleting a { recolours the lines below");
   test_assert (typed_matches_fresh ("a.c", c_lines, 4, k5, 7),

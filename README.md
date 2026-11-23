@@ -17,7 +17,7 @@
 - **Border handling**: text lives in its own pane inside the screen: rows-2 × cols-2 at (1,1) with the border on, rows-1 × cols at (0,0) with it off; border only on `FULL` repaint. Paste-time `border_filter_dup()` strips `| + - │ ─ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ┃ ━` from the ends of each line and drops pure `┌──┐` lines — replaces `tr -d`.
 - **Config**: two files in `~/.config/led/`, written on first run with every default as a comment: `led.conf` (general settings) and `colorization.conf` (the eight curses colours by name, the ANSI extended colours by `LIGHT_` name or number, or `DEFAULT`; `reserved_words`, `paired_keywords`, `syntax_extensions`, `show_key_meter`, `show_border`). `--prefix DIR` keeps them in `DIR/led/` where `~/.config` is not the place. Env `LED_NO_BORDER=1` / `LED_SHOW_BORDER`.
 - **C/C++ editing**: `file:line:col` and `+N` open on the diagnostic, `Ctrl+G` jumps there, `Ctrl+]` matches braces and word pairs, word motions, `Ctrl+K` toggles `//`, Enter keeps indent, Shift+Tab outdents. Source files show line numbers.
-- **Tests**: 452 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, config files, screen contents, controller actions, system clipboard, undo history, colours, languages, large files). `./led -t` on your machine.
+- **Tests**: 488 tests (buffer, undo, clipboard, autosave, view, search wrap, search chord, indent, braces, save, data safety, config files, screen contents, controller actions, system clipboard, undo history, colours, languages, large files, fuzzing). `./led -t` on your machine. The fuzzer types random keys into C, shell, FIRST and text files and checks that the screen matches a fresh draw and that undo and redo restore the text; `LED_FUZZ_RUNS=20000 ./led -t` runs it longer (default 150 per language), `LED_FUZZ_SEED` picks the seeds, and a failure prints its seed and keys. `make clean && make sanitize` builds with AddressSanitizer and UndefinedBehaviorSanitizer.
 - **Paths**: a file with `..` in its path (`../src/file.c`) opens. It used to fail.
 - **No terminal scrolling**: when several rows change at once, led has curses write those rows out whole. Before, in a file drawn without line numbers (a `.txt`, or any extension not in `syntax_extensions`), curses moved rows with the terminal's scroll region when a line was inserted or joined, and a terminal that handles that badly showed stale rows until `F4`. The corruption was seen only on Haiku; Linux terminals were not affected. Not yet confirmed on Haiku.
 - **First frame, resize, `F4`**: these draw through the same painter as a key press. Before, they showed no status line, dropped word wrap, and cut a line with non-ASCII characters short (sometimes ending in `??`) until the next key.
@@ -26,7 +26,6 @@
 Priority: P1 function (it does not work), P2 form (it works, but the docs or layout are wrong), P3 tests.
 
 - **P1 Large files**: the whole file is still loaded into memory. There is no lazy load or mmap. led stops when the file exceeds `max_file_size_mb`, or when its lines would take more than `memory_limit_mb`. The buffer stays empty and the status line says `File too large` or `Too many lines`. Each line costs about 90 bytes beyond its text, so with the defaults (10 MB, 50 MB) the size limit is reached first for ordinary source: a 150,000-line, 9.5 MB file opens in about 26 MB. Raise the keys to open larger files.
-- **P3 No fuzzing harness** yet. Empty-file, size, null-byte, long-line, and memory-ceiling loads are tested.
 - **P2 Terminal**: selecting with the mouse is the terminal's, so it copies screen cells, line numbers and border included. Use `Ctrl+C`, or turn line numbers (`F2`) and the border (`F4`) off first.
 - **P1 Garbled display**: seen on Haiku only, in an assembly file (`.s`) with line numbers off, as stale rows after inserting or joining lines. Not reproduced on Linux, and not yet confirmed fixed on Haiku. Press `F4` twice (border on, then off again) to repaint the whole screen; `F2` is not a repaint key. Set `show_line_numbers=1` in `led.conf` to show line numbers in every file.
 
@@ -65,6 +64,7 @@ make doc          # installs led.1
 ./led file.c:142:8      # file:line or file:line:col
 ./led --prefix DIR file.c   # config files in DIR/led, not ~/.config/led
 ./led -t          # test mode (stderr, no curses) — also LED_TEST=1 ./led
+LED_FUZZ_RUNS=20000 ./led -t   # a longer fuzzing pass
 man led           # after make doc
 ```
 

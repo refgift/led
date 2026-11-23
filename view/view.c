@@ -759,6 +759,39 @@ ensure_exp_capacity (size_t need)
 
 // Print a highlighted substring of a line into text subwindow tw
 // y,x are tw-relative (0,0 origin). If tw==NULL (headless test), no-op fallback.
+/* Store the nesting state after this line, as print_highlighted does,
+ * for a row that draws no text of its own: an empty line, a line
+ * scrolled out of view to the left, or one all inside a selection.
+ * Without it the entry keeps its value from before the last edit, and
+ * an edit that changes nesting can look like it changed nothing, so
+ * the lines below keep their old colours. */
+static void
+refresh_line_nesting (Buffer *buf, int logical_line, const char *line,
+                      int len, EditorConfig *config)
+{
+  if (!buf->nesting_cache || logical_line >= buf->capacity || !config)
+    return;
+  int brace_level = 1, brace_top = 0, kw_level = 1, kw_top = 0;
+  int in_comment = 0;
+  int brace_stack[256];
+  int kw_stack[100];
+  memset (brace_stack, 0, sizeof brace_stack);
+  memset (kw_stack, 0, sizeof kw_stack);
+  get_starting_levels (buf, logical_line, &brace_level, &brace_top,
+                       brace_stack, &kw_level, &kw_top, kw_stack,
+                       &in_comment, config);
+  scan_line (line, len, NULL, config, (KeywordPair *) config->syntax_pairs,
+             config->num_syntax_pairs, &brace_level, &brace_top,
+             brace_stack, &kw_level, &kw_top, kw_stack, &in_comment);
+  NestingCache *c = &buf->nesting_cache[logical_line];
+  c->valid = 1;
+  c->brace_level = brace_level;
+  c->brace_top = brace_top;
+  c->kw_level = kw_level;
+  c->kw_top = kw_top;
+  c->in_comment = in_comment;
+}
+
 static void
 print_highlighted (Pane *tw, int y, int x, const char *full_line, int line_len,
                    int start, int len, int highlight_pair,
@@ -1172,6 +1205,10 @@ render_content_row (Pane *tw, int visual_row, int logical_line, Buffer *buf,
 
   line = buffer_get_line (buf, logical_line);
   len = strlen (line);
+  /* Every painted row brings its nesting entry up to date, drawn text
+     or not, so the next edit compares against what is on the screen. */
+  if (syntax_highlight)
+    refresh_line_nesting (buf, logical_line, line, len, config);
   int pos = *scroll_col ? *scroll_col : 0;
 
   // Handle selection

@@ -17,6 +17,8 @@ A name that already exists, colon and all, is opened as itself.
 .TP
 .B \-t
 Test mode: run model/view/controller tests to stderr, exit.
+The tests include a fuzzer that types random keys; \fCLED_FUZZ_RUNS\fR sets how many runs
+each language gets (default 150) and \fCLED_FUZZ_SEED\fR the first seed.
 .TP
 .BI \-\-prefix " dir"
 Keep the config files in \fIdir\fR/led/, not ~/.config/led/.
