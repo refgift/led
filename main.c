@@ -7,6 +7,7 @@
 #include "view.h"
 #include "config.h"
 #include "frontend/frontend.h"
+#include "undo_store.h"
 #include "test_controller.h"
 
 /* main.c ties the parts together and owns nothing else: it starts the
@@ -60,9 +61,32 @@ full_draw (Pane *text_win, Editor *ed)
   editor_draw (screen_pane (), text_win, ed);
 }
 
+/* Tests keep their undo histories in a directory of their own, so a
+ * run neither reads what an earlier run left nor litters the real one. */
+static char test_store[] = "/tmp/led_test_undo_XXXXXX";
+
+static void
+test_store_open (void)
+{
+  if (mkdtemp (test_store))
+    undo_store_set_dir (test_store);
+}
+
+static void
+test_store_close (void)
+{
+  char cmd[sizeof test_store + 16];
+  snprintf (cmd, sizeof cmd, "rm -rf '%s'", test_store);
+  if (strncmp (test_store, "/tmp/led_test_undo_", 19) == 0
+      && system (cmd) != 0)
+    fprintf (stderr, "could not remove %s\n", test_store);
+  undo_store_set_dir (NULL);
+}
+
 static int
 run_tests (int argc, char *argv[])
 {
+  test_store_open ();
   /* Tests draw into the memory front end; no terminal is touched. */
   frontend_use (frontend_memory ());
   Editor ed;
@@ -73,6 +97,7 @@ run_tests (int argc, char *argv[])
   fprintf (stderr, tests_failed == 0 ? "ALL TESTS PASSED\n"
            : "SOME TESTS FAILED\n");
   editor_cleanup (&ed);
+  test_store_close ();
   return 0;
 }
 
@@ -104,7 +129,9 @@ main (int argc, char *argv[])
   if (getenv ("LED_TEST"))
     {
       frontend_use (frontend_memory ());
+      test_store_open ();
       run_comprehensive_tests ();
+      test_store_close ();
       return 0;
     }
   if (argc > 1 && strcmp (argv[1], "-t") == 0)

@@ -4,6 +4,7 @@
 #include "view.h"
 #include "config.h"
 #include "utils/utils.h"
+#include "undo_store.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -295,6 +296,14 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->redo_stack.changes = NULL;
   ed->redo_stack.count = 0;
   ed->redo_stack.capacity = 0;
+  /* Undo history from the last session, if the file is still the text
+   * that history was saved with. A recovered buffer is not: it holds
+   * changes the file on disk never got. */
+  int history = 0;
+  if (ed->filename && !recovered && !ed->save_blocked
+      && ed->config.display.persistent_undo)
+    history = undo_store_load (ed->filename, &ed->undo_stack,
+                               &ed->redo_stack) == 0;
   // Initialize auto-save
   ed->unsaved_keystrokes = 0;
   ed->auto_save_threshold = ed->config.autosave.keystrokes;     // Configurable keystrokes
@@ -337,6 +346,8 @@ editor_init (Editor *ed, int argc, char *argv[])
       snprintf (msg, sizeof msg, "Line %d", ed->cursor_line + 1);
       set_status_message (ed, msg);
     }
+  else if (history && ed->undo_stack.count > 0)
+    set_status_message (ed, "Undo history restored");
 }
 void
 set_status_message (Editor *ed, const char *message)
@@ -356,6 +367,14 @@ editor_write_recovery (Editor *ed)
   if (n < 0 || (size_t) n >= sizeof recovery_path)
     return -1;
   return buffer_save_to_file (&ed->model, recovery_path);
+}
+
+void
+editor_keep_history (Editor *ed)
+{
+  if (ed && ed->filename && !ed->save_blocked
+      && ed->config.display.persistent_undo)
+    (void) undo_store_save (ed->filename, &ed->undo_stack, &ed->redo_stack);
 }
 
 void
@@ -381,6 +400,7 @@ auto_save (Editor *ed)
           set_status_message (ed, "Auto-save failed");
           return;
         }
+      editor_keep_history (ed);
       ed->backup_count++;
       ed->unsaved_keystrokes = 0;
       ed->last_save_time = time (NULL);
