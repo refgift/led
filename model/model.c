@@ -576,16 +576,15 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
     }
   if (buf->num_lines >= buf->capacity)
     {
-      buf->capacity =
+      /* Grow only once the new array is in hand, so a failed grow
+       * leaves the buffer as it was. */
+      int new_capacity =
         (buf->capacity == 0) ? INITIAL_LINES_CAPACITY : buf->capacity * 2;
       GapBuffer **new_lines =
-        realloc (buf->lines, buf->capacity * sizeof (GapBuffer *));
+        realloc (buf->lines, (size_t) new_capacity * sizeof (GapBuffer *));
       if (!new_lines)
-        {
-          fprintf (stderr,
-                   "Error: memory allocation failed in buffer_insert_line\n");
-          return -1;
-        }
+        return -1;
+      buf->capacity = new_capacity;
       buf->lines = new_lines;
       _ensure_cache_capacity (buf);
     }
@@ -698,11 +697,7 @@ buffer_insert_text (Buffer *buf, int line, int col, const char *text)
       if (*p == '\n')
         {
           if (buffer_insert_char (buf, current_line, current_col, '\n') != 0)
-            {
-              fprintf (stderr,
-                       "Error: failed to insert char in buffer_insert_text\n");
-              return -1;
-            }
+            return -1;
           structural = 1;
           if (current_line < touched_first) touched_first = current_line;
           if (current_line + 1 > touched_last) touched_last = current_line + 1;

@@ -15,33 +15,62 @@
  * lose the user's work.
  */
 
+/* Memory kept back so that, when an allocation fails, the failure
+ * handler still has room to save the user's work and restore the
+ * terminal before led exits. */
+static void *g_reserve;
+static void (*g_on_failure) (void);
+
+void
+xalloc_reserve (size_t n)
+{
+  free (g_reserve);
+  g_reserve = n ? malloc (n) : NULL;
+}
+
+void
+xalloc_on_failure (void (*fn) (void))
+{
+  g_on_failure = fn;
+}
+
+static void
+out_of_memory (const char *who)
+{
+  static int failing;
+  free (g_reserve);
+  g_reserve = NULL;
+  /* The handler may allocate; if that fails too, do not go round again. */
+  if (!failing && g_on_failure)
+    {
+      failing = 1;
+      g_on_failure ();
+    }
+  fprintf (stderr, "led: out of memory (%s)\n", who);
+  exit (EXIT_FAILURE);
+}
+
 void* xmalloc(size_t n)
 {
     void *p = malloc(n);
-    if (!p) {
-        perror("xmalloc");
-        exit(EXIT_FAILURE);
-    }
+    if (!p)
+        out_of_memory ("xmalloc");
     return p;
 }
 
 void* xrealloc(void *p, size_t n)
 {
     void *np = realloc(p, n);
-    if (!np) {
-        perror("xrealloc");
-        exit(EXIT_FAILURE);
-    }
+    if (!np)
+        out_of_memory ("xrealloc");
     return np;
 }
 
 void* xcalloc(size_t nmemb, size_t size)
 {
     void *p = calloc(nmemb, size);
-    if (!p) {
-        perror("xcalloc");
-        exit(EXIT_FAILURE);
-    }
+    if (!p)
+        out_of_memory ("xcalloc");
     return p;
 }
 

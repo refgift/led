@@ -21,10 +21,16 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/* Allocation helpers - abort on failure with perror + exit */
+/* Allocation helpers. On failure they free the reserve, call the
+ * failure handler once (to save work and restore the terminal), print
+ * a message and exit. */
 void* xmalloc(size_t n);
 void* xrealloc(void *p, size_t n);
 void* xcalloc(size_t nmemb, size_t size);
+/** Keep n bytes allocated for the failure handler to use (0 frees it). */
+void xalloc_reserve(size_t n);
+/** Run fn once when an allocation fails, before led exits. */
+void xalloc_on_failure(void (*fn)(void));
 
 /** Longest path led will open: the system limit, less room for the
  *  suffixes led adds beside the file (.recovery, .bak.N, .ledtmp.PID). */

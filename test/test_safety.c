@@ -13,6 +13,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <stdint.h>
+#include "utils.h"
 
 void test_assert (int condition, const char *msg);
 void run_safety_tests (void);
@@ -524,6 +527,55 @@ test_config_files (void)
     fprintf (stderr, "cleanup failed: %s\n", dir);
 }
 
+/* An allocation that fails runs the failure handler once, then exits
+ * with a failure status. Run in a child so the test suite survives. */
+static char g_oom_marker[64];
+
+static void
+oom_handler (void)
+{
+  FILE *fp = fopen (g_oom_marker, "a");
+  if (fp)
+    {
+      fputs ("saved\n", fp);
+      fclose (fp);
+    }
+}
+
+static void
+test_out_of_memory (void)
+{
+  snprintf (g_oom_marker, sizeof g_oom_marker, "/tmp/led_oom_%d", (int) getpid ());
+  unlink (g_oom_marker);
+  fflush (stderr);
+  pid_t pid = fork ();
+  if (pid == 0)
+    {
+      if (!freopen ("/dev/null", "w", stderr))
+        _exit (2);
+      xalloc_reserve (4096);
+      xalloc_on_failure (oom_handler);
+      volatile void *p = xmalloc (SIZE_MAX / 2);
+      (void) p;
+      _exit (0);                /* not reached: the allocation fails */
+    }
+  int status = 0;
+  waitpid (pid, &status, 0);
+  test_assert (WIFEXITED (status) && WEXITSTATUS (status) == EXIT_FAILURE,
+               "a failed allocation exits with a failure status");
+  char got[32] = "";
+  FILE *fp = fopen (g_oom_marker, "r");
+  if (fp)
+    {
+      if (!fgets (got, sizeof got, fp))
+        got[0] = '\0';
+      fclose (fp);
+    }
+  test_assert (strcmp (got, "saved\n") == 0,
+               "a failed allocation runs the failure handler once first");
+  unlink (g_oom_marker);
+}
+
 void
 run_safety_tests (void)
 {
@@ -535,6 +587,7 @@ run_safety_tests (void)
   test_replace_all_fixes ();
   test_blocked_saves ();
   test_config_files ();
+  test_out_of_memory ();
 }
 
 #include "undo_store.h"

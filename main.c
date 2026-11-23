@@ -19,6 +19,23 @@ extern int tests_failed;
 /* Set by SIGHUP / SIGTERM: the terminal closed or the session ended. */
 static volatile sig_atomic_t stop_requested = 0;
 
+/* What the out-of-memory handler needs: the work to save and the
+ * display to put back. Set once the editor is running. */
+static Editor *g_running;
+static const Frontend *g_display;
+
+static void
+on_out_of_memory (void)
+{
+  if (g_running)
+    (void) editor_write_recovery (g_running);
+  if (g_display)
+    g_display->stop ();
+  if (g_running && g_running->filename && g_running->file_modified)
+    fprintf (stderr, "led: unsaved changes were written to %s.recovery\n",
+             g_running->filename);
+}
+
 static void
 on_stop_signal (int sig)
 {
@@ -152,6 +169,10 @@ main (int argc, char *argv[])
       return 1;
     }
   frontend_use (fe);
+  g_running = &ed;
+  g_display = fe;
+  xalloc_reserve (1 << 20);
+  xalloc_on_failure (on_out_of_memory);
   editor_bind_terminal_keys (&ed);
   adopt_size (fe, &ed);
 
