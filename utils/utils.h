@@ -55,6 +55,18 @@ int utf8_fit_bytes(const char *s, int byte_len, int max_vis, int tab_width, int 
  * is no longer needed. Returns heap-allocated copy (caller free) or NULL.
  * Pure horizontal border lines (e.g. "┌──────┐") are dropped.
  */
+/* Shell here-documents. The line-to-line state for "inside a
+ * here-document" is LED_OPEN_HEREDOC, plus LED_HEREDOC_TABS for <<-,
+ * plus a 24-bit hash of the delimiter word. */
+#define LED_OPEN_HEREDOC (1 << 28)
+#define LED_HEREDOC_TABS (1 << 27)
+/** s[i] is '<'. If "<<WORD" starts a here-document there, return the
+ *  state for the lines that follow and set *end past the word; else 0.
+ *  "<<<" (a here-string) and "<<" inside $(( )) are not here-documents. */
+int heredoc_open(const char *s, int len, int i, int *end);
+/** True when line ends the here-document that state describes. */
+int heredoc_closes(const char *line, int len, int state);
+
 char* border_filter_dup(const char *text);
 int   border_filter_is_pure_border_line(const char *line, size_t len);
 

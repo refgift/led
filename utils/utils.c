@@ -325,3 +325,87 @@ utf8_fit_bytes (const char *s, int byte_len, int max_vis, int tab_width,
     }
   return i;
 }
+
+/* === Shell here-documents === */
+
+static unsigned long
+heredoc_hash (const char *s, int n)
+{
+  unsigned long h = 2166136261UL;
+  for (int i = 0; i < n; i++)
+    h = (h ^ (unsigned char) s[i]) * 16777619UL;
+  return h & 0xFFFFFFUL;
+}
+
+int
+heredoc_open (const char *s, int len, int i, int *end)
+{
+  if (i + 2 > len || s[i] != '<' || s[i + 1] != '<')
+    return 0;
+  if (i + 2 < len && s[i + 2] == '<')
+    return 0;                   /* <<< is a here-string */
+  if (i > 0 && s[i - 1] == '<')
+    return 0;
+  /* Inside $(( )) or (( )), << is a shift. */
+  int depth = 0;
+  for (int k = 0; k + 1 < i; k++)
+    {
+      if (s[k] == '(' && s[k + 1] == '(')
+        {
+          depth++;
+          k++;
+        }
+      else if (s[k] == ')' && s[k + 1] == ')')
+        {
+          if (depth > 0)
+            depth--;
+          k++;
+        }
+    }
+  if (depth > 0)
+    return 0;
+  int j = i + 2;
+  int tabs = 0;
+  if (j < len && s[j] == '-')
+    {
+      tabs = 1;
+      j++;
+    }
+  while (j < len && (s[j] == ' ' || s[j] == '\t'))
+    j++;
+  int ws, we;
+  if (j < len && (s[j] == '\'' || s[j] == '"'))
+    {
+      char q = s[j++];
+      ws = j;
+      while (j < len && s[j] != q)
+        j++;
+      we = j;
+      if (j < len)
+        j++;
+    }
+  else
+    {
+      if (j < len && s[j] == '\\')
+        j++;                    /* \EOF quotes the word too */
+      ws = j;
+      while (j < len && !strchr (" \t;&|<>()", s[j]))
+        j++;
+      we = j;
+    }
+  if (we <= ws)
+    return 0;
+  *end = j;
+  return LED_OPEN_HEREDOC | (tabs ? LED_HEREDOC_TABS : 0)
+    | (int) heredoc_hash (s + ws, we - ws);
+}
+
+int
+heredoc_closes (const char *line, int len, int state)
+{
+  int k = 0;
+  if (state & LED_HEREDOC_TABS)
+    while (k < len && line[k] == '\t')
+      k++;
+  return (int) heredoc_hash (line + k, len - k) == (state & 0xFFFFFF);
+}

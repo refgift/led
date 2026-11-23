@@ -757,6 +757,47 @@ run_shell_lex_tests (void)
     free (m1);
     free (m2);
   }
+  /* Here-documents: the body is text, the delimiter line ends it. */
+  {
+    const char *doc[] = { "cat <<'EOF' > out", "if ( x", "EOF", "f (1)" };
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *h[4];
+    int state[4];
+    for (int n = 0; n < 4; n++)
+      {
+        h[n] = compute_line_colors (doc[n], (int) strlen (doc[n]), 4, &cfg,
+                                    &bl, &bt, bs, &k, &kt, ks, &ic);
+        state[n] = ic;
+      }
+    test_assert (h[0] && (state[0] & LED_OPEN_HEREDOC),
+                 "<<'EOF' opens a here-document on the next line");
+    test_assert (h[1] && h[1][0] == LED_Q_STRING && h[1][3] == LED_Q_STRING
+                 && (state[1] & LED_OPEN_HEREDOC) && bl == 1,
+                 "a here-document line is text: no keyword, no nesting");
+    test_assert (state[2] == 0, "the delimiter line ends the here-document");
+    test_assert (h[3] && h[3][2] == LED_Q_LEVEL1 && state[3] == 0,
+                 "code after the here-document nests again");
+    for (int n = 0; n < 4; n++)
+      free (h[n]);
+
+    ic = 0;
+    int *t1 = compute_line_colors ("\tcat <<-END", 11, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    int *t2 = compute_line_colors ("\t\tEND", 5, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (t1 && t2 && ic == 0,
+                 "<<- ends at a delimiter indented with tabs");
+    free (t1);
+    free (t2);
+
+    ic = 0;
+    int *a1 = compute_line_colors ("x=$((1<<2)); y=$(cat <<< hi)", 28, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (a1 && ic == 0,
+                 "a shift in $(( )) and a <<< here-string are not here-documents");
+    free (a1);
+  }
   c = colors_of (&cfg, "if [ $# -gt 0 ];then echo \"x\";fi", &kl);
   test_assert (c && c[0] == LED_Q_LEVEL1 && c[5] == LED_Q_NORMAL
                && c[6] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL

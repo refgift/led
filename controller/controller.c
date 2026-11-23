@@ -1078,6 +1078,7 @@ typedef struct {
   char raw_close[20];
   int raw_close_len;
   int raw_pos;
+  int heredoc;                  /* inside a here-document: its state */
 } ScanSt;
 
 /* On success, *resume is the index just after the opening '('. */
@@ -1215,6 +1216,15 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
       if (!s)
         continue;
       int len = (int) strlen (s);
+      if (st.heredoc)
+        {
+          /* A here-document body is text: nothing in it matches. */
+          if (heredoc_closes (s, len, st.heredoc))
+            st.heredoc = 0;
+          free (s);
+          continue;
+        }
+      int heredoc_next = 0;
       int i = 0;
       int cont = 0;
       while (i < len && !found)
@@ -1320,6 +1330,17 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
               i++;
               continue;
             }
+          if (lang->heredocs && c == '<')
+            {
+              int end = 0;
+              int h = heredoc_open (s, len, i, &end);
+              if (h)
+                {
+                  heredoc_next = h;
+                  i = end;
+                  continue;
+                }
+            }
           if (np > 0 && is_word_char (c) && (i == 0 || !is_word_char (s[i - 1])))
             {
               int j = i;
@@ -1417,6 +1438,8 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
       else if ((st.state == SC_SQ || st.state == SC_DQ) && !cont
                && !lang->multiline_strings)
         st.state = SC_NORM;
+      if (heredoc_next && st.state == SC_NORM)
+        st.heredoc = heredoc_next;
       st.escape = 0;
     }
 

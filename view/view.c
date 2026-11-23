@@ -350,6 +350,16 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
   int lc = (int) strlen (lang->line_comment);
   int bo = (int) strlen (lang->block_open);
   int bc = (int) strlen (lang->block_close);
+  /* Inside a here-document every line is text, until the delimiter. */
+  if (*in_comment & LED_OPEN_HEREDOC)
+    {
+      if (heredoc_closes (s, len, *in_comment))
+        *in_comment = 0;
+      else
+        paint (colors, 0, len, LED_Q_STRING);
+      return;
+    }
+  int heredoc_next = 0;         /* <<WORD seen: the next line starts one */
   /* i == len is one step past the text, so a word that runs to the end
    * of the line is ended by the same code as any other. */
   while (i <= len)
@@ -461,6 +471,17 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
             }
           continue;
         }
+      if (lang->heredocs && c == '<')
+        {
+          int end = 0;
+          int h = heredoc_open (s, len, i, &end);
+          if (h)
+            {
+              heredoc_next = h;
+              i = end;
+              continue;
+            }
+        }
       if (c == '{' || c == '(' || c == '[')
         {
           if (*brace_top < 256)
@@ -491,6 +512,8 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         colors[i] = 4;
       i++;
     }
+  if (heredoc_next && *in_comment == 0)
+    *in_comment = heredoc_next;
 }
 
 // Compute color array for a line based on syntax highlighting

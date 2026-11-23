@@ -1282,6 +1282,24 @@ test_programmer_motions (void)
     test_cleanup (&w);
   }
 
+  /* A bracket inside a shell here-document is text, not a match. */
+  {
+    TestContext h;
+    test_init (&h);
+    set_default_config (&h.ed.config);
+    h.ed.config.display.tab_width = 8;
+    config_select_language (&h.ed.config, "run.sh");
+    const char *hsrc[] = { "f() {", "  cat <<EOF", "  }", "EOF", "}" };
+    for (int i = 0; i < 5; i++)
+      buffer_insert_line (&h.buf, i, hsrc[i]);
+    h.cursor_line = 0;
+    h.cursor_col = 4;
+    test_handle_input (&h, 29);
+    test_assert (h.cursor_line == 4 && h.cursor_col == 0,
+                 "Ctrl+] skips a brace inside a here-document");
+    test_cleanup (&h);
+  }
+
   ctx.cursor_line = 0;
   ctx.cursor_col = col_of (&ctx.buf, 0, '(', 1);
   test_handle_input (&ctx, 29);

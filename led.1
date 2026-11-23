@@ -210,6 +210,10 @@ Each character that opens a string.
 1 if a string left open at the end of a line goes on to the next, as in shell.
 Without it a string goes on only after a trailing backslash, as in C.
 .TP
+.B \fINAME\fB.heredocs
+1 if \fC<<WORD\fR starts a here-document: the lines after it are text until a line that is \fCWORD\fR
+(\fC<<-\fR allows leading tabs). On for shell.
+.TP
 .B \fINAME\fB.indent_after
 Words after which Enter indents one level, for example \fCthen,do,else\fR.
 .TP

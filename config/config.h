@@ -73,6 +73,7 @@ typedef struct {
     int highlight;               /* 0: shown as plain text */
     int comment_starts_word;     /* the line comment mark counts only at the
                                     start of a word: "#" in shell, not "$#" */
+    int heredocs;                /* <<WORD starts a here-document (shell) */
     int multiline_strings;       /* a string left open at the end of a line
                                     goes on to the next (shell). Without it a
                                     string goes on only after a trailing
