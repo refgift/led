@@ -87,12 +87,12 @@ Strings, character literals and comments are left plain.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-397 tests.
+409 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
 .IP \(bu 2
-Errors not standardized, no per-buffer undo persistence.
+Errors not standardized.
 .IP \(bu 2
 Comments, strings and numbers have no colour of their own.
 .IP \(bu 2
@@ -168,7 +168,7 @@ Brackets ( ) [ ] { } are always colored by nesting depth.
 for example FORTH: \fCpaired_keywords=if-then,begin-end\fR. It is empty by default.
 A pair is used only when both of its words, or neither, are reserved words.
 .SS Other keys
-\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR,
+\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR, \fCpersistent_undo\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,
 \fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
 Env \fCLED_NO_BORDER=1\fR.
@@ -176,6 +176,13 @@ Env \fCLED_NO_BORDER=1\fR.
 .I ~/.config/led/led.conf
 .br
 .I ~/.config/led/colorization.conf
+.TP
+.I /tmp/led-UID/
+Undo histories, one file per edited file, written at each save and read when the file is next opened,
+so undo works after quitting.
+Under \fC$TMPDIR\fR if that is set. Mode 0700; the system clears it.
+A history is used only if the file is unchanged since that save.
+\fCpersistent_undo=0\fR turns it off.
 .SH SEE ALSO
 .BR curs_color (3X),
 .BR vim (1),
