@@ -91,6 +91,12 @@ struct Editor {
     /* Clipboard for cut/copy/paste */
     char* clipboard;
 
+    /* Text the terminal is pasting, collected until it is complete. */
+    int paste_mode;
+    char* paste_buf;
+    int paste_len;
+    int paste_cap;
+
     /* Current file */
     const char* filename;
 

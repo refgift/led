@@ -85,6 +85,8 @@ typedef struct {
 #define LED_KEY_SEARCH_ALT  01001
 #define LED_KEY_WORD_LEFT   01002  /* Ctrl+Left */
 #define LED_KEY_WORD_RIGHT  01003  /* Ctrl+Right */
+#define LED_KEY_PASTE_BEGIN 01004  /* the terminal starts pasting text */
+#define LED_KEY_PASTE_END   01005  /* the pasted text is complete */
 
 typedef struct {
   /* The view. */
@@ -97,6 +99,11 @@ typedef struct {
   void (*stop) (void);
   void (*size) (int *cols, int *rows);
   int (*read_key) (void);       /* sends pending output, then waits */
+
+  /* Hand copied text to the system clipboard. May be NULL: a front end
+   * without one. Text pasted by the system arrives through read_key,
+   * as bytes between LED_KEY_PASTE_BEGIN and LED_KEY_PASTE_END. */
+  void (*clipboard) (const char *text, int len);
 } Frontend;
 
 /** The front end chosen at build time (make UI=curses | UI=ansi). */
@@ -123,5 +130,7 @@ int memory_quality (int x, int y);
 void memory_caret (int *x, int *y);
 /** Row y as UTF-8 text, trailing blanks removed. Returns out. */
 char *memory_row (int y, char *out, int out_size);
+/** Text last handed to the system clipboard, or NULL. Owned by the grid. */
+const char *memory_clipboard (void);
 /** Calls made since memory_reset. */
 int memory_calls (void);

@@ -77,7 +77,9 @@ enum {
   K_SEARCH = 1,       /* regex; T_DONE finds the next match, stays open */
   K_REPLACE,          /* pattern, T_DONE, replacement, T_DONE */
   K_GOTO,             /* "line" or "line:col" */
-  K_META              /* Esc, then one key: b, f, or Backspace */
+  K_META,             /* Esc, then one key: b, f, or Backspace */
+  K_PASTE             /* text the terminal pastes: T_CHAR per byte, then
+                         T_DONE inserts it as it is, as one undo step */
 };
 
 int symbol (int action, int value);

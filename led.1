@@ -51,6 +51,11 @@ Ctrl+Q on a modified buffer asks for a second Ctrl+Q.
 .TP
 .B Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V
 Select all / Copy / Cut / Paste (paste filtered).
+Copy and cut also go to the system clipboard through OSC 52, where the terminal accepts it.
+.TP
+.B The terminal's paste key
+Paste from the system clipboard. The text is inserted as it is, with no auto-indent, as one undo step.
+Into an open prompt goes its first line.
 After Ctrl+A, Copy, Cut, Backspace and Delete act on the whole buffer.
 Without a selection, Copy and Cut take from the cursor to the end of the line.
 .SS Search
@@ -82,7 +87,7 @@ Strings, character literals and comments are left plain.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-384 tests.
+397 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
@@ -91,7 +96,7 @@ Errors not standardized, no per-buffer undo persistence.
 .IP \(bu 2
 Comments, strings and numbers have no colour of their own.
 .IP \(bu 2
-No fuzzing, still needs input sanitization, no OSC 52 clipboard.
+No fuzzing. The system clipboard is written but not read; \fBxterm\fR needs \fCallowWindowOps\fR and \fBtmux\fR needs \fCset-clipboard on\fR.
 .IP \(bu 2
 xterm copy still sees screen cells — use F4 off.
 .SH CONFIGURATION
@@ -163,7 +168,7 @@ Brackets ( ) [ ] { } are always colored by nesting depth.
 for example FORTH: \fCpaired_keywords=if-then,begin-end\fR. It is empty by default.
 A pair is used only when both of its words, or neither, are reserved words.
 .SS Other keys
-\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR,
+\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,
 \fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
 Env \fCLED_NO_BORDER=1\fR.

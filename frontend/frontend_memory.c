@@ -13,6 +13,7 @@ static MemCell *grid;
 static int g_cols, g_rows;
 static int caret_x, caret_y;
 static int calls;
+static char *clip;
 
 static MemCell *
 cell (int x, int y)
@@ -31,6 +32,8 @@ memory_reset (int cols, int rows)
   g_rows = rows > 0 ? rows : 0;
   caret_x = caret_y = 0;
   calls = 0;
+  free (clip);
+  clip = NULL;
   if (g_cols && g_rows)
     {
       grid = malloc (sizeof (MemCell) * (size_t) g_cols * (size_t) g_rows);
@@ -124,6 +127,24 @@ memory_caret (int *x, int *y)
     *y = caret_y;
 }
 
+static void
+mem_clipboard (const char *text, int len)
+{
+  free (clip);
+  clip = malloc ((size_t) len + 1);
+  if (clip)
+    {
+      memcpy (clip, text, (size_t) len);
+      clip[len] = '\0';
+    }
+}
+
+const char *
+memory_clipboard (void)
+{
+  return clip;
+}
+
 int
 memory_calls (void)
 {
@@ -183,7 +204,7 @@ frontend_memory (void)
 {
   static const Frontend fe = {
     mem_show, mem_hide, mem_mark,
-    mem_start, mem_stop, mem_size, mem_read_key
+    mem_start, mem_stop, mem_size, mem_read_key, mem_clipboard
   };
   return &fe;
 }

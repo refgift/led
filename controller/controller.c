@@ -18,6 +18,9 @@ is_utf8_cont (char c)
   return ((unsigned char) c & 0xC0) == 0x80;
 }
 
+/* Most text handed to the system clipboard in one copy. */
+#define SYSTEM_CLIPBOARD_MAX 100000
+
 static void
 push_change (UndoStack *stack, bool is_insert, int line, int col, char ch,
              bool chained)
@@ -615,6 +618,16 @@ set_clipboard (InputContext *ctx, char *text)
   if (*ctx->clipboard)
     free (*ctx->clipboard);
   *ctx->clipboard = text;
+  /* Offer the same text to the system clipboard, if the front end has
+   * one. Very large text is kept inside led only: terminals drop it. */
+  const Frontend *fe = frontend_current ();
+  if (text && ctx->ed && ctx->ed->config.display.system_clipboard
+      && fe && fe->clipboard)
+    {
+      size_t n = strlen (text);
+      if (n > 0 && n <= SYSTEM_CLIPBOARD_MAX)
+        fe->clipboard (text, (int) n);
+    }
 }
 
 /* With a selection: cut it. Without: cut from the cursor to end of line. */
@@ -655,13 +668,15 @@ static void handle_copy (int ch, InputContext *ctx)
     set_clipboard (ctx, range_text (ctx->buf, row, col, row, linelen));
 }
 
-static void handle_paste (int ch, InputContext *ctx)
+/* Insert text at the cursor as one undo step. Border characters picked
+ * up by a terminal's block select are filtered out first. */
+static void
+paste_text (InputContext *ctx, const char *text)
 {
-  (void)ch;
-  if (!*ctx->clipboard || !**ctx->clipboard)
+  if (!text || !*text)
     return;
-  char *filtered = border_filter_dup (*ctx->clipboard);
-  const char *to_insert = filtered ? filtered : *ctx->clipboard;
+  char *filtered = border_filter_dup (text);
+  const char *to_insert = filtered ? filtered : text;
   size_t n = strlen (to_insert);
   int line = *ctx->cursor_line;
   int col = *ctx->cursor_col;
@@ -700,6 +715,13 @@ static void handle_paste (int ch, InputContext *ctx)
     }
   if (filtered)
     free (filtered);
+}
+
+static void handle_paste (int ch, InputContext *ctx)
+{
+  (void)ch;
+  if (*ctx->clipboard)
+    paste_text (ctx, *ctx->clipboard);
 }
 
 static void handle_save (int ch, InputContext *ctx)
@@ -1619,6 +1641,8 @@ static int
 token_open (InputContext *ctx)
 {
   Editor *ed = ctx->ed;
+  if (ed && ed->paste_mode)
+    return K_PASTE;
   if (ed && ed->goto_mode)
     return K_GOTO;
   if (ed && ed->replace_step)
@@ -1677,6 +1701,13 @@ token_begin (InputContext *ctx, int kind)
           memset (ed->replace_buffer, 0, sizeof ed->replace_buffer);
         }
       break;
+    case K_PASTE:
+      if (ed)
+        {
+          ed->paste_mode = 1;
+          ed->paste_len = 0;
+        }
+      break;
     case K_GOTO:
       if (ed)
         {
@@ -1712,6 +1743,22 @@ token_char (InputContext *ctx, int kind, int c)
         text_append (ed->search_buffer, sizeof ed->search_buffer, c);
       else
         text_append (ed->replace_buffer, sizeof ed->replace_buffer, c);
+      break;
+    case K_PASTE:
+      /* Collect; nothing is inserted until the paste is complete. */
+      if (c < 0 || c > 255)
+        break;
+      if (c == '\r')
+        c = '\n';               /* the terminal sends Enter as CR */
+      if (c == 0)
+        break;
+      if (ed->paste_len + 2 > ed->paste_cap)
+        {
+          ed->paste_cap = ed->paste_cap ? ed->paste_cap * 2 : 256;
+          ed->paste_buf = xrealloc (ed->paste_buf, (size_t) ed->paste_cap);
+        }
+      ed->paste_buf[ed->paste_len++] = (char) c;
+      ed->paste_buf[ed->paste_len] = '\0';
       break;
     case K_GOTO:
       if ((c >= '0' && c <= '9') || c == ':')
@@ -1797,6 +1844,28 @@ static void
 token_done (InputContext *ctx, int kind)
 {
   Editor *ed = ctx->ed;
+  if (kind == K_PASTE)
+    {
+      ed->paste_mode = 0;
+      if (ed->paste_len == 0)
+        return;
+      int under = token_open (ctx);     /* a prompt the paste lands in */
+      if (under == K_SEARCH || under == K_REPLACE || under == K_GOTO)
+        {
+          /* Into a prompt goes the first line only. */
+          for (int i = 0; i < ed->paste_len && ed->paste_buf[i] != '\n'; i++)
+            token_char (ctx, under, (unsigned char) ed->paste_buf[i]);
+        }
+      else
+        {
+          /* Into the text it goes as it is: no auto-indent, one undo step. */
+          ed->meta_pending = 0;
+          paste_text (ctx, ed->paste_buf);
+          end_selection (ctx);
+        }
+      ed->paste_len = 0;
+      return;
+    }
   if (kind == K_SEARCH)
     {
       /* Find next. The prompt stays open so Enter repeats the search. */
@@ -1848,6 +1917,12 @@ static void
 token_cancel (InputContext *ctx, int kind)
 {
   Editor *ed = ctx->ed;
+  if (kind == K_PASTE)
+    {
+      ed->paste_mode = 0;
+      ed->paste_len = 0;
+      return;
+    }
   if (kind == K_SEARCH)
     {
       *ctx->search_mode = 0;
@@ -1981,6 +2056,26 @@ route_key (int ch)
   last_plain = 0;
   if (ed)
     {
+      /* Text pasted by the terminal: every key until the end marker is
+       * part of it, whatever it would mean if typed. */
+      if (ch == LED_KEY_PASTE_BEGIN)
+        {
+          token (T_BEGIN, K_PASTE);
+          return;
+        }
+      if (ed->paste_mode)
+        {
+          if (ch == LED_KEY_PASTE_END)
+            {
+              last_plain = 1;   /* the text may have changed */
+              token (T_DONE, 0);
+            }
+          else
+            token (T_CHAR, ch);
+          return;
+        }
+      if (ch == LED_KEY_PASTE_END)
+        return;
       if (ed->goto_mode)
         {
           key_to_token (ch);

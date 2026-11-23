@@ -24,6 +24,7 @@ void test_buffer_manipulation ();
 void run_safety_tests (void);
 void run_screen_tests (void);
 void run_action_tests (void);
+void run_clipboard_tests (void);
 void run_color_tests (void);
 void run_large_file_tests (void);
 void test_buffer_advanced ();
@@ -1713,6 +1714,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   run_view_tests();
   run_screen_tests ();
   run_action_tests ();
+  run_clipboard_tests ();
   run_color_tests ();
   run_large_file_tests ();
   
