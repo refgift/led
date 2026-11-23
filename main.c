@@ -56,6 +56,9 @@ styles_from_config (const EditorConfig *c, FrontendStyle s[LED_Q_COUNT])
   s[LED_Q_LEVEL3] = (FrontendStyle) { c->colors.meta_level3_fg, c->colors.meta_level3_bg };
   s[LED_Q_LEVEL4] = (FrontendStyle) { c->colors.meta_level4_fg, c->colors.meta_level4_bg };
   s[LED_Q_RESERVED] = (FrontendStyle) { c->colors.reserved_words_fg, c->colors.reserved_words_bg };
+  s[LED_Q_COMMENT] = (FrontendStyle) { c->colors.comment_fg, c->colors.comment_bg };
+  s[LED_Q_STRING] = (FrontendStyle) { c->colors.string_fg, c->colors.string_bg };
+  s[LED_Q_NUMBER] = (FrontendStyle) { c->colors.number_fg, c->colors.number_bg };
 }
 
 /* Read the device size into the screen grid and the editor. */

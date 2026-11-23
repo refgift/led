@@ -34,7 +34,10 @@ enum {
   LED_Q_LEVEL3 = 6,
   LED_Q_LEVEL4 = 7,
   LED_Q_RESERVED = 8,
-  LED_Q_COUNT = 9
+  LED_Q_COMMENT = 9,
+  LED_Q_STRING = 10,            /* a string or character literal */
+  LED_Q_NUMBER = 11,
+  LED_Q_COUNT = 12
 };
 
 /* Colours a quality can be given in colorization.conf. The numbers are

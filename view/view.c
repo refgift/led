@@ -285,8 +285,19 @@ finish_word (const char *full_line, int start, int end, int *colors,
  * colouring pass and the nesting-only pass, so they cannot disagree.
  *
  * Text inside a string, a character literal or a comment is not code:
- * it is left plain, and a bracket or keyword in it does not nest.
+ * it takes the comment or string colour, and a bracket or keyword in
+ * it does not nest. A word that starts with a digit is a number.
  * *in_comment carries an open block comment from line to line. */
+/* Give colors[from..to) one quality; nothing when only nesting is wanted. */
+static void
+paint (int *colors, int from, int to, int quality)
+{
+  if (!colors)
+    return;
+  for (int j = from; j < to; j++)
+    colors[j] = quality;
+}
+
 static void
 scan_line (const char *s, int len, int *colors, EditorConfig *config,
            KeywordPair *pairs, int num_pairs,
@@ -313,9 +324,12 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
               *in_comment = 0;  /* this language has no block comments */
               continue;
             }
+          int from = i;
           while (i < len && !(i + bc <= len
                               && memcmp (s + i, lang->block_close, (size_t) bc) == 0))
             i++;
+          int to = (i >= len) ? len : i + bc;
+          paint (colors, from, to, LED_Q_COMMENT);
           if (i >= len)
             break;              /* still open at the end of the line */
           i += bc;
@@ -339,9 +353,16 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         {
           /* Past 100 words the line is not coloured further, but the
            * nesting is still counted so later lines stay right. */
-          finish_word (s, word_start, i,
-                       word_count++ > 100 ? NULL : colors, config, pairs,
-                       num_pairs, kw_level, kw_top, kw_stack);
+          if (isdigit ((unsigned char) s[word_start]))
+            {
+              /* 42, 0x1F, 10L: a number, never a keyword. */
+              if (word_count++ <= 100)
+                paint (colors, word_start, i, LED_Q_NUMBER);
+            }
+          else
+            finish_word (s, word_start, i,
+                         word_count++ > 100 ? NULL : colors, config, pairs,
+                         num_pairs, kw_level, kw_top, kw_stack);
           in_word = 0;
         }
       if (i >= len)
@@ -357,11 +378,15 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
           && memcmp (s + i, lang->line_comment, (size_t) lc) == 0
           && (!lang->comment_starts_word || i == 0
               || strchr (" \t;&|()", s[i - 1])))
-        break;                  /* line comment: the rest is not code */
+        {
+          paint (colors, i, len, LED_Q_COMMENT);
+          break;                /* line comment: the rest is not code */
+        }
       if (bo && bc && i + bo <= len
           && memcmp (s + i, lang->block_open, (size_t) bo) == 0)
         {
           *in_comment = 1;
+          paint (colors, i, i + bo, LED_Q_COMMENT);
           i += bo;
           continue;
         }
@@ -371,6 +396,7 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
           && !(c == '\'' && i > 0 && (isalnum ((unsigned char) s[i - 1])
                                       || s[i - 1] == '_')))
         {
+          int from = i;
           i++;
           while (i < len && s[i] != c)
             {
@@ -380,6 +406,7 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
             }
           if (i < len)
             i++;                /* the closing quote */
+          paint (colors, from, i > len ? len : i, LED_Q_STRING);
           continue;
         }
       if (c == '{' || c == '(' || c == '[')

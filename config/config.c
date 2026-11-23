@@ -104,6 +104,14 @@ set_default_config (EditorConfig *config)
   config->colors.meta_level4_bg = LED_COLOR_BLACK;
   config->colors.reserved_words_fg = LED_COLOR_RED;
   config->colors.reserved_words_bg = LED_COLOR_BLACK;
+  /* Comments stand apart; strings and numbers look like text until
+   * the config gives them a colour. */
+  config->colors.comment_fg = LED_COLOR_MAGENTA;
+  config->colors.comment_bg = LED_COLOR_BLACK;
+  config->colors.string_fg = LED_COLOR_WHITE;
+  config->colors.string_bg = LED_COLOR_BLACK;
+  config->colors.number_fg = LED_COLOR_WHITE;
+  config->colors.number_bg = LED_COLOR_BLACK;
   // Syntax
   strcpy (config->syntax.extensions,
           ".c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx");
@@ -659,6 +667,18 @@ config_read_file (EditorConfig *config, const char *path)
         config->colors.reserved_words_fg = string_to_color (value);
       else if (strcmp (key, "reserved_words_bg") == 0)
         config->colors.reserved_words_bg = string_to_color (value);
+      else if (strcmp (key, "comment_fg") == 0)
+        config->colors.comment_fg = string_to_color (value);
+      else if (strcmp (key, "comment_bg") == 0)
+        config->colors.comment_bg = string_to_color (value);
+      else if (strcmp (key, "string_fg") == 0)
+        config->colors.string_fg = string_to_color (value);
+      else if (strcmp (key, "string_bg") == 0)
+        config->colors.string_bg = string_to_color (value);
+      else if (strcmp (key, "number_fg") == 0)
+        config->colors.number_fg = string_to_color (value);
+      else if (strcmp (key, "number_bg") == 0)
+        config->colors.number_bg = string_to_color (value);
       // Syntax
       /* These three, with no language name, are C's: they are older
        * than languages, and c.extensions and so on mean the same. */
@@ -838,6 +858,9 @@ color_body (FILE *f, const EditorConfig *d)
   PAIR (meta_level2);
   PAIR (meta_level3);
   PAIR (meta_level4);
+  PAIR (comment);
+  PAIR (string);
+  PAIR (number);
 #undef PAIR
   fprintf (f, "\n# Files with these extensions are highlighted.\n"
            "#syntax_extensions=%s\n#reserved_words=%s\n",

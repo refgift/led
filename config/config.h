@@ -40,6 +40,9 @@ typedef struct {
     int meta_level3_fg, meta_level3_bg;
     int meta_level4_fg, meta_level4_bg;   /* deepest nesting and beyond */
     int reserved_words_fg, reserved_words_bg;
+    int comment_fg, comment_bg;
+    int string_fg, string_bg;
+    int number_fg, number_bg;
 } ColorScheme;
 /**
  * SyntaxConfig - Rules controlling syntax highlighting.

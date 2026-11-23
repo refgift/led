@@ -83,7 +83,7 @@ A file that did not load whole is never written back.
 Editing, selection, clipboard, regex search/replace, Unicode, incremental rendering (75x less output).
 .IP \(bu 2
 Syntax highlight for C and C++: reserved words, semicolons, and brackets coloured by nesting depth.
-Strings, character literals and comments are left plain.
+Comments, strings and character literals, and numbers have colours of their own; a bracket or keyword inside a comment or string does not nest.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
@@ -110,7 +110,7 @@ List only the keys to change.
 .SS Colors
 The keys are
 \fCnormal\fR, \fCselection\fR, \fCsemicolon\fR, \fCmeta_level1\fR to \fCmeta_level4\fR
-(brackets by nesting depth) and \fCreserved_words\fR, each with \fC_fg\fR and \fC_bg\fR.
+(brackets by nesting depth), \fCreserved_words\fR, \fCcomment\fR, \fCstring\fR and \fCnumber\fR, each with \fC_fg\fR and \fC_bg\fR.
 A value is one of the following, in any letter case.
 .TP
 .B BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE
@@ -143,7 +143,8 @@ The sixteen named colors and their numbers:
 .PP
 Defaults: text WHITE on BLACK, selection BLACK on WHITE,
 semicolon and reserved words RED,
-nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW.
+nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW,
+comments MAGENTA, strings and numbers WHITE.
 .PP
 The extended colors exist on a terminal with 16 or more colors.
 On a terminal with eight, an extended foreground is shown as the matching curses color in bold,

@@ -229,24 +229,29 @@ run_color_tests (void)
 
   /* Strings, character literals and comments are not code. */
   c = colors_of (&cfg, "x = \"if (\"; y(1);", NULL);
-  test_assert (c && c[5] == LED_Q_NORMAL && c[8] == LED_Q_NORMAL
-               && c[13] == LED_Q_LEVEL1 && c[15] == LED_Q_LEVEL1,
-               "a bracket or keyword inside a string is plain and does not nest");
+  test_assert (c && c[4] == LED_Q_STRING && c[5] == LED_Q_STRING
+               && c[8] == LED_Q_STRING && c[9] == LED_Q_STRING
+               && c[13] == LED_Q_LEVEL1 && c[14] == LED_Q_NUMBER
+               && c[15] == LED_Q_LEVEL1,
+               "a string, quotes included, has the string colour and does not nest");
   free (c);
   c = colors_of (&cfg, "c = '('; n = 1'000; f(2);", NULL);
-  test_assert (c && c[5] == LED_Q_NORMAL && c[21] == LED_Q_LEVEL1
+  test_assert (c && c[5] == LED_Q_STRING && c[13] == LED_Q_NUMBER
+               && c[14] == LED_Q_NORMAL && c[21] == LED_Q_LEVEL1
                && c[23] == LED_Q_LEVEL1,
                "a character literal is skipped; a digit separator is not a quote");
   free (c);
   c = colors_of (&cfg, "a(1); // if (", &kl);
-  test_assert (c && c[1] == LED_Q_LEVEL1 && c[9] == LED_Q_NORMAL
-               && c[12] == LED_Q_NORMAL && kl == 1,
-               "a line comment is plain");
+  test_assert (c && c[1] == LED_Q_LEVEL1 && c[6] == LED_Q_COMMENT
+               && c[9] == LED_Q_COMMENT && c[12] == LED_Q_COMMENT && kl == 1,
+               "a line comment has the comment colour and does not nest");
   free (c);
   c = colors_of (&cfg, "a /* ( if */ (b)", NULL);
-  test_assert (c && c[5] == LED_Q_NORMAL && c[7] == LED_Q_NORMAL
+  test_assert (c && c[2] == LED_Q_COMMENT && c[5] == LED_Q_COMMENT
+               && c[7] == LED_Q_COMMENT && c[11] == LED_Q_COMMENT
+               && c[12] == LED_Q_NORMAL
                && c[13] == LED_Q_LEVEL1 && c[15] == LED_Q_LEVEL1,
-               "a block comment is plain, and code after it is coloured");
+               "a block comment has the comment colour, and code after it is coloured");
   free (c);
 
   /* A block comment left open carries to the next line. */
@@ -258,9 +263,9 @@ run_color_tests (void)
     test_assert (ic == 1 && bl == 1, "an open block comment is carried on");
     int *c2 = compute_line_colors ("( still ) */ f(1)", 17, 4, &cfg,
                                    &bl, &bt, bs, &k, &kt, ks, &ic);
-    test_assert (c2 && ic == 0 && c2[0] == LED_Q_NORMAL && c2[8] == LED_Q_NORMAL
-                 && c2[14] == LED_Q_LEVEL1 && bl == 1,
-                 "the next line stays plain until the comment closes");
+    test_assert (c2 && ic == 0 && c2[0] == LED_Q_COMMENT && c2[8] == LED_Q_COMMENT
+                 && c2[11] == LED_Q_COMMENT && c2[14] == LED_Q_LEVEL1 && bl == 1,
+                 "the next line is comment until the comment closes");
     free (c1);
     free (c2);
   }
@@ -479,8 +484,8 @@ run_language_tests (void)
                "BEGIN opens a level and END takes the colour of its BEGIN");
   free (c);
   c = lang_colors (&cfg, "OUTPUT \"IF BEGIN (\"; OUTPUT NEWLINE", &kl);
-  test_assert (c && c[0] == LED_Q_RESERVED && c[8] == LED_Q_NORMAL
-               && c[11] == LED_Q_NORMAL && c[17] == LED_Q_NORMAL
+  test_assert (c && c[0] == LED_Q_RESERVED && c[8] == LED_Q_STRING
+               && c[11] == LED_Q_STRING && c[17] == LED_Q_STRING
                && c[19] == LED_Q_SEMICOLON && c[28] == LED_Q_RESERVED && kl == 1,
                "words inside a denotation are text, not code");
   free (c);
@@ -502,7 +507,7 @@ run_language_tests (void)
   config_select_language (&cfg, "prog.c");
   c = lang_colors (&cfg, "if (x) return; // BEGIN", &kl);
   test_assert (c && c[0] == LED_Q_RESERVED && c[7] == LED_Q_RESERVED
-               && c[18] == LED_Q_NORMAL && kl == 1,
+               && c[18] == LED_Q_COMMENT && kl == 1,
                "choosing C again restores C's words and comments");
   free (c);
 
@@ -573,8 +578,8 @@ run_language_tests (void)
   ed.auto_save_threshold = 100000;
   c = lang_colors (&ed.config, "def f(): # return (", &kl);
   test_assert (ed.syntax_highlight == 1 && c && c[0] == LED_Q_RESERVED
-               && c[5] == LED_Q_LEVEL1 && c[11] == LED_Q_NORMAL
-               && c[18] == LED_Q_NORMAL,
+               && c[5] == LED_Q_LEVEL1 && c[11] == LED_Q_COMMENT
+               && c[18] == LED_Q_COMMENT,
                "a language defined in colorization.conf is used");
   free (c);
   editor_handle_input (&ed, 11);
@@ -715,13 +720,13 @@ run_shell_lex_tests (void)
   test_assert (c && c[0] == LED_Q_LEVEL1 && c[5] == LED_Q_NORMAL
                && c[6] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL
                && c[16] == LED_Q_RESERVED && c[21] == LED_Q_RESERVED
-               && c[27] == LED_Q_NORMAL && c[30] == LED_Q_LEVEL1 && kl == 1,
+               && c[27] == LED_Q_STRING && c[30] == LED_Q_LEVEL1 && kl == 1,
                "if ... fi pair; $# is not a comment; then and echo are reserved");
   free (c);
   c = colors_of (&cfg, "for f in *;do echo $f;done # if (", &kl);
   test_assert (c && c[0] == LED_Q_RESERVED && c[11] == LED_Q_LEVEL1
-               && c[22] == LED_Q_LEVEL1 && c[29] == LED_Q_NORMAL
-               && c[32] == LED_Q_NORMAL && kl == 1,
+               && c[22] == LED_Q_LEVEL1 && c[29] == LED_Q_COMMENT
+               && c[32] == LED_Q_COMMENT && kl == 1,
                "do ... done pair; # after a space starts a comment");
   free (c);
   c = colors_of (&cfg, "echo ${x#y} \\\" \\( done", &kl);
@@ -755,8 +760,8 @@ run_shell_lex_tests (void)
   c = colors_of (&cfg, "\tprintf(\"%s\", yytext); return 0; ECHO;", &kl);
   test_assert (c && c[14] == LED_Q_RESERVED && c[19] == LED_Q_RESERVED
                && c[23] == LED_Q_RESERVED && c[33] == LED_Q_RESERVED
-               && c[10] == LED_Q_NORMAL,
-               "yytext, return and ECHO are reserved; the string is plain");
+               && c[10] == LED_Q_STRING,
+               "yytext, return and ECHO are reserved; the string has the string colour");
   free (c);
 
   /* In the editor: a shell script with no extension, and Enter after do. */
