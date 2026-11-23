@@ -576,6 +576,55 @@ test_out_of_memory (void)
   unlink (g_oom_marker);
 }
 
+/* clipboard_copy and clipboard_paste: commands for the system
+ * clipboard. Plain shell commands stand in for wl-copy and wl-paste. */
+static void
+test_clipboard_commands (void)
+{
+  char file[64];
+  snprintf (file, sizeof file, "/tmp/led_clip_%d", (int) getpid ());
+  unlink (file);
+  TestContext t;
+  test_init (&t);
+  snprintf (t.ed.config.display.clipboard_copy,
+            sizeof t.ed.config.display.clipboard_copy, "cat > %s", file);
+  buffer_insert_line (&t.buf, 0, "copy me");
+  buffer_insert_line (&t.buf, 1, "");
+  t.cursor_line = 0;
+  t.cursor_col = 0;
+  test_handle_input (&t, 3);    /* Ctrl+C: the line, to its end */
+  char got[64] = "";
+  FILE *fp = fopen (file, "r");
+  if (fp)
+    {
+      size_t n = fread (got, 1, sizeof got - 1, fp);
+      got[n] = '\0';
+      fclose (fp);
+    }
+  test_assert (strcmp (got, "copy me") == 0,
+               "copy also sends the text to clipboard_copy");
+
+  snprintf (t.ed.config.display.clipboard_paste,
+            sizeof t.ed.config.display.clipboard_paste,
+            "printf 'sys\\r\\ntext'");
+  t.cursor_line = 1;
+  t.cursor_col = 0;
+  test_handle_input (&t, 22);   /* Ctrl+V */
+  test_assert (line_is (&t.buf, 1, "sys") && line_is (&t.buf, 2, "text"),
+               "Ctrl+V pastes what clipboard_paste prints, without carriage returns");
+  test_assert (t.clipboard && strcmp (t.clipboard, "sys\ntext") == 0,
+               "the pasted system text becomes led's copy too");
+
+  strcpy (t.ed.config.display.clipboard_paste, "true");
+  t.cursor_line = 2;
+  t.cursor_col = 4;
+  test_handle_input (&t, 22);
+  test_assert (line_is (&t.buf, 3, "text"),
+               "when clipboard_paste prints nothing, led's own copy is pasted");
+  test_cleanup (&t);
+  unlink (file);
+}
+
 void
 run_safety_tests (void)
 {
@@ -588,6 +637,7 @@ run_safety_tests (void)
   test_blocked_saves ();
   test_config_files ();
   test_out_of_memory ();
+  test_clipboard_commands ();
 }
 
 #include "undo_store.h"

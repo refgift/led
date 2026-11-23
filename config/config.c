@@ -216,6 +216,8 @@ set_default_config (EditorConfig *config)
   config->display.show_line_numbers = 0;
   config->display.line_numbers_configured = 0;
   config->display.system_clipboard = 1;
+  config->display.clipboard_copy[0] = '\0';
+  config->display.clipboard_paste[0] = '\0';
   config->display.persistent_undo = 1;
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
@@ -735,6 +737,12 @@ config_read_file (EditorConfig *config, const char *path)
         config->statusbar.show_key_meter = atoi (value);
       else if (strcmp (key, "system_clipboard") == 0)
         config->display.system_clipboard = atoi (value) ? 1 : 0;
+      else if (strcmp (key, "clipboard_copy") == 0)
+        snprintf (config->display.clipboard_copy,
+                  sizeof config->display.clipboard_copy, "%s", value);
+      else if (strcmp (key, "clipboard_paste") == 0)
+        snprintf (config->display.clipboard_paste,
+                  sizeof config->display.clipboard_paste, "%s", value);
       else if (strcmp (key, "persistent_undo") == 0)
         config->display.persistent_undo = atoi (value) ? 1 : 0;
       else if (strcmp (key, "max_file_size_mb") == 0)
@@ -834,6 +842,13 @@ general_body (FILE *f, const EditorConfig *d)
            d->search.enabled, d->search.max_pattern_length);
   fprintf (f, "# Copy and cut also go to the system clipboard (OSC 52).\n"
            "#system_clipboard=%d\n\n", d->display.system_clipboard);
+  fprintf (f, "# Commands for the system clipboard, where the terminal cannot reach\n"
+           "# it. Copy and cut also send the text to clipboard_copy; Ctrl+V pastes\n"
+           "# what clipboard_paste prints, or led's own copy when it prints nothing.\n"
+           "# Wayland: wl-copy / wl-paste --no-newline\n"
+           "# X11:     xclip -selection clipboard / xclip -selection clipboard -o\n"
+           "# macOS:   pbcopy / pbpaste\n"
+           "#clipboard_copy=\n#clipboard_paste=\n\n");
   fprintf (f, "# Keep each file's undo history between sessions. It is stored in a\n"
            "# directory of your own under the system's temporary directory.\n"
            "#persistent_undo=%d\n", d->display.persistent_undo);

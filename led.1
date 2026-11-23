@@ -53,7 +53,9 @@ Ctrl+Q on a modified buffer asks for a second Ctrl+Q.
 .TP
 .B Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V
 Select all / Copy / Cut / Paste (paste filtered).
-Copy and cut also go to the system clipboard through OSC 52, where the terminal accepts it.
+Copy and cut also go to the system clipboard through OSC 52, where the terminal accepts it,
+and to the \fCclipboard_copy\fR command if one is set.
+With \fCclipboard_paste\fR set, Ctrl+V pastes what that command prints, or led's own copy when it prints nothing.
 .TP
 .B The terminal's paste key
 Paste from the system clipboard. The text is inserted as it is, with no auto-indent, as one undo step.
@@ -222,7 +224,8 @@ Interpreter names. A file whose extension chooses no language, and whose first l
 .PP
 The older keys \fCsyntax_extensions\fR, \fCreserved_words\fR and \fCpaired_keywords\fR, with no language name, are C's.
 .SS Other keys
-\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR, \fCpersistent_undo\fR,
+\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR,
+\fCclipboard_copy\fR and \fCclipboard_paste\fR (commands such as \fCwl-copy\fR and \fCwl-paste --no-newline\fR), \fCpersistent_undo\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,
 \fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_highlight_length\fR (old name \fCmax_line_length\fR).
 Env \fCLED_NO_BORDER=1\fR.

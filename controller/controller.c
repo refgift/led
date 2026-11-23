@@ -7,6 +7,7 @@
 #include <string.h>
 #include <regex.h>
 #include <ctype.h>
+#include <signal.h>
 #include <stdio.h>
 
 /* Most changes kept per stack. One change is one byte of text. */
@@ -629,6 +630,65 @@ static void handle_enter (int ch, InputContext *ctx)
     }
 }
 
+/* The clipboard commands run through the shell with their input and
+ * output kept off the terminal, which curses owns. */
+#define PASTE_COMMAND_MAX (16 * 1024 * 1024)
+
+static void
+run_copy_command (const char *cmd, const char *text, size_t n)
+{
+  char line[400];
+  if (snprintf (line, sizeof line, "(%s) >/dev/null 2>&1", cmd)
+      >= (int) sizeof line)
+    return;
+  void (*old) (int) = signal (SIGPIPE, SIG_IGN);
+  FILE *p = popen (line, "w");
+  if (p)
+    {
+      (void) fwrite (text, 1, n, p);
+      (void) pclose (p);
+    }
+  signal (SIGPIPE, old);
+}
+
+/* What the paste command prints, or NULL. Carriage returns before a
+ * newline are dropped, and so are NUL bytes. */
+static char *
+run_paste_command (const char *cmd)
+{
+  char line[400];
+  if (snprintf (line, sizeof line, "(%s) </dev/null 2>/dev/null", cmd)
+      >= (int) sizeof line)
+    return NULL;
+  FILE *p = popen (line, "r");
+  if (!p)
+    return NULL;
+  size_t cap = 4096, n = 0;
+  char *out = xmalloc (cap);
+  int c;
+  while ((c = fgetc (p)) != EOF && n < PASTE_COMMAND_MAX)
+    {
+      if (c == '\0')
+        continue;
+      if (n + 2 > cap)
+        out = xrealloc (out, cap *= 2);
+      out[n++] = (char) c;
+      if (c == '\n' && n >= 2 && out[n - 2] == '\r')
+        {
+          out[n - 2] = '\n';
+          n--;
+        }
+    }
+  (void) pclose (p);
+  out[n] = '\0';
+  if (n == 0)
+    {
+      free (out);
+      return NULL;
+    }
+  return out;
+}
+
 static void
 set_clipboard (InputContext *ctx, char *text)
 {
@@ -645,6 +705,9 @@ set_clipboard (InputContext *ctx, char *text)
       if (n > 0 && n <= SYSTEM_CLIPBOARD_MAX)
         fe->clipboard (text, (int) n);
     }
+  if (text && ctx->ed && ctx->ed->config.display.clipboard_copy[0])
+    run_copy_command (ctx->ed->config.display.clipboard_copy, text,
+                      strlen (text));
 }
 
 /* With a selection: cut it. Without: cut from the cursor to end of line. */
@@ -737,6 +800,17 @@ paste_text (InputContext *ctx, const char *text)
 static void handle_paste (int ch, InputContext *ctx)
 {
   (void)ch;
+  /* The system clipboard, when a command reads it, is what was copied
+   * last, here or in another program. It becomes led's copy too. */
+  if (ctx->ed && ctx->ed->config.display.clipboard_paste[0])
+    {
+      char *sys = run_paste_command (ctx->ed->config.display.clipboard_paste);
+      if (sys)
+        {
+          free (*ctx->clipboard);
+          *ctx->clipboard = sys;
+        }
+    }
   if (*ctx->clipboard)
     paste_text (ctx, *ctx->clipboard);
 }
