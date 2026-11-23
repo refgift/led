@@ -35,18 +35,21 @@ typedef struct {
 } GapBuffer;
 
 /**
- * NestingCache - Cached brace/keyword nesting state for one line.
+ * NestingCache - Cached brace/keyword nesting state after one line.
  * Used by the syntax highlighter to avoid re-scanning from the top
  * of the file on every redraw.
+ *
+ * There is one of these for every line of the file, so it holds only
+ * the depths. The level stacks the highlighter works with are not
+ * stored: a level is always one more than the depth it was opened at,
+ * so the stacks are rebuilt from the depths (view.c, restore_stacks).
  */
 typedef struct {
     int valid;          /* Is this cache entry valid? */
     int brace_level;
-    int brace_top;
-    int brace_stack[256];
+    int brace_top;      /* open brackets */
     int kw_level;
-    int kw_top;
-    int kw_stack[100];
+    int kw_top;         /* open paired keywords */
     int in_comment;     /* a block comment is still open after this line */
 } NestingCache;
 

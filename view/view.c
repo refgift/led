@@ -246,8 +246,11 @@ finish_word (const char *full_line, int start, int end, int *colors,
     {
       if (strcmp (word, pairs[p].open) == 0)
         {
+          /* Past what the stack holds the depth is still counted, so
+           * a level is always one more than the depth it opened at. */
           if (*kw_top < 100)
-            kw_stack[(*kw_top)++] = *kw_level;
+            kw_stack[*kw_top] = *kw_level;
+          (*kw_top)++;
           int lvl = *kw_level;
           color = 3 + (lvl > 4 ? 4 : lvl);
           (*kw_level)++;
@@ -257,7 +260,8 @@ finish_word (const char *full_line, int start, int end, int *colors,
         {
           if (*kw_top > 0)
             {
-              int lvl = kw_stack[--(*kw_top)];
+              --(*kw_top);
+              int lvl = (*kw_top < 100) ? kw_stack[*kw_top] : 5;
               color = 3 + (lvl > 4 ? 4 : lvl);
             }
           *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
@@ -408,36 +412,51 @@ compute_line_colors (const char *full_line, int line_len,
              in_comment);
   return colors;
 }
+/* The level stacks are not kept per line (see NestingCache). A level
+ * is always one more than the depth it was opened at, so entry i of a
+ * stack is i + 1. */
+static void
+restore_stacks (int brace_top, int brace_stack[], int kw_top, int kw_stack[])
+{
+  for (int i = 0; i < brace_top && i < 256; i++)
+    brace_stack[i] = i + 1;
+  for (int i = 0; i < kw_top && i < 100; i++)
+    kw_stack[i] = i + 1;
+}
+
 // Compute starting nesting state for a line (with caching)
 void get_starting_levels(Buffer *buf, int start_line, int *brace_level, int *brace_top, int brace_stack[], int *kw_level, int *kw_top, int kw_stack[], int *in_comment, EditorConfig *config) {
-  // Check if cache is available and valid for previous line
-  if (buf->nesting_cache && start_line > 0 && buf->nesting_cache[start_line - 1].valid) {
-    // Use cached state from previous line
-    *brace_level = buf->nesting_cache[start_line - 1].brace_level;
-    *brace_top = buf->nesting_cache[start_line - 1].brace_top;
-    memcpy(brace_stack, buf->nesting_cache[start_line - 1].brace_stack, sizeof(int) * 256);
-    *kw_level = buf->nesting_cache[start_line - 1].kw_level;
-    *kw_top = buf->nesting_cache[start_line - 1].kw_top;
-    memcpy(kw_stack, buf->nesting_cache[start_line - 1].kw_stack, sizeof(int) * 100);
-    *in_comment = buf->nesting_cache[start_line - 1].in_comment;
-    return;
-  }
-
   *brace_level = 1;
   *brace_top = 0;
   *kw_level = 1;
   *kw_top = 0;
   *in_comment = 0;
+  /* Start from the nearest earlier line whose state is cached, not from
+   * the top of the file: in a long file that is the difference between
+   * reading a screenful and reading everything above it. */
+  int from = 0;
+  if (buf->nesting_cache)
+    for (int l = start_line - 1; l >= 0; l--)
+      if (buf->nesting_cache[l].valid)
+        {
+          const NestingCache *c = &buf->nesting_cache[l];
+          *brace_level = c->brace_level;
+          *brace_top = c->brace_top;
+          *kw_level = c->kw_level;
+          *kw_top = c->kw_top;
+          *in_comment = c->in_comment;
+          restore_stacks (*brace_top, brace_stack, *kw_top, kw_stack);
+          from = l + 1;
+          break;
+        }
   // Use pre-parsed pairs from config
   KeywordPair *pairs = (KeywordPair *) config->syntax_pairs;
   int num_pairs = config->num_syntax_pairs;
-  // Update state for each previous line
-  for (int l = 0; l < start_line; l++) {
-		
-
-
-
+  // Fold in each line between there and start_line
+  for (int l = from; l < start_line; l++) {
     char *line = buffer_get_line(buf, l);
+    if (!line)
+      continue;
     int len = strlen(line);
     scan_line (line, len, NULL, config, pairs, num_pairs, brace_level, brace_top, brace_stack, kw_level, kw_top, kw_stack, in_comment);
     free(line);
@@ -627,10 +646,8 @@ print_highlighted (Pane *tw, int y, int x, const char *full_line, int line_len,
     buf->nesting_cache[logical_line].valid = 1;
     buf->nesting_cache[logical_line].brace_level = brace_level;
     buf->nesting_cache[logical_line].brace_top = brace_top;
-    memcpy(buf->nesting_cache[logical_line].brace_stack, brace_stack, sizeof(int) * 256);
     buf->nesting_cache[logical_line].kw_level = kw_level;
     buf->nesting_cache[logical_line].kw_top = kw_top;
-    memcpy(buf->nesting_cache[logical_line].kw_stack, kw_stack, sizeof(int) * 100);
     buf->nesting_cache[logical_line].in_comment = in_comment;
   }
 

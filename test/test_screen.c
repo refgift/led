@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 void test_assert (int condition, const char *msg);
 void run_screen_tests (void);
@@ -316,4 +317,115 @@ run_color_tests (void)
   get_starting_levels (&ed.model, 4, &bl, &bt, bs, &kl2, &kt, ks, &ic, &cfg);
   test_assert (ic == 0 && bl == 1, "and that it closed");
   editor_cleanup (&ed);
+}
+
+void run_large_file_tests (void);
+
+/* Per-line cost is what decides how big a file can be opened. */
+void
+run_large_file_tests (void)
+{
+  fprintf (stderr, "\n=== Large file tests ===\n");
+  static EditorConfig cfg;
+  set_default_config (&cfg);
+  config_parse_syntax (&cfg);
+
+  test_assert (sizeof (NestingCache) <= 32,
+               "the per-line nesting cache holds depths, not stacks");
+
+  /* A line starts small and still grows as it is typed into. */
+  Buffer b;
+  buffer_init (&b);
+  buffer_insert_line (&b, 0, "ab");
+  test_assert (b.lines[0]->buffer_size < 64, "a short line takes a small buffer");
+  for (int i = 0; i < 5000; i++)
+    buffer_insert_char (&b, 0, 1, 'x');
+  test_assert (buffer_get_line_length (&b, 0) == 5002
+               && buffer_get_char (&b, 0, 0) == 'a'
+               && buffer_get_char (&b, 0, 5001) == 'b'
+               && buffer_get_char (&b, 0, 2500) == 'x',
+               "and grows to hold 5000 typed characters");
+  buffer_insert_char (&b, 0, 2, '\n');
+  test_assert (buffer_num_lines (&b) == 2 && buffer_get_line_length (&b, 0) == 2
+               && buffer_get_line_length (&b, 1) == 5000
+               && buffer_get_char (&b, 1, 4999) == 'b',
+               "splitting a long line keeps both halves");
+  buffer_free (&b);
+
+  /* 100,000 lines open under the default 50 MB ceiling. */
+  char path[] = "/tmp/led_big_XXXXXX";
+  int fd = mkstemp (path);
+  FILE *fp = fd >= 0 ? fdopen (fd, "w") : NULL;
+  test_assert (fp != NULL, "temp file for the large load");
+  if (fp)
+    {
+      for (int i = 0; i < 100000; i++)
+        fprintf (fp, "  if (a[%d]) { f (b[%d]); } /* %d ( */\n", i, i, i);
+      fclose (fp);
+      buffer_init (&b);
+      int rc = buffer_load_from_file (&b, path, 0, 0, 0);
+      test_assert (rc == BUFFER_LOAD_OK && buffer_num_lines (&b) == 100001,
+                   "a 100,000-line file loads under the default limits");
+
+      /* Nesting state deep in the file, reached three ways, agrees. */
+      int bl, bt, kl, kt, ic;
+      static int bs[256], ks[100];
+      buffer_insert_line (&b, 50000, "{ ( [ { (");
+      buffer_insert_line (&b, 50001, "/* open");
+      get_starting_levels (&b, 50002, &bl, &bt, bs, &kl, &kt, ks, &ic, &cfg);
+      test_assert (bt == 5 && bl == 6 && ic == 1 && bs[0] == 1 && bs[4] == 5,
+                   "state at line 50,002 computed from the top");
+      /* Cache one line just above, as a draw would, and ask again. */
+      b.nesting_cache[50000].valid = 1;
+      b.nesting_cache[50000].brace_level = 6;
+      b.nesting_cache[50000].brace_top = 5;
+      b.nesting_cache[50000].kw_level = 1;
+      b.nesting_cache[50000].kw_top = 0;
+      b.nesting_cache[50000].in_comment = 0;
+      int bl2, bt2, kl2, kt2, ic2;
+      static int bs2[256], ks2[100];
+      get_starting_levels (&b, 50002, &bl2, &bt2, bs2, &kl2, &kt2, ks2, &ic2, &cfg);
+      test_assert (bl2 == bl && bt2 == bt && kl2 == kl && kt2 == kt && ic2 == ic
+                   && memcmp (bs, bs2, sizeof (int) * 5) == 0,
+                   "the same state from the nearest cached line, stacks rebuilt");
+      buffer_free (&b);
+      unlink (path);
+    }
+
+  /* Deep nesting drawn with a warm cache has the colours of a cold one. */
+  Editor ed;
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  ed.config = cfg;
+  ed.config.display.tab_width = 8;
+  ed.syntax_highlight = 1;
+  buffer_insert_line (&ed.model, 0, "a(b[c{d(e[f");
+  buffer_insert_line (&ed.model, 1, "]) } ] ) ) ) z(");
+  const Frontend *before = frontend_current ();
+  frontend_use (frontend_memory ());
+  memory_reset (30, 4);
+  screen_resize (30, 4);
+  view_invalidate ();
+  Pane *text = NULL;
+  view_create_text_window_ex (screen_pane (), &text, 0);
+  editor_draw (screen_pane (), text, &ed);          /* fills the cache */
+  int warm[16], cold[16];
+  for (int x = 0; x < 16; x++)
+    warm[x] = memory_quality (x, 1);
+  ed.model.nesting_cache[0].valid = 0;              /* forget, redraw */
+  ed.model.edit_generation++;
+  view_invalidate ();
+  editor_draw (screen_pane (), text, &ed);
+  for (int x = 0; x < 16; x++)
+    cold[x] = memory_quality (x, 1);
+  test_assert (memcmp (warm, cold, sizeof warm) == 0
+               && warm[0] == LED_Q_LEVEL4 && warm[1] == LED_Q_LEVEL4
+               && warm[3] == LED_Q_LEVEL3 && warm[7] == LED_Q_LEVEL1
+               && warm[9] == LED_Q_LEVEL1 && warm[14] == LED_Q_LEVEL1,
+               "closers take their opener's colour, cache warm or cold");
+  pane_free (text);
+  editor_cleanup (&ed);
+  screen_resize (0, 0);
+  view_invalidate ();
+  frontend_use (before);
 }

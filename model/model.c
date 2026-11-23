@@ -13,21 +13,39 @@
 #define DEFAULT_MEMORY_LIMIT_BYTES (50L * 1024 * 1024)
 
 // GapBuffer implementation
-GapBuffer*
-gap_buffer_create()
+
+/* Room left for typing in a new line. Every line of the file has its own
+ * gap buffer, so a line is given what it holds plus this, not a fixed
+ * kilobyte: a 100,000-line file would otherwise cost 100 MB before any
+ * text. The buffer doubles when the gap runs out. */
+#define GAP_SLACK 16
+
+/* An empty gap buffer with room for text_len bytes and some typing. */
+static GapBuffer*
+gap_buffer_sized(int text_len)
 {
   GapBuffer* gb = xmalloc(sizeof(GapBuffer));
-  if (!gb) return NULL;
-  gb->buffer_size = 1024; // initial size
+  gb->buffer_size = (text_len > 0 ? text_len : 0) + GAP_SLACK;
   gb->buffer = xmalloc(gb->buffer_size);
-  if (!gb->buffer) {
-    free(gb);
-    return NULL;
-  }
   gb->gap_start = 0;
   gb->gap_end = gb->buffer_size;
   gb->text_len = 0;
   return gb;
+}
+
+/* A gap buffer holding the n bytes at s. */
+static GapBuffer*
+gap_buffer_from(const char* s, int n)
+{
+  GapBuffer* gb = gap_buffer_sized(n);
+  gap_buffer_insert_many(gb, 0, s, n);
+  return gb;
+}
+
+GapBuffer*
+gap_buffer_create()
+{
+  return gap_buffer_sized(0);
 }
 
 void
@@ -253,15 +271,21 @@ load_abandon (Buffer *buf)
   buffer_init (buf);
 }
 
-/* Nesting-cache bytes at the capacity the next insert will grow to,
- * plus text already stored, plus this line. */
+/* What one stored line costs besides its text: the gap buffer header,
+ * its typing room, and the allocator's bookkeeping for two blocks. */
+#define LINE_OVERHEAD ((long) sizeof (GapBuffer) + GAP_SLACK + 32)
+
+/* Bytes in use once this line is stored: the two per-line arrays at the
+ * capacity the next insert will grow to, every line's own overhead,
+ * the text already stored, and this line. */
 static long
 load_next_bytes (const Buffer *buf, long text_stored, int line_len)
 {
   int next_cap = buf->capacity;
   if (buf->num_lines >= buf->capacity)
     next_cap = (buf->capacity == 0) ? INITIAL_LINES_CAPACITY : buf->capacity * 2;
-  return (long) next_cap * (long) sizeof (NestingCache)
+  return (long) next_cap * (long) (sizeof (NestingCache) + sizeof (GapBuffer *))
+         + ((long) buf->num_lines + 1) * LINE_OVERHEAD
          + text_stored + (long) line_len;
 }
 
@@ -586,28 +610,7 @@ buffer_insert_line (Buffer *buf, int line, const char *content)
 
       buf->lines[i] = buf->lines[i - 1];
     }
-  buf->lines[line] = gap_buffer_create();
-  if (!buf->lines[line])
-    {
-      // Shift back on failure
-      for (int i = line; i < buf->num_lines; i++)
-        {
-		
-
-
-
-          buf->lines[i] = buf->lines[i + 1];
-        }
-      return -1;
-    }
-  // Insert content into gap buffer
-  for (const char *p = content; *p; p++)
-    {
-		
-
-
-      gap_buffer_insert(buf->lines[line], gap_buffer_length(buf->lines[line]), *p);
-    }
+  buf->lines[line] = gap_buffer_from (content, (int) strlen (content));
   buf->num_lines++;
   // Invalidate cache from inserted line onwards
   _invalidate_cache_from (buf, line);
@@ -658,29 +661,13 @@ buffer_insert_char (Buffer *buf, int line, int col, char c)
     return -1;
   if (c == '\n')
     {
-      // Split line at col
-      GapBuffer *new_gb = gap_buffer_create();
-      if (!new_gb)
-        {
-          return -1;
-        }
-      // Move text after col to new_gb
-      for (int i = col; i < len; i++)
-        {
-		
-
-
-          char ch = gap_buffer_get_char(gb, i);
-          gap_buffer_insert(new_gb, gap_buffer_length(new_gb), ch);
-        }
+      // Split line at col: the tail becomes the new line
+      char *tail = (char *) gap_buffer_get_text (gb);
+      GapBuffer *new_gb = gap_buffer_from (tail + col, len - col);
+      free (tail);
       // Delete from col to end in gb
       for (int i = len - 1; i >= col; i--)
-        {
-		
-
-
-          gap_buffer_delete(gb, i);
-        }
+        gap_buffer_delete(gb, i);
       if (buffer_insert_line (buf, line + 1, "") != 0)
         {
           gap_buffer_free(new_gb);
@@ -970,21 +957,7 @@ buffer_replace_all (Buffer *buf, const char *search_regex,
            new_line[used] = '\0';
            // Replace line
            gap_buffer_free (buf->lines[i]);
-           buf->lines[i] = gap_buffer_create();
-           if (!buf->lines[i])
-             {
-               free(new_line);
-               free(original_line);
-               regfree (&reg);
-               return -1;
-             }
-           for (char *p = new_line; *p; p++)
-             {
-		
-
-
-               gap_buffer_insert(buf->lines[i], gap_buffer_length(buf->lines[i]), *p);
-             }
+           buf->lines[i] = gap_buffer_from (new_line, used);
            free(new_line);
          }
       free(original_line);
