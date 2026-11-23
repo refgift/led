@@ -150,7 +150,47 @@ set_default_config (EditorConfig *config)
   strcpy (t->extensions, ".txt,.text,.md");
   t->highlight = 0;
 
-  config->num_languages = 3;
+  /* Shell. "#" is a comment only where a word could start, so "$#" and
+   * "${x#y}" are not. if-fi, do-done and case-esac nest. */
+  Language *sh = &config->languages[3];
+  strcpy (sh->name, "shell");
+  strcpy (sh->extensions, ".sh,.bash");
+  strcpy (sh->reserved_words,
+          "if,then,else,elif,fi,for,while,until,do,done,case,esac,in,select,"
+          "function,time,return,break,continue,exit,local,export,readonly,"
+          "declare,typeset,unset,shift,source,alias,eval,exec,trap,set,"
+          "echo,printf,read,cd,test,true,false,wait,getopts");
+  strcpy (sh->paired_keywords, "if-fi,do-done,case-esac");
+  strcpy (sh->line_comment, "#");
+  strcpy (sh->quotes, "\"'");
+  sh->escapes = 1;
+  sh->highlight = 1;
+  sh->comment_starts_word = 1;
+  strcpy (sh->indent_after, "then,do,else,elif,in");
+  strcpy (sh->interpreters, "sh,bash,dash,ksh,zsh,ash");
+
+  /* lex / flex. The actions and the user code are C, so it reads as C
+   * with flex's own names added. A backslash hides the next character,
+   * which is what keeps \" and \( in a pattern from being taken for a
+   * string or a bracket. */
+  Language *lx = &config->languages[4];
+  strcpy (lx->name, "lex");
+  strcpy (lx->extensions, ".l,.lex");
+  snprintf (lx->reserved_words, sizeof lx->reserved_words, "%s,%s",
+            "int,char,return,if,else,for,while,do,switch,case,default,break,"
+            "continue,goto,sizeof,typedef,struct,union,enum,static,extern,"
+            "const,signed,unsigned,short,long,double,float,void,bool,true,false",
+            "yytext,yyleng,yylex,yylval,yyin,yyout,yywrap,yymore,yyless,"
+            "yyterminate,yyrestart,yylineno,ECHO,REJECT,BEGIN,INITIAL,YY_START,"
+            "unput,input,option,noyywrap");
+  strcpy (lx->line_comment, "//");
+  strcpy (lx->block_open, "/*");
+  strcpy (lx->block_close, "*/");
+  strcpy (lx->quotes, "\"'");
+  lx->escapes = 1;
+  lx->highlight = 1;
+
+  config->num_languages = 5;
   config->active_language = 0;
   // Auto-save
   config->autosave.timeout = 80000000;
@@ -300,7 +340,8 @@ config_language (const EditorConfig *config)
   /* A config no file has chosen a language for (tests build these by
    * hand) is read as C, which is what led did before it had languages. */
   static const Language c_rules = {
-    "c", "", "", "", "//", "/*", "*/", "\"'", 1, 1
+    .name = "c", .line_comment = "//", .block_open = "/*",
+    .block_close = "*/", .quotes = "\"'", .escapes = 1, .highlight = 1
   };
   if (config && config->active_language >= 0
       && config->active_language < config->num_languages)
@@ -334,6 +375,48 @@ extension_listed (const char *list, const char *ext)
   return 0;
 }
 
+int
+config_word_listed (const char *list, const char *word, int word_len)
+{
+  if (!list || !word || word_len <= 0)
+    return 0;
+  const char *p = list;
+  while (*p)
+    {
+      const char *comma = strchr (p, ',');
+      int tlen = comma ? (int) (comma - p) : (int) strlen (p);
+      while (tlen > 0 && (*p == ' ' || *p == '\t'))
+        {
+          p++;
+          tlen--;
+        }
+      while (tlen > 0 && (p[tlen - 1] == ' ' || p[tlen - 1] == '\t'))
+        tlen--;
+      if (tlen == word_len && memcmp (p, word, (size_t) word_len) == 0)
+        return 1;
+      if (!comma)
+        break;
+      p = comma + 1;
+    }
+  return 0;
+}
+
+/* Make language i the one in use. */
+static const Language *
+use_language (EditorConfig *config, int i)
+{
+  Language *l = &config->languages[i];
+  config->active_language = i;
+  snprintf (config->syntax.extensions, sizeof config->syntax.extensions,
+            "%s", l->extensions);
+  snprintf (config->syntax.reserved_words,
+            sizeof config->syntax.reserved_words, "%s", l->reserved_words);
+  snprintf (config->syntax.paired_keywords,
+            sizeof config->syntax.paired_keywords, "%s", l->paired_keywords);
+  config_parse_syntax (config);
+  return l;
+}
+
 const Language *
 config_select_language (EditorConfig *config, const char *filename)
 {
@@ -344,19 +427,40 @@ config_select_language (EditorConfig *config, const char *filename)
   if (!ext)
     return NULL;
   for (int i = 0; i < config->num_languages; i++)
+    if (extension_listed (config->languages[i].extensions, ext))
+      return use_language (config, i);
+  return NULL;
+}
+
+const Language *
+config_select_by_first_line (EditorConfig *config, const char *first_line)
+{
+  if (!config || !first_line || first_line[0] != '#' || first_line[1] != '!')
+    return NULL;
+  /* The interpreter is the last word of the path: "/bin/sh". With env
+   * it is the word after it: "/usr/bin/env bash". */
+  const char *p = first_line + 2;
+  for (int word = 0; word < 2; word++)
     {
-      Language *l = &config->languages[i];
-      if (!extension_listed (l->extensions, ext))
-        continue;
-      config->active_language = i;
-      snprintf (config->syntax.extensions, sizeof config->syntax.extensions,
-                "%s", l->extensions);
-      snprintf (config->syntax.reserved_words,
-                sizeof config->syntax.reserved_words, "%s", l->reserved_words);
-      snprintf (config->syntax.paired_keywords,
-                sizeof config->syntax.paired_keywords, "%s", l->paired_keywords);
-      config_parse_syntax (config);
-      return l;
+      while (*p == ' ' || *p == '\t')
+        p++;
+      const char *end = p;
+      while (*end && *end != ' ' && *end != '\t')
+        end++;
+      const char *base = end;
+      while (base > p && base[-1] != '/')
+        base--;
+      int n = (int) (end - base);
+      if (n == 0)
+        return NULL;
+      if (!(n == 3 && memcmp (base, "env", 3) == 0))
+        {
+          for (int i = 0; i < config->num_languages; i++)
+            if (config_word_listed (config->languages[i].interpreters, base, n))
+              return use_language (config, i);
+          return NULL;
+        }
+      p = end;
     }
   return NULL;
 }
@@ -396,7 +500,8 @@ language_key (EditorConfig *config, const char *key, const char *value)
   const char *what = dot + 1;
   static const char *known[] = {
     "extensions", "reserved_words", "paired_keywords", "line_comment",
-    "block_comment", "quotes", "escapes", "highlight", NULL
+    "block_comment", "quotes", "escapes", "highlight",
+    "comment_starts_word", "indent_after", "interpreters", NULL
   };
   int is_known = 0;
   for (int i = 0; known[i]; i++)
@@ -433,6 +538,12 @@ language_key (EditorConfig *config, const char *key, const char *value)
     l->escapes = atoi (value) ? 1 : 0;
   else if (strcmp (what, "highlight") == 0)
     l->highlight = atoi (value) ? 1 : 0;
+  else if (strcmp (what, "comment_starts_word") == 0)
+    l->comment_starts_word = atoi (value) ? 1 : 0;
+  else if (strcmp (what, "indent_after") == 0)
+    snprintf (l->indent_after, sizeof l->indent_after, "%s", value);
+  else if (strcmp (what, "interpreters") == 0)
+    snprintf (l->interpreters, sizeof l->interpreters, "%s", value);
   return 1;
 }
 
@@ -740,18 +851,26 @@ color_body (FILE *f, const EditorConfig *d)
            "#   NAME.block_comment    /* */        (open, a space, close; empty: none)\n"
            "#   NAME.quotes           \"'           (each character that opens a string)\n"
            "#   NAME.escapes          1            (a backslash escapes inside a string)\n"
-           "#   NAME.highlight        1            (0: shown as plain text)\n");
+           "#   NAME.highlight        1            (0: shown as plain text)\n"
+           "#   NAME.comment_starts_word 1         (the comment mark counts only at the\n"
+           "#                                       start of a word: # but not $#)\n"
+           "#   NAME.indent_after     then,do      (Enter indents after these words)\n"
+           "#   NAME.interpreters     sh,bash      (chosen by a first line #!/bin/sh)\n");
   for (int i = 1; i < d->num_languages; i++)
     {
       const Language *l = &d->languages[i];
       fprintf (f, "\n#%s.extensions=%s\n#%s.reserved_words=%s\n"
                "#%s.paired_keywords=%s\n#%s.line_comment=%s\n"
                "#%s.block_comment=%s%s%s\n#%s.quotes=%s\n#%s.escapes=%d\n"
-               "#%s.highlight=%d\n", l->name, l->extensions, l->name,
+               "#%s.highlight=%d\n#%s.comment_starts_word=%d\n"
+               "#%s.indent_after=%s\n#%s.interpreters=%s\n",
+               l->name, l->extensions, l->name,
                l->reserved_words, l->name, l->paired_keywords, l->name,
                l->line_comment, l->name, l->block_open,
                l->block_open[0] ? " " : "", l->block_close, l->name,
-               l->quotes, l->name, l->escapes, l->name, l->highlight);
+               l->quotes, l->name, l->escapes, l->name, l->highlight,
+               l->name, l->comment_starts_word, l->name, l->indent_after,
+               l->name, l->interpreters);
     }
 }
 
