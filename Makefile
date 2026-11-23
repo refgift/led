@@ -2,6 +2,10 @@
 CC = cc
 CFLAGS = -I. -Iview -Ifrontend -Itest -Imodel -Icontroller -Iconfig -Iutils -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -Wall -Wextra -Wno-unused-parameter -std=c11 -O3
 LDFLAGS =
+# The compiler writes each object's header list to a .d file beside it
+# (-MMD; -MP keeps a deleted header from breaking the build). Including
+# those files below makes a changed header rebuild what uses it.
+DEPFLAGS = -MMD -MP
 # Front end: curses (default) or ansi. Run `make clean` when switching.
 UI ?= curses
 TARGET = led
@@ -16,9 +20,10 @@ OBJS = $(SRCS:.c=.o)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
 clean:
 	rm -f $(TARGET) $(OBJS) frontend/frontend_ansi.o frontend/frontend_curses.o
+	rm -f $(OBJS:.o=.d) frontend/frontend_ansi.d frontend/frontend_curses.d
 lint:
 	splint -weak -bounds -null -compdef -warnposix +matchanyintegral +longintegral $(SRCS)
 sanitize: CFLAGS += -fsanitize=address -fsanitize=undefined
@@ -33,3 +38,5 @@ doc:
 	cp led.1 /usr/share/man/man1
 
 .PHONY: clean lint doc install
+
+-include $(OBJS:.o=.d)
