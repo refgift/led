@@ -22,6 +22,7 @@ void simulate_input (Buffer * buf, int *scroll_row, int *scroll_col,
 
 void test_buffer_manipulation ();
 void run_safety_tests (void);
+void run_undo_store_tests (void);
 void run_screen_tests (void);
 void run_action_tests (void);
 void run_clipboard_tests (void);
@@ -1709,6 +1710,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   fprintf (stderr, "Test %d: data_safety - undo, clipboard, UTF-8, blocked saves\n",
            ++test_number);
   run_safety_tests ();
+  run_undo_store_tests ();
 
   fprintf (stderr, "\n");
   run_view_tests();

@@ -28,6 +28,7 @@ void test_cursor_newline_undo_redo_bug(void);
 void test_tab_key(void);
 void run_view_tests(void);
 void run_safety_tests(void);
+void run_undo_store_tests(void);
 void run_screen_tests(void);
 void run_action_tests(void);
 void run_clipboard_tests(void);

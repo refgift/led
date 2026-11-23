@@ -536,3 +536,148 @@ run_safety_tests (void)
   test_blocked_saves ();
   test_config_files ();
 }
+
+#include "undo_store.h"
+#include <dirent.h>
+
+void run_undo_store_tests (void);
+
+/* The one history file in the store, or "" if there is not exactly one. */
+static void
+only_history (char *out, size_t out_size)
+{
+  char dir[1024];
+  out[0] = '\0';
+  if (out_size < sizeof dir + 300
+      || undo_store_directory (dir, sizeof dir) != 0)
+    return;
+  DIR *d = opendir (dir);
+  if (!d)
+    return;
+  int found = 0;
+  struct dirent *e;
+  while ((e = readdir (d)) != NULL)
+    if (strstr (e->d_name, ".undo"))
+      {
+        snprintf (out, out_size, "%s/%s", dir, e->d_name);
+        found++;
+      }
+  closedir (d);
+  if (found != 1)
+    out[0] = '\0';
+}
+
+/* Undo history kept between sessions. */
+void
+run_undo_store_tests (void)
+{
+  fprintf (stderr, "\n=== Undo history tests ===\n");
+  char dir[] = "/tmp/led_undo_XXXXXX";
+  if (!mkdtemp (dir))
+    {
+      test_assert (0, "mkdtemp");
+      return;
+    }
+  char home[300], store[300], file[300], hist[PATH_MAX];
+  snprintf (home, sizeof home, "%s/home", dir);
+  snprintf (store, sizeof store, "%s/store", dir);
+  snprintf (file, sizeof file, "%s/note.txt", dir);
+  mkdir (home, 0700);
+  char *old_home = getenv ("HOME") ? strdup (getenv ("HOME")) : NULL;
+  setenv ("HOME", home, 1);
+  char main_store[PATH_MAX];
+  int had_store = undo_store_directory (main_store, sizeof main_store) == 0;
+  undo_store_set_dir (store);
+
+  write_file (file, "one two");
+  char *argv[] = { "led", file };
+  Editor ed;
+  editor_init (&ed, 2, argv);
+  ed.auto_save_threshold = 100000;
+  test_assert (ed.undo_stack.count == 0, "a file never edited has no history");
+  editor_handle_input (&ed, LED_KEY_END);
+  editor_handle_input (&ed, '!');
+  editor_handle_input (&ed, LED_KEY_HOME);
+  editor_handle_input (&ed, 24);                /* Ctrl+X: cut the line */
+  editor_handle_input (&ed, 26);                /* undo the cut */
+  editor_handle_input (&ed, 19);                /* save: "one two!" */
+  struct stat st;
+  only_history (hist, sizeof hist);
+  test_assert (hist[0] && stat (hist, &st) == 0 && (st.st_mode & 077) == 0
+               && stat (store, &st) == 0 && (st.st_mode & 0777) == 0700,
+               "saving writes the history, private to the user");
+  editor_handle_input (&ed, 'Z');               /* typed, never saved */
+  editor_cleanup (&ed);
+
+  editor_init (&ed, 2, argv);
+  ed.auto_save_threshold = 100000;
+  test_assert (line_is (&ed.model, 0, "one two!") && ed.undo_stack.count == 1
+               && ed.redo_stack.count == 8
+               && strstr (ed.status_message, "history restored") != NULL,
+               "reopening the file brings the history back as it was at the save");
+  editor_handle_input (&ed, 25);                /* redo the cut */
+  test_assert (line_is (&ed.model, 0, ""), "redo from the last session works, as one step");
+  editor_handle_input (&ed, 26);
+  editor_handle_input (&ed, 26);
+  test_assert (line_is (&ed.model, 0, "one two") && ed.undo_stack.count == 0,
+               "undo from the last session works");
+  editor_cleanup (&ed);
+
+  /* The file changed behind led's back: the history is not used. */
+  write_file (file, "one tw0!");                /* same size, other text */
+  editor_init (&ed, 2, argv);
+  test_assert (ed.undo_stack.count == 0 && ed.redo_stack.count == 0
+               && line_is (&ed.model, 0, "one tw0!"),
+               "a file changed by something else gets no history");
+  /* persistent_undo=0 writes nothing. */
+  ed.auto_save_threshold = 100000;
+  ed.config.display.persistent_undo = 0;
+  editor_handle_input (&ed, 'q');
+  editor_handle_input (&ed, 19);
+  editor_cleanup (&ed);
+  editor_init (&ed, 2, argv);
+  test_assert (ed.undo_stack.count == 0 && line_is (&ed.model, 0, "qone tw0!"),
+               "with persistent_undo off a save keeps no history");
+  ed.auto_save_threshold = 100000;
+  editor_handle_input (&ed, 'r');
+  editor_handle_input (&ed, 19);                /* history written again */
+  editor_cleanup (&ed);
+
+  /* A damaged history file is ignored, not half read. */
+  only_history (hist, sizeof hist);
+  test_assert (hist[0] && truncate (hist, 40) == 0, "history file cut short");
+  editor_init (&ed, 2, argv);
+  test_assert (ed.undo_stack.count == 0 && ed.redo_stack.count == 0
+               && line_is (&ed.model, 0, "rqone tw0!"),
+               "a damaged history is ignored");
+  editor_cleanup (&ed);
+
+  /* A directory open to others is not used. */
+  char loose[300];
+  snprintf (loose, sizeof loose, "%s/loose", dir);
+  mkdir (loose, 0755);
+  chmod (loose, 0755);
+  undo_store_set_dir (loose);
+  UndoStack u = { NULL, 0, 0 }, r = { NULL, 0, 0 };
+  test_assert (undo_store_save (file, &u, &r) == -1,
+               "a directory others can read is refused");
+  char link_dir[300];
+  snprintf (link_dir, sizeof link_dir, "%s/link", dir);
+  test_assert (symlink (store, link_dir) == 0, "symlink made");
+  undo_store_set_dir (link_dir);
+  test_assert (undo_store_save (file, &u, &r) == -1,
+               "a symbolic link in place of the directory is refused");
+
+  undo_store_set_dir (had_store ? main_store : NULL);
+  char cmd[400];
+  snprintf (cmd, sizeof cmd, "rm -rf '%s'", dir);
+  if (system (cmd) != 0)
+    fprintf (stderr, "cleanup failed: %s\n", dir);
+  if (old_home)
+    {
+      setenv ("HOME", old_home, 1);
+      free (old_home);
+    }
+  else
+    unsetenv ("HOME");
+}

@@ -751,6 +751,9 @@ static void handle_save (int ch, InputContext *ctx)
       ctx->ed->file_modified = 0;
       ctx->ed->unsaved_keystrokes = 0;
       set_status_message (ctx->ed, "File saved");
+      /* The history now describes the file as it is on disk. */
+      if (ctx->ed->filename == ctx->filename)
+        editor_keep_history (ctx->ed);
     }
 }
 

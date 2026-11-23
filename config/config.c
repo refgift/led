@@ -127,6 +127,7 @@ set_default_config (EditorConfig *config)
   config->display.show_line_numbers = 0;
   config->display.line_numbers_configured = 0;
   config->display.system_clipboard = 1;
+  config->display.persistent_undo = 1;
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 0;
@@ -397,6 +398,8 @@ config_read_file (EditorConfig *config, const char *path)
         config->statusbar.show_key_meter = atoi (value);
       else if (strcmp (key, "system_clipboard") == 0)
         config->display.system_clipboard = atoi (value) ? 1 : 0;
+      else if (strcmp (key, "persistent_undo") == 0)
+        config->display.persistent_undo = atoi (value) ? 1 : 0;
       else if (strcmp (key, "max_file_size_mb") == 0)
         {
           int v = atoi (value);
@@ -490,7 +493,10 @@ general_body (FILE *f, const EditorConfig *d)
   fprintf (f, "# Search\n#search_enabled=%d\n#search_max_pattern_length=%d\n\n",
            d->search.enabled, d->search.max_pattern_length);
   fprintf (f, "# Copy and cut also go to the system clipboard (OSC 52).\n"
-           "#system_clipboard=%d\n", d->display.system_clipboard);
+           "#system_clipboard=%d\n\n", d->display.system_clipboard);
+  fprintf (f, "# Keep each file's undo history between sessions. It is stored in a\n"
+           "# directory of your own under the system's temporary directory.\n"
+           "#persistent_undo=%d\n", d->display.persistent_undo);
 }
 
 static void

@@ -185,6 +185,10 @@ void editor_cleanup(Editor* ed);
  *  Called when the terminal goes away. Returns 0 if a file was written. */
 int editor_write_recovery(Editor* ed);
 
+/** Write the undo history beside the system's temporary files, so it is
+ *  there when the file is next opened. Call after a successful save. */
+void editor_keep_history(Editor* ed);
+
 /** Perform an autosave + backup if conditions are met. */
 void auto_save(Editor* ed);
 
