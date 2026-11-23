@@ -17,6 +17,8 @@ A name that already exists, colon and all, is opened as itself.
 .TP
 .B \-t
 Test mode: run model/view/controller tests to stderr, exit.
+The tests include a fuzzer that types random keys; \fCLED_FUZZ_RUNS\fR sets how many runs
+each language gets (default 150) and \fCLED_FUZZ_SEED\fR the first seed.
 .TP
 .BI \-\-prefix " dir"
 Keep the config files in \fIdir\fR/led/, not ~/.config/led/.
@@ -30,7 +32,9 @@ Move and scroll.
 Previous / next word. Ctrl+W deletes the previous word.
 .TP
 .B Ctrl+]
-Jump to the matching parenthesis, bracket, or brace. Strings, comments, and C++ raw strings are skipped.
+Jump to the matching parenthesis, bracket, or brace, or to the other word of a
+\fCpaired_keywords\fR pair (BEGIN to END, IF to THEN).
+Strings, comments, and C++ raw strings are skipped.
 .TP
 .B Ctrl+G
 Go to a 1-based line, or line:col. Esc cancels.
@@ -51,7 +55,9 @@ Ctrl+Q on a modified buffer asks for a second Ctrl+Q.
 .TP
 .B Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V
 Select all / Copy / Cut / Paste (paste filtered).
-Copy and cut also go to the system clipboard through OSC 52, where the terminal accepts it.
+Copy and cut also go to the system clipboard through OSC 52, where the terminal accepts it,
+and to the \fCclipboard_copy\fR command if one is set.
+With \fCclipboard_paste\fR set, Ctrl+V pastes what that command prints, or led's own copy when it prints nothing.
 .TP
 .B The terminal's paste key
 Paste from the system clipboard. The text is inserted as it is, with no auto-indent, as one undo step.
@@ -83,14 +89,14 @@ A file that did not load whole is never written back.
 Editing, selection, clipboard, regex search/replace, Unicode, incremental rendering (75x less output).
 .IP \(bu 2
 Syntax highlight for C and C++: reserved words, semicolons, and brackets coloured by nesting depth.
-Strings, character literals and comments are left plain.
+Comments, strings and character literals, and numbers have colours of their own; a bracket or keyword inside a comment or string does not nest.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
 452 tests.
 .SH WHAT FAILS
 .IP \(bu 2
-Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
+Whole-file in memory, no mmap. A line longer than \fCmax_highlight_length\fR is shown without syntax colours.
 .IP \(bu 2
 Errors not standardized.
 .IP \(bu 2
@@ -110,7 +116,7 @@ List only the keys to change.
 .SS Colors
 The keys are
 \fCnormal\fR, \fCselection\fR, \fCsemicolon\fR, \fCmeta_level1\fR to \fCmeta_level4\fR
-(brackets by nesting depth) and \fCreserved_words\fR, each with \fC_fg\fR and \fC_bg\fR.
+(brackets by nesting depth), \fCreserved_words\fR, \fCcomment\fR, \fCstring\fR and \fCnumber\fR, each with \fC_fg\fR and \fC_bg\fR.
 A value is one of the following, in any letter case.
 .TP
 .B BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE
@@ -143,7 +149,8 @@ The sixteen named colors and their numbers:
 .PP
 Defaults: text WHITE on BLACK, selection BLACK on WHITE,
 semicolon and reserved words RED,
-nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW.
+nesting levels 1 to 4 BLUE, CYAN, GREEN, YELLOW,
+comments MAGENTA, strings and numbers WHITE.
 .PP
 The extended colors exist on a terminal with 16 or more colors.
 On a terminal with eight, an extended foreground is shown as the matching curses color in bold,
@@ -203,6 +210,14 @@ Each character that opens a string.
 .B \fINAME\fB.comment_starts_word
 1 if the line comment mark counts only at the start of a word, as \fC#\fR does in shell.
 .TP
+.B \fINAME\fB.multiline_strings
+1 if a string left open at the end of a line goes on to the next, as in shell.
+Without it a string goes on only after a trailing backslash, as in C.
+.TP
+.B \fINAME\fB.heredocs
+1 if \fC<<WORD\fR starts a here-document: the lines after it are text until a line that is \fCWORD\fR
+(\fC<<-\fR allows leading tabs). On for shell.
+.TP
 .B \fINAME\fB.indent_after
 Words after which Enter indents one level, for example \fCthen,do,else\fR.
 .TP
@@ -211,9 +226,10 @@ Interpreter names. A file whose extension chooses no language, and whose first l
 .PP
 The older keys \fCsyntax_extensions\fR, \fCreserved_words\fR and \fCpaired_keywords\fR, with no language name, are C's.
 .SS Other keys
-\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR, \fCpersistent_undo\fR,
+\fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR,
+\fCclipboard_copy\fR and \fCclipboard_paste\fR (commands such as \fCwl-copy\fR and \fCwl-paste --no-newline\fR), \fCpersistent_undo\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,
-\fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_line_length\fR.
+\fCmax_file_size_mb\fR, \fCmemory_limit_mb\fR, \fCmax_highlight_length\fR (old name \fCmax_line_length\fR).
 Env \fCLED_NO_BORDER=1\fR.
 .SH FILES
 .I ~/.config/led/led.conf

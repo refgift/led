@@ -7,6 +7,7 @@
 #include <string.h>
 #include <regex.h>
 #include <ctype.h>
+#include <signal.h>
 #include <stdio.h>
 
 /* Most changes kept per stack. One change is one byte of text. */
@@ -629,6 +630,65 @@ static void handle_enter (int ch, InputContext *ctx)
     }
 }
 
+/* The clipboard commands run through the shell with their input and
+ * output kept off the terminal, which curses owns. */
+#define PASTE_COMMAND_MAX (16 * 1024 * 1024)
+
+static void
+run_copy_command (const char *cmd, const char *text, size_t n)
+{
+  char line[400];
+  if (snprintf (line, sizeof line, "(%s) >/dev/null 2>&1", cmd)
+      >= (int) sizeof line)
+    return;
+  void (*old) (int) = signal (SIGPIPE, SIG_IGN);
+  FILE *p = popen (line, "w");
+  if (p)
+    {
+      (void) fwrite (text, 1, n, p);
+      (void) pclose (p);
+    }
+  signal (SIGPIPE, old);
+}
+
+/* What the paste command prints, or NULL. Carriage returns before a
+ * newline are dropped, and so are NUL bytes. */
+static char *
+run_paste_command (const char *cmd)
+{
+  char line[400];
+  if (snprintf (line, sizeof line, "(%s) </dev/null 2>/dev/null", cmd)
+      >= (int) sizeof line)
+    return NULL;
+  FILE *p = popen (line, "r");
+  if (!p)
+    return NULL;
+  size_t cap = 4096, n = 0;
+  char *out = xmalloc (cap);
+  int c;
+  while ((c = fgetc (p)) != EOF && n < PASTE_COMMAND_MAX)
+    {
+      if (c == '\0')
+        continue;
+      if (n + 2 > cap)
+        out = xrealloc (out, cap *= 2);
+      out[n++] = (char) c;
+      if (c == '\n' && n >= 2 && out[n - 2] == '\r')
+        {
+          out[n - 2] = '\n';
+          n--;
+        }
+    }
+  (void) pclose (p);
+  out[n] = '\0';
+  if (n == 0)
+    {
+      free (out);
+      return NULL;
+    }
+  return out;
+}
+
 static void
 set_clipboard (InputContext *ctx, char *text)
 {
@@ -645,6 +705,9 @@ set_clipboard (InputContext *ctx, char *text)
       if (n > 0 && n <= SYSTEM_CLIPBOARD_MAX)
         fe->clipboard (text, (int) n);
     }
+  if (text && ctx->ed && ctx->ed->config.display.clipboard_copy[0])
+    run_copy_command (ctx->ed->config.display.clipboard_copy, text,
+                      strlen (text));
 }
 
 /* With a selection: cut it. Without: cut from the cursor to end of line. */
@@ -737,6 +800,17 @@ paste_text (InputContext *ctx, const char *text)
 static void handle_paste (int ch, InputContext *ctx)
 {
   (void)ch;
+  /* The system clipboard, when a command reads it, is what was copied
+   * last, here or in another program. It becomes led's copy too. */
+  if (ctx->ed && ctx->ed->config.display.clipboard_paste[0])
+    {
+      char *sys = run_paste_command (ctx->ed->config.display.clipboard_paste);
+      if (sys)
+        {
+          free (*ctx->clipboard);
+          *ctx->clipboard = sys;
+        }
+    }
   if (*ctx->clipboard)
     paste_text (ctx, *ctx->clipboard);
 }
@@ -1078,6 +1152,7 @@ typedef struct {
   char raw_close[20];
   int raw_close_len;
   int raw_pos;
+  int heredoc;                  /* inside a here-document: its state */
 } ScanSt;
 
 /* On success, *resume is the index just after the opening '('. */
@@ -1114,14 +1189,41 @@ typedef struct {
   int line;
   int col;
   char ch;
+  int pair;                     /* word pair index, or -1 for a bracket */
 } BraceFrame;
+
+/* Which word pair s[0..n) belongs to, or -1. *is_close says which end. */
+static int
+pair_of_word (const SyntaxPair *pairs, int np, const char *s, int n,
+              int *is_close)
+{
+  for (int p = 0; p < np; p++)
+    {
+      if ((int) strlen (pairs[p].open) == n
+          && memcmp (s, pairs[p].open, (size_t) n) == 0)
+        {
+          *is_close = 0;
+          return p;
+        }
+      if ((int) strlen (pairs[p].close) == n
+          && memcmp (s, pairs[p].close, (size_t) n) == 0)
+        {
+          *is_close = 1;
+          return p;
+        }
+    }
+  return -1;
+}
 
 /* Jump between () [] {}. Strings, comments, and C++ raw strings are skipped.
  * Returns 1 if the cursor moved. */
 static int
 jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
-            const Language *lang)
+            const Language *lang, const EditorConfig *cfg)
 {
+  /* Word pairs (BEGIN END, IF THEN) match like brackets. */
+  const SyntaxPair *pairs = cfg ? cfg->syntax_pairs : NULL;
+  int np = cfg ? cfg->num_syntax_pairs : 0;
   /* Comments and strings are the language's: text has neither, so an
    * apostrophe in prose does not hide the bracket after it. */
   int lc = (int) strlen (lang->line_comment);
@@ -1147,8 +1249,29 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
       tcol--;
       target = ttext[tcol];
     }
+  /* Not on a bracket: on (or just after) a word of a pair? */
+  int tpair = -1;
+  if (!target && np > 0)
+    {
+      int ws = tcol;
+      if ((ws >= tlen || !is_word_char (ttext[ws])) && ws > 0
+          && is_word_char (ttext[ws - 1]))
+        ws--;
+      if (ws >= 0 && ws < tlen && is_word_char (ttext[ws]))
+        {
+          while (ws > 0 && is_word_char (ttext[ws - 1]))
+            ws--;
+          int we = ws;
+          while (we < tlen && is_word_char (ttext[we]))
+            we++;
+          int is_close = 0;
+          tpair = pair_of_word (pairs, np, ttext + ws, we - ws, &is_close);
+          if (tpair >= 0)
+            tcol = ws;
+        }
+    }
   free (ttext);
-  if (!target)
+  if (!target && tpair < 0)
     return 0;
 
   BraceFrame stack[4096];
@@ -1167,6 +1290,15 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
       if (!s)
         continue;
       int len = (int) strlen (s);
+      if (st.heredoc)
+        {
+          /* A here-document body is text: nothing in it matches. */
+          if (heredoc_closes (s, len, st.heredoc))
+            st.heredoc = 0;
+          free (s);
+          continue;
+        }
+      int heredoc_next = 0;
       int i = 0;
       int cont = 0;
       while (i < len && !found)
@@ -1272,6 +1404,64 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
               i++;
               continue;
             }
+          if (lang->heredocs && c == '<')
+            {
+              int end = 0;
+              int h = heredoc_open (s, len, i, &end);
+              if (h)
+                {
+                  heredoc_next = h;
+                  i = end;
+                  continue;
+                }
+            }
+          if (np > 0 && is_word_char (c) && (i == 0 || !is_word_char (s[i - 1])))
+            {
+              int j = i;
+              while (j < len && is_word_char (s[j]))
+                j++;
+              int is_close = 0;
+              int p = pair_of_word (pairs, np, s + i, j - i, &is_close);
+              int here = (tpair >= 0 && line == tline && i == tcol);
+              if (p >= 0 && !is_close)
+                {
+                  if (top >= 4096)
+                    {
+                      free (s);
+                      return 0;
+                    }
+                  stack[top].line = line;
+                  stack[top].col = i;
+                  stack[top].ch = 0;
+                  stack[top].pair = p;
+                  if (here)
+                    watch = top;
+                  top++;
+                }
+              else if (p >= 0 && here)
+                {
+                  if (top > 0 && stack[top - 1].pair == p)
+                    {
+                      mline = stack[top - 1].line;
+                      mcol = stack[top - 1].col;
+                      found = 1;
+                    }
+                  stop = 1;
+                  break;
+                }
+              else if (p >= 0 && top > 0 && stack[top - 1].pair == p)
+                {
+                  top--;
+                  if (watch >= 0 && top == watch)
+                    {
+                      mline = line;
+                      mcol = i;
+                      found = 1;
+                    }
+                }
+              i = j;
+              continue;
+            }
           if (brace_partner (c))
             {
               int here = (line == tline && i == tcol);
@@ -1285,6 +1475,7 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
                   stack[top].line = line;
                   stack[top].col = i;
                   stack[top].ch = c;
+                  stack[top].pair = -1;
                   if (here)
                     watch = top;
                   top++;
@@ -1318,8 +1509,11 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
         break;
       if (st.state == SC_LINE)
         st.state = SC_NORM;
-      else if ((st.state == SC_SQ || st.state == SC_DQ) && !cont)
+      else if ((st.state == SC_SQ || st.state == SC_DQ) && !cont
+               && !lang->multiline_strings)
         st.state = SC_NORM;
+      if (heredoc_next && st.state == SC_NORM)
+        st.heredoc = heredoc_next;
       st.escape = 0;
     }
 
@@ -1335,7 +1529,8 @@ handle_match_brace (int ch, InputContext *ctx)
 {
   (void) ch;
   if (!jump_brace (ctx->buf, ctx->cursor_line, ctx->cursor_col,
-                   config_language (ctx->ed ? &ctx->ed->config : NULL)) && ctx->ed)
+                   config_language (ctx->ed ? &ctx->ed->config : NULL),
+                   ctx->ed ? &ctx->ed->config : NULL) && ctx->ed)
     set_status_message (ctx->ed, "No match");
 }
 

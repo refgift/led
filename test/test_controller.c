@@ -30,6 +30,7 @@ void run_color_tests (void);
 void run_language_tests (void);
 void run_shell_lex_tests (void);
 void run_repaint_tests (void);
+void run_fuzz_tests (void);
 void run_large_file_tests (void);
 void test_buffer_advanced ();
 void test_controller_simulation ();
@@ -245,7 +246,16 @@ test_load_limits (void)
       test_assert (cfg.performance.memory_limit_mb == 80,
                    "memory_limit_mb is read");
       test_assert (cfg.performance.max_line_length == 4000,
-                   "max_line_length is read");
+                   "max_line_length, the old name, is still read");
+      fp = fopen (conf, "w");
+      if (fp)
+        {
+          fputs ("max_highlight_length=5000\n", fp);
+          fclose (fp);
+        }
+      load_editor_config (&cfg);
+      test_assert (cfg.performance.max_line_length == 5000,
+                   "max_highlight_length is read");
 
       fp = fopen (conf, "w");
       if (fp)
@@ -1230,6 +1240,67 @@ test_programmer_motions (void)
   test_assert (ctx.cursor_line == 6 && ctx.cursor_col == stay_c,
                "brace inside a C++ raw string is not a match");
 
+  /* Word pairs match like brackets: FIRST's BEGIN END and IF THEN. */
+  {
+    TestContext w;
+    test_init (&w);
+    set_default_config (&w.ed.config);
+    w.ed.config.display.tab_width = 8;
+    config_select_language (&w.ed.config, "prog.fst");
+    const char *fsrc[] = {
+      "BEGIN",
+      "  IF X THEN",
+      "  OUTPUT \"END\";",
+      "  BEGIN Y END",
+      "END"
+    };
+    for (int i = 0; i < 5; i++)
+      buffer_insert_line (&w.buf, i, fsrc[i]);
+    w.cursor_line = 0;
+    w.cursor_col = 2;               /* inside BEGIN */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 4 && w.cursor_col == 0,
+                 "Ctrl+] on BEGIN jumps to its END, past a nested pair and a string");
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 0 && w.cursor_col == 0,
+                 "Ctrl+] on END jumps back to its BEGIN");
+    w.cursor_line = 1;
+    w.cursor_col = 2;               /* on IF */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 1 && w.cursor_col == 7,
+                 "Ctrl+] on IF jumps to THEN");
+    w.cursor_line = 3;
+    w.cursor_col = 13;              /* just after the inner END */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 3 && w.cursor_col == 2,
+                 "Ctrl+] just after END finds the inner BEGIN");
+    w.cursor_line = 1;
+    w.cursor_col = 5;               /* on X: not a pair word */
+    test_handle_input (&w, 29);
+    test_assert (w.cursor_line == 1 && w.cursor_col == 5
+                 && strstr (w.ed.status_message, "No match") != NULL,
+                 "a word outside any pair is not a match");
+    test_cleanup (&w);
+  }
+
+  /* A bracket inside a shell here-document is text, not a match. */
+  {
+    TestContext h;
+    test_init (&h);
+    set_default_config (&h.ed.config);
+    h.ed.config.display.tab_width = 8;
+    config_select_language (&h.ed.config, "run.sh");
+    const char *hsrc[] = { "f() {", "  cat <<EOF", "  }", "EOF", "}" };
+    for (int i = 0; i < 5; i++)
+      buffer_insert_line (&h.buf, i, hsrc[i]);
+    h.cursor_line = 0;
+    h.cursor_col = 4;
+    test_handle_input (&h, 29);
+    test_assert (h.cursor_line == 4 && h.cursor_col == 0,
+                 "Ctrl+] skips a brace inside a here-document");
+    test_cleanup (&h);
+  }
+
   ctx.cursor_line = 0;
   ctx.cursor_col = col_of (&ctx.buf, 0, '(', 1);
   test_handle_input (&ctx, 29);
@@ -1724,6 +1795,7 @@ fprintf (stderr, "Test %d: clipboard_comprehensive - Clipboard operations\n",
   run_language_tests ();
   run_shell_lex_tests ();
   run_repaint_tests ();
+  run_fuzz_tests ();
   run_large_file_tests ();
   
   fprintf (stderr, "Tests completed: %d passed, %d failed\n", tests_passed,

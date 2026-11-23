@@ -13,6 +13,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <stdint.h>
+#include "utils.h"
 
 void test_assert (int condition, const char *msg);
 void run_safety_tests (void);
@@ -524,6 +527,110 @@ test_config_files (void)
     fprintf (stderr, "cleanup failed: %s\n", dir);
 }
 
+/* An allocation that fails runs the failure handler once, then exits
+ * with a failure status. Run in a child so the test suite survives. */
+static char g_oom_marker[64];
+
+static void
+oom_handler (void)
+{
+  FILE *fp = fopen (g_oom_marker, "a");
+  if (fp)
+    {
+      fputs ("saved\n", fp);
+      fclose (fp);
+    }
+}
+
+static void
+test_out_of_memory (void)
+{
+#if defined(__SANITIZE_ADDRESS__)
+  /* AddressSanitizer aborts on a huge malloc instead of returning NULL,
+   * so led's handler never runs. Nothing to test in that build. */
+  test_assert (1, "out of memory: skipped under AddressSanitizer");
+  return;
+#endif
+  snprintf (g_oom_marker, sizeof g_oom_marker, "/tmp/led_oom_%d", (int) getpid ());
+  unlink (g_oom_marker);
+  fflush (stderr);
+  pid_t pid = fork ();
+  if (pid == 0)
+    {
+      if (!freopen ("/dev/null", "w", stderr))
+        _exit (2);
+      xalloc_reserve (4096);
+      xalloc_on_failure (oom_handler);
+      volatile void *p = xmalloc (SIZE_MAX / 2);
+      (void) p;
+      _exit (0);                /* not reached: the allocation fails */
+    }
+  int status = 0;
+  waitpid (pid, &status, 0);
+  test_assert (WIFEXITED (status) && WEXITSTATUS (status) == EXIT_FAILURE,
+               "a failed allocation exits with a failure status");
+  char got[32] = "";
+  FILE *fp = fopen (g_oom_marker, "r");
+  if (fp)
+    {
+      if (!fgets (got, sizeof got, fp))
+        got[0] = '\0';
+      fclose (fp);
+    }
+  test_assert (strcmp (got, "saved\n") == 0,
+               "a failed allocation runs the failure handler once first");
+  unlink (g_oom_marker);
+}
+
+/* clipboard_copy and clipboard_paste: commands for the system
+ * clipboard. Plain shell commands stand in for wl-copy and wl-paste. */
+static void
+test_clipboard_commands (void)
+{
+  char file[64];
+  snprintf (file, sizeof file, "/tmp/led_clip_%d", (int) getpid ());
+  unlink (file);
+  TestContext t;
+  test_init (&t);
+  snprintf (t.ed.config.display.clipboard_copy,
+            sizeof t.ed.config.display.clipboard_copy, "cat > %s", file);
+  buffer_insert_line (&t.buf, 0, "copy me");
+  buffer_insert_line (&t.buf, 1, "");
+  t.cursor_line = 0;
+  t.cursor_col = 0;
+  test_handle_input (&t, 3);    /* Ctrl+C: the line, to its end */
+  char got[64] = "";
+  FILE *fp = fopen (file, "r");
+  if (fp)
+    {
+      size_t n = fread (got, 1, sizeof got - 1, fp);
+      got[n] = '\0';
+      fclose (fp);
+    }
+  test_assert (strcmp (got, "copy me") == 0,
+               "copy also sends the text to clipboard_copy");
+
+  snprintf (t.ed.config.display.clipboard_paste,
+            sizeof t.ed.config.display.clipboard_paste,
+            "printf 'sys\\r\\ntext'");
+  t.cursor_line = 1;
+  t.cursor_col = 0;
+  test_handle_input (&t, 22);   /* Ctrl+V */
+  test_assert (line_is (&t.buf, 1, "sys") && line_is (&t.buf, 2, "text"),
+               "Ctrl+V pastes what clipboard_paste prints, without carriage returns");
+  test_assert (t.clipboard && strcmp (t.clipboard, "sys\ntext") == 0,
+               "the pasted system text becomes led's copy too");
+
+  strcpy (t.ed.config.display.clipboard_paste, "true");
+  t.cursor_line = 2;
+  t.cursor_col = 4;
+  test_handle_input (&t, 22);
+  test_assert (line_is (&t.buf, 3, "text"),
+               "when clipboard_paste prints nothing, led's own copy is pasted");
+  test_cleanup (&t);
+  unlink (file);
+}
+
 void
 run_safety_tests (void)
 {
@@ -535,6 +642,8 @@ run_safety_tests (void)
   test_replace_all_fixes ();
   test_blocked_saves ();
   test_config_files ();
+  test_out_of_memory ();
+  test_clipboard_commands ();
 }
 
 #include "undo_store.h"

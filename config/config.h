@@ -40,6 +40,9 @@ typedef struct {
     int meta_level3_fg, meta_level3_bg;
     int meta_level4_fg, meta_level4_bg;   /* deepest nesting and beyond */
     int reserved_words_fg, reserved_words_bg;
+    int comment_fg, comment_bg;
+    int string_fg, string_bg;
+    int number_fg, number_bg;
 } ColorScheme;
 /**
  * SyntaxConfig - Rules controlling syntax highlighting.
@@ -70,6 +73,11 @@ typedef struct {
     int highlight;               /* 0: shown as plain text */
     int comment_starts_word;     /* the line comment mark counts only at the
                                     start of a word: "#" in shell, not "$#" */
+    int heredocs;                /* <<WORD starts a here-document (shell) */
+    int multiline_strings;       /* a string left open at the end of a line
+                                    goes on to the next (shell). Without it a
+                                    string goes on only after a trailing
+                                    backslash, where escapes are on (C). */
     char indent_after[128];      /* Enter indents after a line ending in one
                                     of these words: "then,do,else" */
     char interpreters[128];      /* a file with no known extension whose first
@@ -106,6 +114,10 @@ typedef struct {
     int word_wrap;        /* F3 toggle: when true, long lines wrap visually */
     int show_border;      /* F4 toggle: when false, no box() — prevents xterm copy of border */
     int system_clipboard; /* copy and cut also go to the system clipboard (OSC 52) */
+    char clipboard_copy[256];  /* command that takes copied text on its input,
+                                  e.g. "wl-copy"; empty: none */
+    char clipboard_paste[256]; /* command whose output Ctrl+V pastes, e.g.
+                                  "wl-paste --no-newline"; empty: none */
     int persistent_undo;  /* keep undo history between sessions (see undo_store.h) */
     int line_numbers_configured; /* 1 if show_line_numbers was set in the config file */
 } DisplayConfig;

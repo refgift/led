@@ -19,6 +19,23 @@ extern int tests_failed;
 /* Set by SIGHUP / SIGTERM: the terminal closed or the session ended. */
 static volatile sig_atomic_t stop_requested = 0;
 
+/* What the out-of-memory handler needs: the work to save and the
+ * display to put back. Set once the editor is running. */
+static Editor *g_running;
+static const Frontend *g_display;
+
+static void
+on_out_of_memory (void)
+{
+  if (g_running)
+    (void) editor_write_recovery (g_running);
+  if (g_display)
+    g_display->stop ();
+  if (g_running && g_running->filename && g_running->file_modified)
+    fprintf (stderr, "led: unsaved changes were written to %s.recovery\n",
+             g_running->filename);
+}
+
 static void
 on_stop_signal (int sig)
 {
@@ -39,6 +56,9 @@ styles_from_config (const EditorConfig *c, FrontendStyle s[LED_Q_COUNT])
   s[LED_Q_LEVEL3] = (FrontendStyle) { c->colors.meta_level3_fg, c->colors.meta_level3_bg };
   s[LED_Q_LEVEL4] = (FrontendStyle) { c->colors.meta_level4_fg, c->colors.meta_level4_bg };
   s[LED_Q_RESERVED] = (FrontendStyle) { c->colors.reserved_words_fg, c->colors.reserved_words_bg };
+  s[LED_Q_COMMENT] = (FrontendStyle) { c->colors.comment_fg, c->colors.comment_bg };
+  s[LED_Q_STRING] = (FrontendStyle) { c->colors.string_fg, c->colors.string_bg };
+  s[LED_Q_NUMBER] = (FrontendStyle) { c->colors.number_fg, c->colors.number_bg };
 }
 
 /* Read the device size into the screen grid and the editor. */
@@ -152,6 +172,10 @@ main (int argc, char *argv[])
       return 1;
     }
   frontend_use (fe);
+  g_running = &ed;
+  g_display = fe;
+  xalloc_reserve (1 << 20);
+  xalloc_on_failure (on_out_of_memory);
   editor_bind_terminal_keys (&ed);
   adopt_size (fe, &ed);
 

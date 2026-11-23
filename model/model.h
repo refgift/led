@@ -26,6 +26,10 @@
  * (empty space) moves with the cursor. This is the fundamental
  * data structure behind all editing in led.
  */
+/* in_comment value for a string still open at the end of a line:
+ * this plus the quote character that opened it. */
+#define LED_OPEN_STRING 256
+
 typedef struct {
     char* buffer;
     int buffer_size;   /* total allocated size including gap */
@@ -50,7 +54,8 @@ typedef struct {
     int brace_top;      /* open brackets */
     int kw_level;
     int kw_top;         /* open paired keywords */
-    int in_comment;     /* a block comment is still open after this line */
+    int in_comment;     /* still open after this line: 0 nothing, 1 a block
+                           comment, LED_OPEN_STRING + quote a string */
 } NestingCache;
 
 /**

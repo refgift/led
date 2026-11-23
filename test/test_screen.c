@@ -229,25 +229,57 @@ run_color_tests (void)
 
   /* Strings, character literals and comments are not code. */
   c = colors_of (&cfg, "x = \"if (\"; y(1);", NULL);
-  test_assert (c && c[5] == LED_Q_NORMAL && c[8] == LED_Q_NORMAL
-               && c[13] == LED_Q_LEVEL1 && c[15] == LED_Q_LEVEL1,
-               "a bracket or keyword inside a string is plain and does not nest");
+  test_assert (c && c[4] == LED_Q_STRING && c[5] == LED_Q_STRING
+               && c[8] == LED_Q_STRING && c[9] == LED_Q_STRING
+               && c[13] == LED_Q_LEVEL1 && c[14] == LED_Q_NUMBER
+               && c[15] == LED_Q_LEVEL1,
+               "a string, quotes included, has the string colour and does not nest");
   free (c);
   c = colors_of (&cfg, "c = '('; n = 1'000; f(2);", NULL);
-  test_assert (c && c[5] == LED_Q_NORMAL && c[21] == LED_Q_LEVEL1
+  test_assert (c && c[5] == LED_Q_STRING && c[13] == LED_Q_NUMBER
+               && c[14] == LED_Q_NORMAL && c[21] == LED_Q_LEVEL1
                && c[23] == LED_Q_LEVEL1,
                "a character literal is skipped; a digit separator is not a quote");
   free (c);
   c = colors_of (&cfg, "a(1); // if (", &kl);
-  test_assert (c && c[1] == LED_Q_LEVEL1 && c[9] == LED_Q_NORMAL
-               && c[12] == LED_Q_NORMAL && kl == 1,
-               "a line comment is plain");
+  test_assert (c && c[1] == LED_Q_LEVEL1 && c[6] == LED_Q_COMMENT
+               && c[9] == LED_Q_COMMENT && c[12] == LED_Q_COMMENT && kl == 1,
+               "a line comment has the comment colour and does not nest");
   free (c);
   c = colors_of (&cfg, "a /* ( if */ (b)", NULL);
-  test_assert (c && c[5] == LED_Q_NORMAL && c[7] == LED_Q_NORMAL
+  test_assert (c && c[2] == LED_Q_COMMENT && c[5] == LED_Q_COMMENT
+               && c[7] == LED_Q_COMMENT && c[11] == LED_Q_COMMENT
+               && c[12] == LED_Q_NORMAL
                && c[13] == LED_Q_LEVEL1 && c[15] == LED_Q_LEVEL1,
-               "a block comment is plain, and code after it is coloured");
+               "a block comment has the comment colour, and code after it is coloured");
   free (c);
+
+  /* A C string goes on to the next line only after a backslash. */
+  {
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *s1 = compute_line_colors ("s = \"ab (\\", 10, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (s1 && ic == LED_OPEN_STRING + '"' && s1[4] == LED_Q_STRING
+                 && s1[8] == LED_Q_STRING && bl == 1,
+                 "a C string ending in a backslash goes on to the next line");
+    int *s2 = compute_line_colors ("cd ) \"; f(1)", 13, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (s2 && ic == 0 && s2[0] == LED_Q_STRING && s2[3] == LED_Q_STRING
+                 && s2[5] == LED_Q_STRING && s2[9] == LED_Q_LEVEL1 && bl == 1,
+                 "the continued string closes, and code after it nests");
+    free (s1);
+    free (s2);
+    ic = 0;
+    int *s3 = compute_line_colors ("s = \"ab", 7, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    int *s4 = compute_line_colors ("f(1)", 4, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (s3 && s4 && ic == 0 && s4[1] == LED_Q_LEVEL1,
+                 "an unclosed C string without a backslash ends with its line");
+    free (s3);
+    free (s4);
+  }
 
   /* A block comment left open carries to the next line. */
   {
@@ -258,9 +290,9 @@ run_color_tests (void)
     test_assert (ic == 1 && bl == 1, "an open block comment is carried on");
     int *c2 = compute_line_colors ("( still ) */ f(1)", 17, 4, &cfg,
                                    &bl, &bt, bs, &k, &kt, ks, &ic);
-    test_assert (c2 && ic == 0 && c2[0] == LED_Q_NORMAL && c2[8] == LED_Q_NORMAL
-                 && c2[14] == LED_Q_LEVEL1 && bl == 1,
-                 "the next line stays plain until the comment closes");
+    test_assert (c2 && ic == 0 && c2[0] == LED_Q_COMMENT && c2[8] == LED_Q_COMMENT
+                 && c2[11] == LED_Q_COMMENT && c2[14] == LED_Q_LEVEL1 && bl == 1,
+                 "the next line is comment until the comment closes");
     free (c1);
     free (c2);
   }
@@ -479,8 +511,8 @@ run_language_tests (void)
                "BEGIN opens a level and END takes the colour of its BEGIN");
   free (c);
   c = lang_colors (&cfg, "OUTPUT \"IF BEGIN (\"; OUTPUT NEWLINE", &kl);
-  test_assert (c && c[0] == LED_Q_RESERVED && c[8] == LED_Q_NORMAL
-               && c[11] == LED_Q_NORMAL && c[17] == LED_Q_NORMAL
+  test_assert (c && c[0] == LED_Q_RESERVED && c[8] == LED_Q_STRING
+               && c[11] == LED_Q_STRING && c[17] == LED_Q_STRING
                && c[19] == LED_Q_SEMICOLON && c[28] == LED_Q_RESERVED && kl == 1,
                "words inside a denotation are text, not code");
   free (c);
@@ -502,7 +534,7 @@ run_language_tests (void)
   config_select_language (&cfg, "prog.c");
   c = lang_colors (&cfg, "if (x) return; // BEGIN", &kl);
   test_assert (c && c[0] == LED_Q_RESERVED && c[7] == LED_Q_RESERVED
-               && c[18] == LED_Q_NORMAL && kl == 1,
+               && c[18] == LED_Q_COMMENT && kl == 1,
                "choosing C again restores C's words and comments");
   free (c);
 
@@ -573,8 +605,8 @@ run_language_tests (void)
   ed.auto_save_threshold = 100000;
   c = lang_colors (&ed.config, "def f(): # return (", &kl);
   test_assert (ed.syntax_highlight == 1 && c && c[0] == LED_Q_RESERVED
-               && c[5] == LED_Q_LEVEL1 && c[11] == LED_Q_NORMAL
-               && c[18] == LED_Q_NORMAL,
+               && c[5] == LED_Q_LEVEL1 && c[11] == LED_Q_COMMENT
+               && c[18] == LED_Q_COMMENT,
                "a language defined in colorization.conf is used");
   free (c);
   editor_handle_input (&ed, 11);
@@ -683,6 +715,14 @@ run_repaint_tests (void)
                "opening a comment turns the lines below plain");
   test_assert (typed_matches_fresh ("a.fst", f_lines, 4, k3, 5),
                "completing the word BEGIN recolours the pairs below");
+  /* Found by the fuzzer: cutting BEGIN leaves an empty line, which
+   * draws no text; pasting it back must still recolour the lines below. */
+  {
+    const char *g_lines[] = { "BEGIN", "  IF X THEN", "  BEGIN Y END", "END" };
+    const int k5[] = { 24, 22 };              /* Ctrl+X, Ctrl+V */
+    test_assert (typed_matches_fresh ("a.fst", g_lines, 4, k5, 2),
+                 "cut a line empty and paste it back: the lines below recolour");
+  }
   test_assert (typed_matches_fresh ("a.c", d_lines, 3, k4, 3),
                "deleting a { recolours the lines below");
   test_assert (typed_matches_fresh ("a.c", c_lines, 4, k5, 7),
@@ -711,17 +751,72 @@ run_shell_lex_tests (void)
   test_assert (l && strcmp (l->name, "shell") == 0, ".sh is shell");
   l = config_select_language (&cfg, "run.bash");
   test_assert (l && strcmp (l->name, "shell") == 0, ".bash is shell");
+  {
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *m1 = compute_line_colors ("echo \"a (", 9, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    int *m2 = compute_line_colors ("b ) if\" (x)", 11, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (m1 && m2 && m1[8] == LED_Q_STRING && m2[2] == LED_Q_STRING
+                 && m2[4] == LED_Q_STRING && m2[6] == LED_Q_STRING
+                 && m2[8] == LED_Q_LEVEL1 && ic == 0 && bl == 1,
+                 "a shell string spans lines; a bracket inside it does not nest");
+    free (m1);
+    free (m2);
+  }
+  /* Here-documents: the body is text, the delimiter line ends it. */
+  {
+    const char *doc[] = { "cat <<'EOF' > out", "if ( x", "EOF", "f (1)" };
+    int bl = 1, bt = 0, k = 1, kt = 0, ic = 0;
+    static int bs[256], ks[100];
+    int *h[4];
+    int state[4];
+    for (int n = 0; n < 4; n++)
+      {
+        h[n] = compute_line_colors (doc[n], (int) strlen (doc[n]), 4, &cfg,
+                                    &bl, &bt, bs, &k, &kt, ks, &ic);
+        state[n] = ic;
+      }
+    test_assert (h[0] && (state[0] & LED_OPEN_HEREDOC),
+                 "<<'EOF' opens a here-document on the next line");
+    test_assert (h[1] && h[1][0] == LED_Q_STRING && h[1][3] == LED_Q_STRING
+                 && (state[1] & LED_OPEN_HEREDOC) && bl == 1,
+                 "a here-document line is text: no keyword, no nesting");
+    test_assert (state[2] == 0, "the delimiter line ends the here-document");
+    test_assert (h[3] && h[3][2] == LED_Q_LEVEL1 && state[3] == 0,
+                 "code after the here-document nests again");
+    for (int n = 0; n < 4; n++)
+      free (h[n]);
+
+    ic = 0;
+    int *t1 = compute_line_colors ("\tcat <<-END", 11, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    int *t2 = compute_line_colors ("\t\tEND", 5, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (t1 && t2 && ic == 0,
+                 "<<- ends at a delimiter indented with tabs");
+    free (t1);
+    free (t2);
+
+    ic = 0;
+    int *a1 = compute_line_colors ("x=$((1<<2)); y=$(cat <<< hi)", 28, 4, &cfg,
+                                   &bl, &bt, bs, &k, &kt, ks, &ic);
+    test_assert (a1 && ic == 0,
+                 "a shift in $(( )) and a <<< here-string are not here-documents");
+    free (a1);
+  }
   c = colors_of (&cfg, "if [ $# -gt 0 ];then echo \"x\";fi", &kl);
   test_assert (c && c[0] == LED_Q_LEVEL1 && c[5] == LED_Q_NORMAL
                && c[6] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL
                && c[16] == LED_Q_RESERVED && c[21] == LED_Q_RESERVED
-               && c[27] == LED_Q_NORMAL && c[30] == LED_Q_LEVEL1 && kl == 1,
+               && c[27] == LED_Q_STRING && c[30] == LED_Q_LEVEL1 && kl == 1,
                "if ... fi pair; $# is not a comment; then and echo are reserved");
   free (c);
   c = colors_of (&cfg, "for f in *;do echo $f;done # if (", &kl);
   test_assert (c && c[0] == LED_Q_RESERVED && c[11] == LED_Q_LEVEL1
-               && c[22] == LED_Q_LEVEL1 && c[29] == LED_Q_NORMAL
-               && c[32] == LED_Q_NORMAL && kl == 1,
+               && c[22] == LED_Q_LEVEL1 && c[29] == LED_Q_COMMENT
+               && c[32] == LED_Q_COMMENT && kl == 1,
                "do ... done pair; # after a space starts a comment");
   free (c);
   c = colors_of (&cfg, "echo ${x#y} \\\" \\( done", &kl);
@@ -755,8 +850,8 @@ run_shell_lex_tests (void)
   c = colors_of (&cfg, "\tprintf(\"%s\", yytext); return 0; ECHO;", &kl);
   test_assert (c && c[14] == LED_Q_RESERVED && c[19] == LED_Q_RESERVED
                && c[23] == LED_Q_RESERVED && c[33] == LED_Q_RESERVED
-               && c[10] == LED_Q_NORMAL,
-               "yytext, return and ECHO are reserved; the string is plain");
+               && c[10] == LED_Q_STRING,
+               "yytext, return and ECHO are reserved; the string has the string colour");
   free (c);
 
   /* In the editor: a shell script with no extension, and Enter after do. */

@@ -104,6 +104,14 @@ set_default_config (EditorConfig *config)
   config->colors.meta_level4_bg = LED_COLOR_BLACK;
   config->colors.reserved_words_fg = LED_COLOR_RED;
   config->colors.reserved_words_bg = LED_COLOR_BLACK;
+  /* Comments stand apart; strings and numbers look like text until
+   * the config gives them a colour. */
+  config->colors.comment_fg = LED_COLOR_MAGENTA;
+  config->colors.comment_bg = LED_COLOR_BLACK;
+  config->colors.string_fg = LED_COLOR_WHITE;
+  config->colors.string_bg = LED_COLOR_BLACK;
+  config->colors.number_fg = LED_COLOR_WHITE;
+  config->colors.number_bg = LED_COLOR_BLACK;
   // Syntax
   strcpy (config->syntax.extensions,
           ".c,.h,.C,.H,.cpp,.cc,.cxx,.hpp,.hh,.hxx");
@@ -166,6 +174,8 @@ set_default_config (EditorConfig *config)
   sh->escapes = 1;
   sh->highlight = 1;
   sh->comment_starts_word = 1;
+  sh->multiline_strings = 1;
+  sh->heredocs = 1;
   strcpy (sh->indent_after, "then,do,else,elif,in");
   strcpy (sh->interpreters, "sh,bash,dash,ksh,zsh,ash");
 
@@ -206,6 +216,8 @@ set_default_config (EditorConfig *config)
   config->display.show_line_numbers = 0;
   config->display.line_numbers_configured = 0;
   config->display.system_clipboard = 1;
+  config->display.clipboard_copy[0] = '\0';
+  config->display.clipboard_paste[0] = '\0';
   config->display.persistent_undo = 1;
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
@@ -501,7 +513,8 @@ language_key (EditorConfig *config, const char *key, const char *value)
   static const char *known[] = {
     "extensions", "reserved_words", "paired_keywords", "line_comment",
     "block_comment", "quotes", "escapes", "highlight",
-    "comment_starts_word", "indent_after", "interpreters", NULL
+    "comment_starts_word", "multiline_strings", "heredocs", "indent_after",
+    "interpreters", NULL
   };
   int is_known = 0;
   for (int i = 0; known[i]; i++)
@@ -540,6 +553,10 @@ language_key (EditorConfig *config, const char *key, const char *value)
     l->highlight = atoi (value) ? 1 : 0;
   else if (strcmp (what, "comment_starts_word") == 0)
     l->comment_starts_word = atoi (value) ? 1 : 0;
+  else if (strcmp (what, "multiline_strings") == 0)
+    l->multiline_strings = atoi (value) ? 1 : 0;
+  else if (strcmp (what, "heredocs") == 0)
+    l->heredocs = atoi (value) ? 1 : 0;
   else if (strcmp (what, "indent_after") == 0)
     snprintf (l->indent_after, sizeof l->indent_after, "%s", value);
   else if (strcmp (what, "interpreters") == 0)
@@ -659,6 +676,18 @@ config_read_file (EditorConfig *config, const char *path)
         config->colors.reserved_words_fg = string_to_color (value);
       else if (strcmp (key, "reserved_words_bg") == 0)
         config->colors.reserved_words_bg = string_to_color (value);
+      else if (strcmp (key, "comment_fg") == 0)
+        config->colors.comment_fg = string_to_color (value);
+      else if (strcmp (key, "comment_bg") == 0)
+        config->colors.comment_bg = string_to_color (value);
+      else if (strcmp (key, "string_fg") == 0)
+        config->colors.string_fg = string_to_color (value);
+      else if (strcmp (key, "string_bg") == 0)
+        config->colors.string_bg = string_to_color (value);
+      else if (strcmp (key, "number_fg") == 0)
+        config->colors.number_fg = string_to_color (value);
+      else if (strcmp (key, "number_bg") == 0)
+        config->colors.number_bg = string_to_color (value);
       // Syntax
       /* These three, with no language name, are C's: they are older
        * than languages, and c.extensions and so on mean the same. */
@@ -708,6 +737,12 @@ config_read_file (EditorConfig *config, const char *path)
         config->statusbar.show_key_meter = atoi (value);
       else if (strcmp (key, "system_clipboard") == 0)
         config->display.system_clipboard = atoi (value) ? 1 : 0;
+      else if (strcmp (key, "clipboard_copy") == 0)
+        snprintf (config->display.clipboard_copy,
+                  sizeof config->display.clipboard_copy, "%s", value);
+      else if (strcmp (key, "clipboard_paste") == 0)
+        snprintf (config->display.clipboard_paste,
+                  sizeof config->display.clipboard_paste, "%s", value);
       else if (strcmp (key, "persistent_undo") == 0)
         config->display.persistent_undo = atoi (value) ? 1 : 0;
       else if (strcmp (key, "max_file_size_mb") == 0)
@@ -722,7 +757,10 @@ config_read_file (EditorConfig *config, const char *path)
           if (v >= 1 && v <= 200)
             config->performance.memory_limit_mb = v;
         }
-      else if (strcmp (key, "max_line_length") == 0)
+      /* max_highlight_length was called max_line_length when long
+       * lines were cut on load; the old name still works. */
+      else if (strcmp (key, "max_highlight_length") == 0
+               || strcmp (key, "max_line_length") == 0)
         {
           int v = atoi (value);
           if (v >= 80 && v <= 100000)
@@ -796,7 +834,7 @@ general_body (FILE *f, const EditorConfig *d)
            "#show_line_numbers=%d\n\n", d->display.show_line_numbers);
   fprintf (f, "# Limits\n#max_file_size_mb=%d\n#memory_limit_mb=%d\n"
            "# A longer line is loaded whole, but shown without syntax colours.\n"
-           "#max_line_length=%d\n\n", d->performance.max_file_size_mb,
+           "#max_highlight_length=%d\n\n", d->performance.max_file_size_mb,
            d->performance.memory_limit_mb, d->performance.max_line_length);
   fprintf (f, "# Auto-save\n#auto_save_timeout=%d\n#auto_save_keystrokes=%d\n\n",
            d->autosave.timeout, d->autosave.keystrokes);
@@ -804,6 +842,13 @@ general_body (FILE *f, const EditorConfig *d)
            d->search.enabled, d->search.max_pattern_length);
   fprintf (f, "# Copy and cut also go to the system clipboard (OSC 52).\n"
            "#system_clipboard=%d\n\n", d->display.system_clipboard);
+  fprintf (f, "# Commands for the system clipboard, where the terminal cannot reach\n"
+           "# it. Copy and cut also send the text to clipboard_copy; Ctrl+V pastes\n"
+           "# what clipboard_paste prints, or led's own copy when it prints nothing.\n"
+           "# Wayland: wl-copy / wl-paste --no-newline\n"
+           "# X11:     xclip -selection clipboard / xclip -selection clipboard -o\n"
+           "# macOS:   pbcopy / pbpaste\n"
+           "#clipboard_copy=\n#clipboard_paste=\n\n");
   fprintf (f, "# Keep each file's undo history between sessions. It is stored in a\n"
            "# directory of your own under the system's temporary directory.\n"
            "#persistent_undo=%d\n", d->display.persistent_undo);
@@ -835,6 +880,9 @@ color_body (FILE *f, const EditorConfig *d)
   PAIR (meta_level2);
   PAIR (meta_level3);
   PAIR (meta_level4);
+  PAIR (comment);
+  PAIR (string);
+  PAIR (number);
 #undef PAIR
   fprintf (f, "\n# Files with these extensions are highlighted.\n"
            "#syntax_extensions=%s\n#reserved_words=%s\n",
@@ -854,6 +902,8 @@ color_body (FILE *f, const EditorConfig *d)
            "#   NAME.highlight        1            (0: shown as plain text)\n"
            "#   NAME.comment_starts_word 1         (the comment mark counts only at the\n"
            "#                                       start of a word: # but not $#)\n"
+           "#   NAME.multiline_strings 1           (a string may go on to the next line)\n"
+           "#   NAME.heredocs         1            (<<WORD starts a here-document)\n"
            "#   NAME.indent_after     then,do      (Enter indents after these words)\n"
            "#   NAME.interpreters     sh,bash      (chosen by a first line #!/bin/sh)\n");
   for (int i = 1; i < d->num_languages; i++)
@@ -863,13 +913,16 @@ color_body (FILE *f, const EditorConfig *d)
                "#%s.paired_keywords=%s\n#%s.line_comment=%s\n"
                "#%s.block_comment=%s%s%s\n#%s.quotes=%s\n#%s.escapes=%d\n"
                "#%s.highlight=%d\n#%s.comment_starts_word=%d\n"
+               "#%s.multiline_strings=%d\n#%s.heredocs=%d\n"
                "#%s.indent_after=%s\n#%s.interpreters=%s\n",
                l->name, l->extensions, l->name,
                l->reserved_words, l->name, l->paired_keywords, l->name,
                l->line_comment, l->name, l->block_open,
                l->block_open[0] ? " " : "", l->block_close, l->name,
                l->quotes, l->name, l->escapes, l->name, l->highlight,
-               l->name, l->comment_starts_word, l->name, l->indent_after,
+               l->name, l->comment_starts_word, l->name,
+               l->multiline_strings, l->name, l->heredocs, l->name,
+               l->indent_after,
                l->name, l->interpreters);
     }
 }

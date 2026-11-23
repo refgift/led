@@ -285,8 +285,56 @@ finish_word (const char *full_line, int start, int end, int *colors,
  * colouring pass and the nesting-only pass, so they cannot disagree.
  *
  * Text inside a string, a character literal or a comment is not code:
- * it is left plain, and a bracket or keyword in it does not nest.
- * *in_comment carries an open block comment from line to line. */
+ * it takes the comment or string colour, and a bracket or keyword in
+ * it does not nest. A word that starts with a digit is a number.
+ * *in_comment carries an open block comment, or an open string
+ * (LED_OPEN_STRING + its quote), from line to line. */
+/* Give colors[from..to) one quality; nothing when only nesting is wanted. */
+static void
+paint (int *colors, int from, int to, int quality)
+{
+  if (!colors)
+    return;
+  for (int j = from; j < to; j++)
+    colors[j] = quality;
+}
+
+/* Find the end of a string whose opening quote q is already passed.
+ * *i moves past the closing quote, or to the end of the line. Returns
+ * 1 when the string closed. When it did not, g_string_continues says
+ * whether it goes on to the next line: always with multiline_strings,
+ * otherwise only after a trailing backslash where escapes are on. */
+static int g_string_continues;
+
+static int
+string_end (const char *s, int len, int *i, char q, const Language *lang)
+{
+  int dangling = 0;
+  g_string_continues = 0;
+  while (*i < len)
+    {
+      if (lang->escapes && s[*i] == '\\')
+        {
+          if (*i + 1 < len)
+            {
+              *i += 2;
+              continue;
+            }
+          dangling = 1;         /* a backslash at the end of the line */
+          (*i)++;
+          break;
+        }
+      if (s[*i] == q)
+        {
+          (*i)++;
+          return 1;
+        }
+      (*i)++;
+    }
+  g_string_continues = lang->multiline_strings || dangling;
+  return 0;
+}
+
 static void
 scan_line (const char *s, int len, int *colors, EditorConfig *config,
            KeywordPair *pairs, int num_pairs,
@@ -302,10 +350,37 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
   int lc = (int) strlen (lang->line_comment);
   int bo = (int) strlen (lang->block_open);
   int bc = (int) strlen (lang->block_close);
+  /* Inside a here-document every line is text, until the delimiter. */
+  if (*in_comment & LED_OPEN_HEREDOC)
+    {
+      if (heredoc_closes (s, len, *in_comment))
+        *in_comment = 0;
+      else
+        paint (colors, 0, len, LED_Q_STRING);
+      return;
+    }
+  int heredoc_next = 0;         /* <<WORD seen: the next line starts one */
   /* i == len is one step past the text, so a word that runs to the end
    * of the line is ended by the same code as any other. */
   while (i <= len)
     {
+      if (*in_comment >= LED_OPEN_STRING)
+        {
+          /* A string carried over from the line above. */
+          char q = (char) (*in_comment - LED_OPEN_STRING);
+          int from = i;
+          int closed = string_end (s, len, &i, q, lang);
+          paint (colors, from, i, LED_Q_STRING);
+          if (!closed)
+            {
+              /* Still open: on to the next line, or ended by the line. */
+              if (!g_string_continues)
+                *in_comment = 0;
+              break;
+            }
+          *in_comment = 0;
+          continue;
+        }
       if (*in_comment)
         {
           if (bc == 0)
@@ -313,9 +388,12 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
               *in_comment = 0;  /* this language has no block comments */
               continue;
             }
+          int from = i;
           while (i < len && !(i + bc <= len
                               && memcmp (s + i, lang->block_close, (size_t) bc) == 0))
             i++;
+          int to = (i >= len) ? len : i + bc;
+          paint (colors, from, to, LED_Q_COMMENT);
           if (i >= len)
             break;              /* still open at the end of the line */
           i += bc;
@@ -339,9 +417,16 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         {
           /* Past 100 words the line is not coloured further, but the
            * nesting is still counted so later lines stay right. */
-          finish_word (s, word_start, i,
-                       word_count++ > 100 ? NULL : colors, config, pairs,
-                       num_pairs, kw_level, kw_top, kw_stack);
+          if (isdigit ((unsigned char) s[word_start]))
+            {
+              /* 42, 0x1F, 10L: a number, never a keyword. */
+              if (word_count++ <= 100)
+                paint (colors, word_start, i, LED_Q_NUMBER);
+            }
+          else
+            finish_word (s, word_start, i,
+                         word_count++ > 100 ? NULL : colors, config, pairs,
+                         num_pairs, kw_level, kw_top, kw_stack);
           in_word = 0;
         }
       if (i >= len)
@@ -357,11 +442,15 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
           && memcmp (s + i, lang->line_comment, (size_t) lc) == 0
           && (!lang->comment_starts_word || i == 0
               || strchr (" \t;&|()", s[i - 1])))
-        break;                  /* line comment: the rest is not code */
+        {
+          paint (colors, i, len, LED_Q_COMMENT);
+          break;                /* line comment: the rest is not code */
+        }
       if (bo && bc && i + bo <= len
           && memcmp (s + i, lang->block_open, (size_t) bo) == 0)
         {
           *in_comment = 1;
+          paint (colors, i, i + bo, LED_Q_COMMENT);
           i += bo;
           continue;
         }
@@ -371,16 +460,27 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
           && !(c == '\'' && i > 0 && (isalnum ((unsigned char) s[i - 1])
                                       || s[i - 1] == '_')))
         {
+          int from = i;
           i++;
-          while (i < len && s[i] != c)
+          int closed = string_end (s, len, &i, c, lang);
+          paint (colors, from, i, LED_Q_STRING);
+          if (!closed && g_string_continues)
             {
-              if (lang->escapes && s[i] == '\\' && i + 1 < len)
-                i++;
-              i++;
+              *in_comment = LED_OPEN_STRING + (unsigned char) c;
+              break;            /* the string goes on to the next line */
             }
-          if (i < len)
-            i++;                /* the closing quote */
           continue;
+        }
+      if (lang->heredocs && c == '<')
+        {
+          int end = 0;
+          int h = heredoc_open (s, len, i, &end);
+          if (h)
+            {
+              heredoc_next = h;
+              i = end;
+              continue;
+            }
         }
       if (c == '{' || c == '(' || c == '[')
         {
@@ -412,6 +512,8 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         colors[i] = 4;
       i++;
     }
+  if (heredoc_next && *in_comment == 0)
+    *in_comment = heredoc_next;
 }
 
 // Compute color array for a line based on syntax highlighting
@@ -524,7 +626,7 @@ static unsigned long
 hash_start_state (int bl, int bt, const int *bs, int kl, int kt, const int *ks,
                   int in_comment)
 {
-  unsigned long h = 1469598103934665603UL ^ (in_comment ? 0x9E3779B9UL : 0);
+  unsigned long h = 1469598103934665603UL ^ ((unsigned long) in_comment * 0x9E3779B9UL);
   unsigned long vals[8];
   int n = 0;
   vals[n++] = (unsigned long) bl;
@@ -657,6 +759,39 @@ ensure_exp_capacity (size_t need)
 
 // Print a highlighted substring of a line into text subwindow tw
 // y,x are tw-relative (0,0 origin). If tw==NULL (headless test), no-op fallback.
+/* Store the nesting state after this line, as print_highlighted does,
+ * for a row that draws no text of its own: an empty line, a line
+ * scrolled out of view to the left, or one all inside a selection.
+ * Without it the entry keeps its value from before the last edit, and
+ * an edit that changes nesting can look like it changed nothing, so
+ * the lines below keep their old colours. */
+static void
+refresh_line_nesting (Buffer *buf, int logical_line, const char *line,
+                      int len, EditorConfig *config)
+{
+  if (!buf->nesting_cache || logical_line >= buf->capacity || !config)
+    return;
+  int brace_level = 1, brace_top = 0, kw_level = 1, kw_top = 0;
+  int in_comment = 0;
+  int brace_stack[256];
+  int kw_stack[100];
+  memset (brace_stack, 0, sizeof brace_stack);
+  memset (kw_stack, 0, sizeof kw_stack);
+  get_starting_levels (buf, logical_line, &brace_level, &brace_top,
+                       brace_stack, &kw_level, &kw_top, kw_stack,
+                       &in_comment, config);
+  scan_line (line, len, NULL, config, (KeywordPair *) config->syntax_pairs,
+             config->num_syntax_pairs, &brace_level, &brace_top,
+             brace_stack, &kw_level, &kw_top, kw_stack, &in_comment);
+  NestingCache *c = &buf->nesting_cache[logical_line];
+  c->valid = 1;
+  c->brace_level = brace_level;
+  c->brace_top = brace_top;
+  c->kw_level = kw_level;
+  c->kw_top = kw_top;
+  c->in_comment = in_comment;
+}
+
 static void
 print_highlighted (Pane *tw, int y, int x, const char *full_line, int line_len,
                    int start, int len, int highlight_pair,
@@ -1070,6 +1205,10 @@ render_content_row (Pane *tw, int visual_row, int logical_line, Buffer *buf,
 
   line = buffer_get_line (buf, logical_line);
   len = strlen (line);
+  /* Every painted row brings its nesting entry up to date, drawn text
+     or not, so the next edit compares against what is on the screen. */
+  if (syntax_highlight)
+    refresh_line_nesting (buf, logical_line, line, len, config);
   int pos = *scroll_col ? *scroll_col : 0;
 
   // Handle selection
