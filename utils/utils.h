@@ -17,6 +17,7 @@
  * overall data-safety priority.
  */
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -25,9 +26,14 @@ void* xmalloc(size_t n);
 void* xrealloc(void *p, size_t n);
 void* xcalloc(size_t nmemb, size_t size);
 
-/** Reject a name that cannot be opened: NULL, empty, longer than 255 bytes,
- *  or containing a control character. Directories and ".." are allowed.
- */
+/** Longest path led will open: the system limit, less room for the
+ *  suffixes led adds beside the file (.recovery, .bak.N, .ledtmp.PID). */
+#define LED_PATH_LIMIT (PATH_MAX - 32)
+
+/** True if fn can be opened and shown: not NULL or empty, no longer than
+ *  LED_PATH_LIMIT, and free of control characters (which would corrupt
+ *  the status line). Any directory is allowed, ".." included: an editor
+ *  opens the path it is given, with the user's own permissions. */
 bool is_filename_safe(const char *fn);
 
 /* UTF-8 helpers (byte-oriented buffer; display width via wcwidth) */

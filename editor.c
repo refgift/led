@@ -156,7 +156,7 @@ editor_init (Editor *ed, int argc, char *argv[])
     raw = argv[1];
   if (raw)
     {
-      char peeled[512];
+      char peeled[PATH_MAX];
       int pline = 0;
       int pcol = 0;
       /* "file.c:142" is a compiler location unless that exact name exists. */
@@ -172,8 +172,10 @@ editor_init (Editor *ed, int argc, char *argv[])
       else
         ed->filename = raw;
     }
+  int name_refused = 0;
   if (ed->filename && !is_filename_safe (ed->filename))
     {
+      name_refused = 1;
       ed->filename = NULL;      /* reject unsafe names early */
       start_line = 0;
       start_col = 0;
@@ -189,7 +191,7 @@ editor_init (Editor *ed, int argc, char *argv[])
       long memb = (long) ed->config.performance.memory_limit_mb * 1024 * 1024;
       if (memb <= 0)
         memb = 50L * 1024 * 1024;
-      char recovery_path[512];
+      char recovery_path[PATH_MAX];
       snprintf (recovery_path, sizeof (recovery_path), "%s.recovery",
                 ed->filename);
       if (access (recovery_path, F_OK) == 0)
@@ -309,7 +311,9 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->key_word_left = 0;
   ed->key_word_right = 0;
   ed->page_rows = 0;
-  if (recovered)
+  if (name_refused)
+    set_status_message (ed, "File name not usable — nothing opened");
+  else if (recovered)
     set_status_message (ed, "Recovered unsaved changes — Ctrl+S to keep");
   else if (open_note == BUFFER_LOAD_NOT_REGULAR)
     set_status_message (ed, "Not a regular file");
@@ -342,7 +346,7 @@ editor_write_recovery (Editor *ed)
 {
   if (!ed || !ed->filename || !ed->file_modified || ed->save_blocked)
     return -1;
-  char recovery_path[512];
+  char recovery_path[PATH_MAX];
   int n = snprintf (recovery_path, sizeof recovery_path, "%s.recovery",
                     ed->filename);
   if (n < 0 || (size_t) n >= sizeof recovery_path)
@@ -362,10 +366,12 @@ auto_save (Editor *ed)
   if (ed->filename)
     {
       // Create backup before auto-saving
-      char backup_path[512];
-      snprintf (backup_path, sizeof (backup_path), "%s.bak.%d", ed->filename,
-                ed->backup_count % 10 + 1);
-      (void) buffer_save_to_file (&ed->model, backup_path);
+      char backup_path[PATH_MAX];
+      int n = snprintf (backup_path, sizeof (backup_path), "%s.bak.%d",
+                        ed->filename, ed->backup_count % 10 + 1);
+      /* A cut-off name would be some other file. Skip the backup then. */
+      if (n > 0 && (size_t) n < sizeof (backup_path))
+        (void) buffer_save_to_file (&ed->model, backup_path);
       if (buffer_save_to_file (&ed->model, ed->filename) != 0)
         {
           set_status_message (ed, "Auto-save failed");
