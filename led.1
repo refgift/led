@@ -87,7 +87,7 @@ Strings, character literals and comments are left plain.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-409 tests.
+429 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
@@ -160,13 +160,43 @@ Example:
 reserved_words_fg=LIGHT_RED
 normal_bg=DEFAULT\fR
 .fi
-.SS Syntax
-\fCsyntax_extensions\fR lists the file endings that are highlighted.
-\fCreserved_words\fR lists the words colored as reserved.
-Brackets ( ) [ ] { } are always colored by nesting depth.
-\fCpaired_keywords\fR adds \fIopen\fR-\fIclose\fR word pairs for a language that nests with words,
-for example FORTH: \fCpaired_keywords=if-then,begin-end\fR. It is empty by default.
+.SS Languages
+The file's extension chooses the language. Built in:
+.B c
+(C and C++),
+.B first
+(\fC.fst\fR: upper-case words, BEGIN ... END and IF ... THEN colored as pairs by nesting depth, no comments),
+and
+.B text
+(\fC.txt\fR, \fC.text\fR, \fC.md\fR: no colors).
+A language is changed, or a new one defined, with keys of the form \fINAME\fR.\fIKEY\fR:
+.TP
+.B \fINAME\fB.extensions
+The file endings that choose it, for example \fC.py,.pyw\fR.
+.TP
+.B \fINAME\fB.reserved_words
+The words colored as reserved.
+.TP
+.B \fINAME\fB.paired_keywords
+\fIopen\fR-\fIclose\fR word pairs colored by nesting depth, for example \fCBEGIN-END,IF-THEN\fR.
 A pair is used only when both of its words, or neither, are reserved words.
+.TP
+.B \fINAME\fB.line_comment
+The mark that starts a comment to the end of the line. Empty if the language has none. Ctrl+K uses it.
+.TP
+.B \fINAME\fB.block_comment
+The opening and closing marks, separated by a space. Empty for none.
+.TP
+.B \fINAME\fB.quotes
+Each character that opens a string.
+.TP
+.B \fINAME\fB.escapes
+1 if a backslash escapes the next character inside a string.
+.TP
+.B \fINAME\fB.highlight
+0 to show the language as plain text.
+.PP
+The older keys \fCsyntax_extensions\fR, \fCreserved_words\fR and \fCpaired_keywords\fR, with no language name, are C's.
 .SS Other keys
 \fCshow_border\fR (F4), \fCshow_line_numbers\fR, \fCshow_key_meter\fR, \fCsystem_clipboard\fR, \fCpersistent_undo\fR,
 \fCtab_width\fR, \fCspaces_for_tab\fR,

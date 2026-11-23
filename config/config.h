@@ -50,6 +50,26 @@ typedef struct {
     char reserved_words[1024];   /* keywords to color as reserved_words_fg */
     char paired_keywords[1024];  /* open-close pairs for nesting colors, e.g. "if-then,(,)" */
 } SyntaxConfig;
+#define LED_MAX_LANGUAGES 16
+/**
+ * Language - how one programming language is read and coloured.
+ * Chosen by file extension. Built in: c, first, text. More can be
+ * defined, and these changed, in colorization.conf with keys of the
+ * form NAME.KEY, for example python.extensions=.py
+ */
+typedef struct {
+    char name[32];
+    char extensions[256];        /* ".c,.h" */
+    char reserved_words[1024];   /* comma-separated */
+    char paired_keywords[256];   /* "BEGIN-END,IF-THEN" */
+    char line_comment[8];        /* "//"; empty if the language has none */
+    char block_open[8];          /* slash-star; empty if none */
+    char block_close[8];
+    char quotes[8];              /* each character that opens a string */
+    int escapes;                 /* a backslash escapes the next character in a string */
+    int highlight;               /* 0: shown as plain text */
+} Language;
+
 /**
  * AutoSaveConfig - Triggers for automatic saving + backup creation.
  */
@@ -115,7 +135,13 @@ typedef struct {
 
     /* Modular sections */
     ColorScheme colors;
-    SyntaxConfig syntax;
+    SyntaxConfig syntax;    /* the words of the language in use */
+
+    /* Every language led knows, and the one chosen for the open file.
+     * config_select_language copies that one's words into `syntax`. */
+    Language languages[LED_MAX_LANGUAGES];
+    int num_languages;
+    int active_language;    /* index into languages, or -1 for none */
     AutoSaveConfig autosave;
     StatusBarConfig statusbar;
     DisplayConfig display;
@@ -148,6 +174,16 @@ int config_write_defaults(void);
  *  config_parse_syntax to prepare the keyword tables. */
 void set_default_config(EditorConfig* config);
 void config_parse_syntax(EditorConfig* config);
+
+/** Choose the language for filename by its extension and make it the
+ *  one in use: its words are copied into config->syntax and parsed.
+ *  Returns the language, or NULL if no language claims the file (the
+ *  words in use are then left as they were). */
+const Language* config_select_language(EditorConfig* config, const char* filename);
+
+/** The rules for reading the language in use: comments and strings.
+ *  Never NULL; a config with no language chosen reads as C. */
+const Language* config_language(const EditorConfig* config);
 int config_is_reserved_word(const EditorConfig* config, const char* word);
 int string_to_color(const char* str);
 #endif

@@ -223,32 +223,10 @@ editor_init (Editor *ed, int argc, char *argv[])
     }
   ed->scroll_row = 0;
   ed->scroll_col = 0;
-  const char *ext = ed->filename ? strrchr (ed->filename, '.') : NULL;
-  ed->syntax_highlight = 0;
-  if (ext)
-    {
-      int len = strlen (ed->config.syntax.extensions);
-      char *list = xmalloc (len + 1);
-      if (list)
-        {
-          strcpy (list, ed->config.syntax.extensions);
-          char *token = strtok (list, ",");
-          while (token)
-            {
-		
-
-
-
-              if (strcmp (ext, token) == 0)
-                {
-                  ed->syntax_highlight = 1;
-                  break;
-                }
-              token = strtok (NULL, ",");
-            }
-          free (list);
-        }
-    }
+  /* The file's extension chooses its language. A file no language
+   * claims, and plain text, are shown without colours. */
+  const Language *lang = config_select_language (&ed->config, ed->filename);
+  ed->syntax_highlight = (lang && lang->highlight) ? 1 : 0;
   /* Source files show line numbers unless the config file says otherwise.
    * Compiler diagnostics are line numbers; the screen should match. */
   if (ed->config.display.line_numbers_configured)
