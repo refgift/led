@@ -101,9 +101,8 @@ void buffer_init(Buffer* buf);
 /** Frees all lines and metadata. buf itself is borrowed, not freed. */
 void buffer_free(Buffer* buf);
 
-/* Results from buffer_load_from_file. Zero and one still mean the file is loaded. */
+/* Results from buffer_load_from_file. Zero means the file is loaded. */
 #define BUFFER_LOAD_OK 0
-#define BUFFER_LOAD_TRUNCATED 1
 #define BUFFER_LOAD_NOT_FOUND (-1)
 #define BUFFER_LOAD_TOO_BIG (-2)
 #define BUFFER_LOAD_BINARY (-3)
@@ -113,16 +112,15 @@ void buffer_free(Buffer* buf);
 #define BUFFER_LOAD_UNREADABLE (-7)    /* exists, but cannot be read */
 
 /** Loads filename into buf.
- *  max_bytes <= 0 uses a 10 MB ceiling. max_line_len <= 0 uses 10000.
- *  memory_limit_bytes <= 0 uses a 50 MB ceiling. That ceiling is the
- *  nesting cache at the next capacity step plus the line text stored.
- *  A line longer than max_line_len is cut and the call returns
- *  BUFFER_LOAD_TRUNCATED. A file over max_bytes, a file with a null byte,
- *  or a file that would pass the memory ceiling is refused and buf is
- *  left empty, so a partial load cannot be saved over the original.
- *  Returns BUFFER_LOAD_OK, BUFFER_LOAD_TRUNCATED, or a negative code. */
+ *  max_bytes <= 0 uses a 10 MB ceiling. memory_limit_bytes <= 0 uses a
+ *  50 MB ceiling: the per-line arrays at the next capacity step, each
+ *  line's own overhead, and the line text stored.
+ *  Every line is kept whole, however long. A file over max_bytes, a file
+ *  with a null byte, or a file that would pass the memory ceiling is
+ *  refused and buf is left empty, so a partial load cannot be saved over
+ *  the original. Returns BUFFER_LOAD_OK or a negative code. */
 int buffer_load_from_file(Buffer* buf, const char* filename, long max_bytes,
-                          int max_line_len, long memory_limit_bytes);
+                          long memory_limit_bytes);
 
 /** Write the buffer to filename.
  *  When the directory is writable, the bytes go to a temp file in that

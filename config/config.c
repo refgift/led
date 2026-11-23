@@ -479,6 +479,7 @@ general_body (FILE *f, const EditorConfig *d)
   fprintf (f, "# Source files show line numbers and other files do not, unless this is set.\n"
            "#show_line_numbers=%d\n\n", d->display.show_line_numbers);
   fprintf (f, "# Limits\n#max_file_size_mb=%d\n#memory_limit_mb=%d\n"
+           "# A longer line is loaded whole, but shown without syntax colours.\n"
            "#max_line_length=%d\n\n", d->performance.max_file_size_mb,
            d->performance.memory_limit_mb, d->performance.max_line_length);
   fprintf (f, "# Auto-save\n#auto_save_timeout=%d\n#auto_save_keystrokes=%d\n\n",

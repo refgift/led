@@ -9,7 +9,6 @@
 #include <errno.h>
 /* Fallback default; caller should pass a limit from EditorConfig. */
 #define DEFAULT_MAX_FILE_BYTES (10L * 1024 * 1024)
-#define DEFAULT_MAX_LINE_LENGTH 10000
 #define DEFAULT_MEMORY_LIMIT_BYTES (50L * 1024 * 1024)
 
 // GapBuffer implementation
@@ -291,7 +290,7 @@ load_next_bytes (const Buffer *buf, long text_stored, int line_len)
 
 int
 buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
-                       int max_line_len, long memory_limit_bytes)
+                       long memory_limit_bytes)
 {
   struct stat st;
   if (stat (filename, &st) != 0)
@@ -355,20 +354,15 @@ buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
       free (temp);
       return BUFFER_LOAD_BINARY;
     }
-  int truncated = 0;
   long text_stored = 0;
   int start = 0;
   for (int i = 0; i <= pos; i++)
     {
       if (temp[i] == '\n' || temp[i] == '\0')
         {
+          /* The whole line is kept, however long. A line is never cut:
+           * a cut line cannot be saved without losing its tail. */
           int len = i - start;
-          int maxll = (max_line_len > 0 ? max_line_len : DEFAULT_MAX_LINE_LENGTH);
-          if (len > maxll)
-            {
-              len = maxll;
-              truncated = 1;
-            }
           if (load_next_bytes (buf, text_stored, len) > mem_limit)
             {
               free (temp);
@@ -397,7 +391,7 @@ buffer_load_from_file (Buffer *buf, const char *filename, long max_bytes,
         }
     }
   free (temp);
-  return truncated ? BUFFER_LOAD_TRUNCATED : BUFFER_LOAD_OK;
+  return BUFFER_LOAD_OK;
 }
 int
 buffer_delete_char (Buffer *buf, int line, int col)

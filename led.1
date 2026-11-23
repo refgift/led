@@ -82,10 +82,10 @@ Strings, character literals and comments are left plain.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-376 tests.
+377 tests.
 .SH WHAT FAILS
 .IP \(bu 2
-Whole-file in memory, no mmap; lines >10k truncated.
+Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
 .IP \(bu 2
 Errors not standardized, no per-buffer undo persistence.
 .IP \(bu 2

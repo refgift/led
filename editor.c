@@ -192,11 +192,10 @@ editor_init (Editor *ed, int argc, char *argv[])
       char recovery_path[512];
       snprintf (recovery_path, sizeof (recovery_path), "%s.recovery",
                 ed->filename);
-      int maxll = ed->config.performance.max_line_length;
       if (access (recovery_path, F_OK) == 0)
         {
           open_note = buffer_load_from_file (&ed->model, recovery_path, maxb,
-                                              maxll, memb);
+                                              memb);
           /* Only a recovery file that loaded whole is used up. A bad
            * one stays on disk for the user to look at. */
           if (open_note == BUFFER_LOAD_OK)
@@ -207,7 +206,7 @@ editor_init (Editor *ed, int argc, char *argv[])
         }
       if (!recovered)
         open_note = buffer_load_from_file (&ed->model, ed->filename, maxb,
-                                           maxll, memb);
+                                           memb);
       /* A name that does not exist yet is a new file. Anything else
        * that did not load whole must never be written back. */
       if (open_note == BUFFER_LOAD_NOT_FOUND)
@@ -324,8 +323,6 @@ editor_init (Editor *ed, int argc, char *argv[])
     set_status_message (ed, "Too many lines");
   else if (open_note == BUFFER_LOAD_NOMEM)
     set_status_message (ed, "Out of memory");
-  else if (open_note == BUFFER_LOAD_TRUNCATED)
-    set_status_message (ed, "Long line truncated — saving is off");
   else if (start_line > 0)
     {
       char msg[64];

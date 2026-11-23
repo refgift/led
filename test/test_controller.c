@@ -89,7 +89,7 @@ test_buffer_load_save ()
   Buffer buf;
   buffer_init (&buf);
   // Load non-existent file (should fail gracefully)
-  int load_result = buffer_load_from_file (&buf, "/nonexistent", 0, 0, 0);
+  int load_result = buffer_load_from_file (&buf, "/nonexistent", 0, 0);
   test_assert (load_result == -1,
                "buffer_load_from_file returns -1 for non-existent file");
   test_assert (buffer_num_lines (&buf) == 0,
@@ -103,7 +103,7 @@ test_buffer_load_save ()
       fputs ("line1\nline2\n", wfp);
       fclose (wfp);
       // Load the temp file
-      load_result = buffer_load_from_file (&buf, temp_file, 0, 0, 0);
+      load_result = buffer_load_from_file (&buf, temp_file, 0, 0);
       test_assert (load_result == 0,
                    "buffer_load_from_file succeeds for valid file");
       test_assert (buffer_num_lines (&buf) == 3,
@@ -140,7 +140,7 @@ test_load_limits (void)
   close (fd);
 
   buffer_init (&buf);
-  int rc = buffer_load_from_file (&buf, path, 0, 0, 0);
+  int rc = buffer_load_from_file (&buf, path, 0, 0);
   test_assert (rc == BUFFER_LOAD_OK, "empty file loads");
   test_assert (buffer_num_lines (&buf) == 1, "empty file is one empty line");
   test_assert (buffer_get_line_length (&buf, 0) == 0,
@@ -154,7 +154,7 @@ test_load_limits (void)
       fclose (fp);
     }
   buffer_init (&buf);
-  rc = buffer_load_from_file (&buf, path, 4, 0, 0);
+  rc = buffer_load_from_file (&buf, path, 4, 0);
   test_assert (rc == BUFFER_LOAD_TOO_BIG, "one byte over max_bytes is too big");
   test_assert (buffer_num_lines (&buf) == 0,
                "too-big load leaves the buffer empty");
@@ -168,7 +168,7 @@ test_load_limits (void)
       fclose (fp);
     }
   buffer_init (&buf);
-  rc = buffer_load_from_file (&buf, path, 0, 0, 0);
+  rc = buffer_load_from_file (&buf, path, 0, 0);
   test_assert (rc == BUFFER_LOAD_BINARY, "null byte is a binary file");
   test_assert (buffer_num_lines (&buf) == 0,
                "binary load leaves the buffer empty");
@@ -181,16 +181,16 @@ test_load_limits (void)
       fclose (fp);
     }
   buffer_init (&buf);
-  rc = buffer_load_from_file (&buf, path, 0, 10, 0);
-  test_assert (rc == BUFFER_LOAD_TRUNCATED, "long line reports truncation");
-  test_assert (buffer_get_line_length (&buf, 0) == 10,
-               "stored line is the limit");
+  rc = buffer_load_from_file (&buf, path, 0, 0);
+  test_assert (rc == BUFFER_LOAD_OK, "a long line loads");
+  test_assert (buffer_get_line_length (&buf, 0) == 20,
+               "the whole line is stored");
   char *got = buffer_get_line (&buf, 0);
-  test_assert (got != NULL && strcmp (got, "abcdefghij") == 0,
-               "stored line keeps the head");
+  test_assert (got != NULL && strcmp (got, "abcdefghijklmnopqrst") == 0,
+               "nothing is cut from it");
   free (got);
   test_assert (buffer_get_line_length (&buf, 1) == 0,
-               "tail of a cut line is not kept");
+               "the line after it is its own line");
   buffer_free (&buf);
 
   fp = fopen (path, "wb");
@@ -202,7 +202,7 @@ test_load_limits (void)
     }
   long mem = (long) INITIAL_LINES_CAPACITY * (long) sizeof (NestingCache) + 100;
   buffer_init (&buf);
-  rc = buffer_load_from_file (&buf, path, 0, 0, mem);
+  rc = buffer_load_from_file (&buf, path, 0, mem);
   test_assert (rc == BUFFER_LOAD_OVER_MEMORY,
                "line growth past the memory ceiling is refused");
   test_assert (buffer_num_lines (&buf) == 0,

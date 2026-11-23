@@ -397,9 +397,19 @@ compute_line_colors (const char *full_line, int line_len,
                      int highlight_pair, EditorConfig *config, int *brace_level, int *brace_top, int *brace_stack, int *kw_level, int *kw_top, int *kw_stack, int *in_comment)
 {
   int maxll = (config && config->performance.max_line_length > 0) ? config->performance.max_line_length : 10000;
-  if (highlight_pair == 1 || line_len > maxll)
+  if (highlight_pair == 1)
+    return NULL;                // highlighting is off
+  if (line_len > maxll)
     {
-      return NULL;              // No colors if disabled or line too long
+      /* Too long to colour, but its brackets and comments still count:
+       * the nesting-only pass reads this line too, and the two must
+       * leave the same state for the lines below. */
+      if (config)
+        scan_line (full_line, line_len, NULL, config,
+                   (KeywordPair *) config->syntax_pairs,
+                   config->num_syntax_pairs, brace_level, brace_top,
+                   brace_stack, kw_level, kw_top, kw_stack, in_comment);
+      return NULL;
     }
   int *colors = xmalloc ((size_t) (line_len > 0 ? line_len : 1) * sizeof (int));
   for (int i = 0; i < line_len; i++)

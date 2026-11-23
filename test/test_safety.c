@@ -358,14 +358,40 @@ test_blocked_saves (void)
                "the autosave timer does not write an unmodified buffer");
   editor_cleanup (&ed);
 
-  /* A truncated load must not be written back. */
+  /* A line far past max_line_length is kept whole, edited, and saved. */
   snprintf (file, sizeof file, "%s/long.txt", dir);
-  write_file (file, "0123456789");
-  Buffer b;
-  buffer_init (&b);
-  test_assert (buffer_load_from_file (&b, file, 0, 4, 0) == BUFFER_LOAD_TRUNCATED,
-               "long line is cut on load");
-  buffer_free (&b);
+  {
+    FILE *lf = fopen (file, "wb");
+    for (int i = 0; i < 30000; i++)
+      fputc ('a' + i % 26, lf);
+    fputs ("\nsecond\n", lf);
+    fclose (lf);
+  }
+  char *argv5[] = { "led", file };
+  editor_init (&ed, 2, argv5);
+  ed.auto_save_threshold = 1000;
+  test_assert (ed.save_blocked == 0
+               && buffer_get_line_length (&ed.model, 0) == 30000
+               && buffer_get_char (&ed.model, 0, 29999) == 'a' + 29999 % 26,
+               "a 30,000-character line loads whole and can be saved");
+  editor_handle_input (&ed, LED_KEY_END);
+  editor_handle_input (&ed, '!');
+  editor_handle_input (&ed, 19);
+  {
+    struct stat lst;
+    FILE *lf = fopen (file, "rb");
+    int last = 0;
+    if (lf)
+      {
+        fseek (lf, 30000, SEEK_SET);
+        last = fgetc (lf);
+        fclose (lf);
+      }
+    test_assert (stat (file, &lst) == 0 && lst.st_size == 30000 + 1 + 8
+                 && last == '!',
+                 "an edit at the end of the long line is saved, nothing lost");
+  }
+  editor_cleanup (&ed);
 
   char cmd[400];
   snprintf (cmd, sizeof cmd, "rm -rf '%s'", dir);

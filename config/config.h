@@ -84,7 +84,7 @@ typedef struct {
 typedef struct {
     int max_file_size_mb;
     int memory_limit_mb;
-    int max_line_length;   /* max chars per logical line before truncation on load */
+    int max_line_length;   /* a longer line is shown without syntax colours */
 } PerformanceConfig;
 
 /** SearchConfig - Limits for regex search/replace to prevent DoS. */
