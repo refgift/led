@@ -604,6 +604,10 @@ static void handle_enter (int ch, InputContext *ctx)
           while (ws > 0 && (isalnum ((unsigned char) line[ws - 1])
                             || line[ws - 1] == '_'))
             ws--;
+          if (ws < end
+              && config_word_listed (config_language (&ctx->ed->config)->indent_after,
+                                     line + ws, end - ws))
+            extra = 1;
           for (int p = 0; p < ctx->ed->config.num_syntax_pairs && ws < end; p++)
             {
               const char *open = ctx->ed->config.syntax_pairs[p].open;
@@ -1228,8 +1232,15 @@ jump_brace (Buffer *buf, int *cursor_line, int *cursor_col,
               continue;
             }
 
+          if (lang->escapes && c == '\\')
+            {
+              i += 2;           /* the next character is not code */
+              continue;
+            }
           if (lc && i + lc <= len
-              && memcmp (s + i, lang->line_comment, (size_t) lc) == 0)
+              && memcmp (s + i, lang->line_comment, (size_t) lc) == 0
+              && (!lang->comment_starts_word || i == 0
+                  || strchr (" \t;&|()", s[i - 1])))
             {
               st.state = SC_LINE;
               break;

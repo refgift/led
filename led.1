@@ -87,7 +87,7 @@ Strings, character literals and comments are left plain.
 .IP \(bu 2
 Subwindow border + paste-time border filter (replaces \fCtr -d\fR).
 .IP \(bu 2
-429 tests.
+452 tests.
 .SH WHAT FAILS
 .IP \(bu 2
 Whole-file in memory, no mmap. A line longer than \fCmax_line_length\fR is shown without syntax colours.
@@ -166,6 +166,10 @@ The file's extension chooses the language. Built in:
 (C and C++),
 .B first
 (\fC.fst\fR: upper-case words, BEGIN ... END and IF ... THEN colored as pairs by nesting depth, no comments),
+.B shell
+(\fC.sh\fR, \fC.bash\fR, or a first line such as \fC#!/bin/sh\fR: if ... fi, do ... done and case ... esac colored as pairs; \fC#\fR is a comment only where a word starts),
+.B lex
+(\fC.l\fR, \fC.lex\fR: C with flex's names),
 and
 .B text
 (\fC.txt\fR, \fC.text\fR, \fC.md\fR: no colors).
@@ -195,6 +199,15 @@ Each character that opens a string.
 .TP
 .B \fINAME\fB.highlight
 0 to show the language as plain text.
+.TP
+.B \fINAME\fB.comment_starts_word
+1 if the line comment mark counts only at the start of a word, as \fC#\fR does in shell.
+.TP
+.B \fINAME\fB.indent_after
+Words after which Enter indents one level, for example \fCthen,do,else\fR.
+.TP
+.B \fINAME\fB.interpreters
+Interpreter names. A file whose extension chooses no language, and whose first line is \fC#!\fR followed by one of them, is this language.
 .PP
 The older keys \fCsyntax_extensions\fR, \fCreserved_words\fR and \fCpaired_keywords\fR, with no language name, are C's.
 .SS Other keys

@@ -599,3 +599,202 @@ run_language_tests (void)
   if (system (cmd) != 0)
     fprintf (stderr, "cleanup failed: %s\n", dir);
 }
+
+void run_repaint_tests (void);
+void run_shell_lex_tests (void);
+
+/* The quality of every cell in rows 0..rows-1, to compare two draws. */
+static void
+snapshot (int *out, int cols, int rows)
+{
+  for (int y = 0; y < rows; y++)
+    for (int x = 0; x < cols; x++)
+      /* A blank cell looks the same whatever it was last shown with
+         (the caret leaves its mark on blanks it has rested on). */
+      out[y * cols + x] = memory_char (x, y) == ' ' ? 0
+        : memory_char (x, y) * 16 + memory_quality (x, y);
+}
+
+/* Type keys into a file, drawing after each as the editor does, then
+ * compare the screen with a fresh full draw of the same text. */
+static int
+typed_matches_fresh (const char *name, const char *lines[], int nlines,
+                     const int *keys, int nkeys)
+{
+  enum { COLS = 40, ROWS = 8 };
+  static int typed[COLS * ROWS], fresh[COLS * ROWS];
+  Editor ed;
+  memset (&ed, 0, sizeof ed);
+  buffer_init (&ed.model);
+  set_default_config (&ed.config);
+  config_parse_syntax (&ed.config);
+  const Language *l = config_select_language (&ed.config, name);
+  ed.syntax_highlight = l && l->highlight;
+  ed.auto_save_threshold = 100000;
+  for (int i = 0; i < nlines; i++)
+    buffer_insert_line (&ed.model, i, lines[i]);
+  memory_reset (COLS, ROWS);
+  screen_resize (COLS, ROWS);
+  view_invalidate ();
+  Pane *text = NULL;
+  view_create_text_window_ex (screen_pane (), &text, 0);
+  editor_draw (screen_pane (), text, &ed);
+  for (int k = 0; k < nkeys; k++)
+    {
+      editor_handle_input (&ed, keys[k]);
+      editor_draw (screen_pane (), text, &ed);
+    }
+  snapshot (typed, COLS, ROWS - 1);
+  /* The same text, drawn from nothing. */
+  memory_reset (COLS, ROWS);
+  screen_resize (COLS, ROWS);
+  view_invalidate ();
+  ed.model.edit_generation++;
+  editor_draw (screen_pane (), text, &ed);
+  snapshot (fresh, COLS, ROWS - 1);
+  pane_free (text);
+  editor_cleanup (&ed);
+  screen_resize (0, 0);
+  view_invalidate ();
+  return memcmp (typed, fresh, sizeof (int) * COLS * (ROWS - 1)) == 0;
+}
+
+/* An edit that changes nesting must recolour the lines below it. */
+void
+run_repaint_tests (void)
+{
+  fprintf (stderr, "\n=== Repaint tests ===\n");
+  const Frontend *before = frontend_current ();
+  frontend_use (frontend_memory ());
+  const char *c_lines[] = { "", "  a(b);", "  c[d];", "  {e;}" };
+  const char *f_lines[] = { "", "\tIF A THEN OUTPUT B;", "\tBEGIN", "\tEND" };
+  const char *d_lines[] = { "if(x){;", "  a(b);", "  {e;}" };
+  int k1[] = { 'i', 'f', '(', 'x', ')', '{' };
+  int k2[] = { '/', '*' };
+  int k3[] = { 'B', 'E', 'G', 'I', 'N' };
+  int k4[] = { LED_KEY_END, LED_KEY_BACKSPACE, LED_KEY_BACKSPACE };
+  int k5[] = { 'r', 'e', 't', 'u', 'r', 'n', ';' };
+  int k6[] = { 'x', '=', '"', '(' };
+  int k7[] = { 'f', '(', ')' };
+  int k8[] = { '{', 26 };       /* type, then undo */
+  test_assert (typed_matches_fresh ("a.c", c_lines, 4, k1, 6),
+               "typing { recolours the brackets on the lines below");
+  test_assert (typed_matches_fresh ("a.c", c_lines, 4, k2, 2),
+               "opening a comment turns the lines below plain");
+  test_assert (typed_matches_fresh ("a.fst", f_lines, 4, k3, 5),
+               "completing the word BEGIN recolours the pairs below");
+  test_assert (typed_matches_fresh ("a.c", d_lines, 3, k4, 3),
+               "deleting a { recolours the lines below");
+  test_assert (typed_matches_fresh ("a.c", c_lines, 4, k5, 7),
+               "an edit that nests nothing leaves the lines below as they were");
+  test_assert (typed_matches_fresh ("a.c", c_lines, 4, k6, 4),
+               "a bracket typed inside a string changes nothing below");
+  test_assert (typed_matches_fresh ("a.c", c_lines, 4, k7, 3),
+               "an opened and closed bracket ends where it began");
+  test_assert (typed_matches_fresh ("a.c", c_lines, 4, k8, 2),
+               "undoing a { puts the colours below back");
+  frontend_use (before);
+}
+
+void
+run_shell_lex_tests (void)
+{
+  fprintf (stderr, "\n=== Shell and lex tests ===\n");
+  static EditorConfig cfg;
+  set_default_config (&cfg);
+  config_parse_syntax (&cfg);
+  const Language *l;
+  int *c;
+  int kl = 0;
+
+  l = config_select_language (&cfg, "run.sh");
+  test_assert (l && strcmp (l->name, "shell") == 0, ".sh is shell");
+  l = config_select_language (&cfg, "run.bash");
+  test_assert (l && strcmp (l->name, "shell") == 0, ".bash is shell");
+  c = colors_of (&cfg, "if [ $# -gt 0 ];then echo \"x\";fi", &kl);
+  test_assert (c && c[0] == LED_Q_LEVEL1 && c[5] == LED_Q_NORMAL
+               && c[6] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL
+               && c[16] == LED_Q_RESERVED && c[21] == LED_Q_RESERVED
+               && c[27] == LED_Q_NORMAL && c[30] == LED_Q_LEVEL1 && kl == 1,
+               "if ... fi pair; $# is not a comment; then and echo are reserved");
+  free (c);
+  c = colors_of (&cfg, "for f in *;do echo $f;done # if (", &kl);
+  test_assert (c && c[0] == LED_Q_RESERVED && c[11] == LED_Q_LEVEL1
+               && c[22] == LED_Q_LEVEL1 && c[29] == LED_Q_NORMAL
+               && c[32] == LED_Q_NORMAL && kl == 1,
+               "do ... done pair; # after a space starts a comment");
+  free (c);
+  c = colors_of (&cfg, "echo ${x#y} \\\" \\( done", &kl);
+  test_assert (c && c[8] == LED_Q_NORMAL && c[9] == LED_Q_NORMAL
+               && c[13] == LED_Q_NORMAL && c[16] == LED_Q_NORMAL
+               && c[18] == LED_Q_LEVEL1,
+               "${x#y} is not a comment; an escaped quote or bracket is not code");
+  free (c);
+
+  /* A script with no extension says what it is on its first line. */
+  l = config_select_by_first_line (&cfg, "#!/bin/sh");
+  test_assert (l && strcmp (l->name, "shell") == 0, "#!/bin/sh is shell");
+  l = config_select_by_first_line (&cfg, "#!/usr/bin/env bash");
+  test_assert (l && strcmp (l->name, "shell") == 0, "#!/usr/bin/env bash is shell");
+  l = config_select_by_first_line (&cfg, "#! /bin/bash -e");
+  test_assert (l && strcmp (l->name, "shell") == 0, "options after the name are ignored");
+  test_assert (config_select_by_first_line (&cfg, "#!/usr/bin/perl") == NULL
+               && config_select_by_first_line (&cfg, "# not a shebang") == NULL
+               && config_select_by_first_line (&cfg, "") == NULL,
+               "an unknown interpreter, or no shebang, chooses nothing");
+
+  /* lex: C with flex's names; a backslash hides the next character. */
+  l = config_select_language (&cfg, "first.l");
+  test_assert (l && strcmp (l->name, "lex") == 0, ".l is lex");
+  c = colors_of (&cfg, "{BG}*OUTPUT{BG}+\\\".+\\\"\t\t{", &kl);
+  int n = (int) strlen ("{BG}*OUTPUT{BG}+\\\".+\\\"\t\t{");
+  test_assert (c && c[0] == LED_Q_LEVEL1 && c[3] == LED_Q_LEVEL1
+               && c[n - 1] == LED_Q_LEVEL1,
+               "an escaped quote in a pattern does not swallow the action's brace");
+  free (c);
+  c = colors_of (&cfg, "\tprintf(\"%s\", yytext); return 0; ECHO;", &kl);
+  test_assert (c && c[14] == LED_Q_RESERVED && c[19] == LED_Q_RESERVED
+               && c[23] == LED_Q_RESERVED && c[33] == LED_Q_RESERVED
+               && c[10] == LED_Q_NORMAL,
+               "yytext, return and ECHO are reserved; the string is plain");
+  free (c);
+
+  /* In the editor: a shell script with no extension, and Enter after do. */
+  char dir[] = "/tmp/led_sh_XXXXXX";
+  if (!mkdtemp (dir))
+    {
+      test_assert (0, "mkdtemp");
+      return;
+    }
+  char sub[300], path[300];
+  snprintf (sub, sizeof sub, "%s/led", dir);
+  mkdir (sub, 0700);
+  config_set_prefix (dir);
+  snprintf (path, sizeof path, "%s/deploy", dir);
+  FILE *fp = fopen (path, "w");
+  fputs ("#!/bin/sh\nfor f in *; do\n", fp);
+  fclose (fp);
+  char *argv[] = { "led", path };
+  Editor ed;
+  editor_init (&ed, 2, argv);
+  ed.auto_save_threshold = 100000;
+  test_assert (ed.syntax_highlight == 1
+               && strcmp (config_language (&ed.config)->name, "shell") == 0,
+               "a script without an extension is recognised by its first line");
+  ed.cursor_line = 1;
+  editor_handle_input (&ed, LED_KEY_END);
+  editor_handle_input (&ed, '\n');
+  char *got = buffer_get_line (&ed.model, 2);
+  test_assert (got && strcmp (got, "\t") == 0, "Enter after do indents one level");
+  free (got);
+  editor_handle_input (&ed, 11);                /* Ctrl+K */
+  got = buffer_get_line (&ed.model, 2);
+  test_assert (got && strcmp (got, "\t# ") == 0, "Ctrl+K in shell inserts #");
+  free (got);
+  editor_cleanup (&ed);
+  config_set_prefix (NULL);
+  char cmd[400];
+  snprintf (cmd, sizeof cmd, "rm -rf '%s'", dir);
+  if (system (cmd) != 0)
+    fprintf (stderr, "cleanup failed: %s\n", dir);
+}

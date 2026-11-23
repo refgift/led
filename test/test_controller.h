@@ -34,5 +34,7 @@ void run_action_tests(void);
 void run_clipboard_tests(void);
 void run_color_tests(void);
 void run_language_tests(void);
+void run_shell_lex_tests(void);
+void run_repaint_tests(void);
 void run_large_file_tests(void);
 void test_autosave_comprehensive(void);

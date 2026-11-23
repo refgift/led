@@ -68,6 +68,12 @@ typedef struct {
     char quotes[8];              /* each character that opens a string */
     int escapes;                 /* a backslash escapes the next character in a string */
     int highlight;               /* 0: shown as plain text */
+    int comment_starts_word;     /* the line comment mark counts only at the
+                                    start of a word: "#" in shell, not "$#" */
+    char indent_after[128];      /* Enter indents after a line ending in one
+                                    of these words: "then,do,else" */
+    char interpreters[128];      /* a file with no known extension whose first
+                                    line is "#!...NAME" is this language */
 } Language;
 
 /**
@@ -180,6 +186,13 @@ void config_parse_syntax(EditorConfig* config);
  *  Returns the language, or NULL if no language claims the file (the
  *  words in use are then left as they were). */
 const Language* config_select_language(EditorConfig* config, const char* filename);
+
+/** For a file whose extension chose nothing: choose by its first line,
+ *  "#!/bin/sh" or "#!/usr/bin/env bash". Returns the language or NULL. */
+const Language* config_select_by_first_line(EditorConfig* config, const char* first_line);
+
+/** True if word is in the comma-separated list. */
+int config_word_listed(const char* list, const char* word, int word_len);
 
 /** The rules for reading the language in use: comments and strings.
  *  Never NULL; a config with no language chosen reads as C. */

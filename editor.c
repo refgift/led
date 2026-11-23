@@ -226,6 +226,13 @@ editor_init (Editor *ed, int argc, char *argv[])
   /* The file's extension chooses its language. A file no language
    * claims, and plain text, are shown without colours. */
   const Language *lang = config_select_language (&ed->config, ed->filename);
+  if (!lang && ed->filename)
+    {
+      /* No extension led knows: a script says what it is on line one. */
+      char *first = buffer_get_line (&ed->model, 0);
+      lang = config_select_by_first_line (&ed->config, first);
+      free (first);
+    }
   ed->syntax_highlight = (lang && lang->highlight) ? 1 : 0;
   /* Source files show line numbers unless the config file says otherwise.
    * Compiler diagnostics are line numbers; the screen should match. */

@@ -235,15 +235,9 @@ _ensure_cache_capacity (Buffer *buf)
       return;
     }
   buf->nesting_cache = new_cache;
-  // Mark all entries as invalid (safe approach)
-  for (int i = 0; i < buf->capacity; i++)
-    {
-		
-
-
-
-      buf->nesting_cache[i].valid = 0;
-    }
+  /* Every entry starts invalid and zeroed: growing happens on a line
+   * insert, which redraws everything, and the view compares old values. */
+  memset (buf->nesting_cache, 0, (size_t) buf->capacity * sizeof (NestingCache));
 }
 
 // Invalidate cache entries from line onwards

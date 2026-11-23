@@ -258,12 +258,15 @@ finish_word (const char *full_line, int start, int end, int *colors,
         }
       else if (strcmp (word, pairs[p].close) == 0)
         {
+          /* A closing word with nothing open is the outermost level,
+           * as a closing bracket with nothing open is. */
+          int lvl = 1;
           if (*kw_top > 0)
             {
               --(*kw_top);
-              int lvl = (*kw_top < 100) ? kw_stack[*kw_top] : 5;
-              color = 3 + (lvl > 4 ? 4 : lvl);
+              lvl = (*kw_top < 100) ? kw_stack[*kw_top] : 5;
             }
+          color = 3 + (lvl > 4 ? 4 : lvl);
           *kw_level = (*kw_level > 1) ? *kw_level - 1 : 1;
           matched = 1;
         }
@@ -343,8 +346,17 @@ scan_line (const char *s, int len, int *colors, EditorConfig *config,
         }
       if (i >= len)
         break;
+      /* A backslash in code hides the next character: \" is not a
+       * string and \( is not a bracket (shell, lex patterns). */
+      if (lang->escapes && c == '\\')
+        {
+          i += 2;
+          continue;
+        }
       if (lc && i + lc <= len
-          && memcmp (s + i, lang->line_comment, (size_t) lc) == 0)
+          && memcmp (s + i, lang->line_comment, (size_t) lc) == 0
+          && (!lang->comment_starts_word || i == 0
+              || strchr (" \t;&|()", s[i - 1])))
         break;                  /* line comment: the rest is not code */
       if (bo && bc && i + bo <= len
           && memcmp (s + i, lang->block_open, (size_t) bo) == 0)
@@ -1409,13 +1421,43 @@ draw_update (Pane *frame, Pane *text, Buffer *buf, int *scroll_row, int *scroll_
       int last_visible = *scroll_row + max_lines - 1;
       if (last > last_visible)
         last = last_visible;
-      for (int l = first; l <= last && l < buffer_num_lines (buf); l++)
+      /* The nesting state the lines below started from, as it was
+       * before this edit. The edit marked the entry stale but left its
+       * values, and they are what those lines were last drawn with. */
+      int lines = buffer_num_lines (buf);
+      int watch = (syntax_highlight && buf->nesting_cache && last >= first
+                   && last < lines && last < buf->capacity);
+      NestingCache before;
+      memset (&before, 0, sizeof before);
+      if (watch)
+        before = buf->nesting_cache[last];
+      for (int l = first; l <= last && l < lines; l++)
         render_content_row (tw, l - *scroll_row, l, buf, scroll_col,
                             available_width, num_digits, num_width,
                             show_line_numbers, syntax_highlight,
                             selection_start_line, selection_start_col,
                             selection_end_line, selection_end_col,
                             selection_active, config);
+      if (watch)
+        {
+          /* An edit that opens or closes a bracket, a word pair or a
+           * comment changes the colours of every line after it, not
+           * only its own. Repaint those too, down to the last row. */
+          const NestingCache *after = &buf->nesting_cache[last];
+          if (!after->valid
+              || after->brace_level != before.brace_level
+              || after->brace_top != before.brace_top
+              || after->kw_level != before.kw_level
+              || after->kw_top != before.kw_top
+              || after->in_comment != before.in_comment)
+            for (int l = last + 1; l <= last_visible && l < lines; l++)
+              render_content_row (tw, l - *scroll_row, l, buf, scroll_col,
+                                  available_width, num_digits, num_width,
+                                  show_line_numbers, syntax_highlight,
+                                  selection_start_line, selection_start_col,
+                                  selection_end_line, selection_end_col,
+                                  selection_active, config);
+        }
       render_status_bar (fw, ed, buf, cursor_line, cursor_col, search_mode,
                          search_buffer, replace_step, replace_buffer, config);
     }
