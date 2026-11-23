@@ -3,6 +3,7 @@
 #include "test_controller.h"
 #include "controller.h"
 #include "editor.h"
+#include "frontend/frontend.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -226,4 +227,106 @@ run_action_tests (void)
 
   controller_attach (NULL);
   editor_cleanup (&ed);
+}
+
+void run_clipboard_tests (void);
+
+static void
+paste_keys (Editor *ed, const char *text)
+{
+  editor_handle_input (ed, LED_KEY_PASTE_BEGIN);
+  for (const char *p = text; *p; p++)
+    editor_handle_input (ed, (unsigned char) *p);
+  editor_handle_input (ed, LED_KEY_PASTE_END);
+}
+
+/* The system clipboard: copies go out through the front end, and text
+ * the terminal pastes comes in as text, not as typed keys. */
+void
+run_clipboard_tests (void)
+{
+  fprintf (stderr, "\n=== System clipboard tests ===\n");
+  const Frontend *before = frontend_current ();
+  frontend_use (frontend_memory ());
+  memory_reset (40, 5);
+
+  Editor ed;
+  editor_blank (&ed);
+  ed.config.display.system_clipboard = 1;
+  ed.auto_save_threshold = 100000;
+  controller_attach (&ed);
+  type ("hello world");
+  symbol (S_HOME, 0);
+  symbol (S_RIGHT, 6);
+  test_assert (memory_clipboard () == NULL, "nothing is sent before a copy");
+  symbol (S_COPY, 0);
+  test_assert (memory_clipboard () && strcmp (memory_clipboard (), "world") == 0,
+               "a copy is handed to the system clipboard");
+  symbol (S_HOME, 0);
+  macro (M_CUT, 1);
+  test_assert (memory_clipboard ()
+               && strcmp (memory_clipboard (), "hello world") == 0,
+               "so is a cut");
+  ed.config.display.system_clipboard = 0;
+  type ("private");
+  symbol (S_HOME, 0);
+  symbol (S_COPY, 0);
+  test_assert (strcmp (memory_clipboard (), "hello world") == 0
+               && ed.clipboard && strcmp (ed.clipboard, "private") == 0,
+               "system_clipboard=0 keeps a copy inside led");
+  controller_attach (NULL);
+  editor_cleanup (&ed);
+
+  /* Pasted text is inserted as it is: no auto-indent staircase. */
+  editor_blank (&ed);
+  ed.auto_save_threshold = 100000;
+  ed.file_modified = 0;
+  paste_keys (&ed, "  if (x) {\r    y;\r  }");
+  test_assert (buffer_num_lines (&ed.model) == 3
+               && line_is (&ed, 0, "  if (x) {") && line_is (&ed, 1, "    y;")
+               && line_is (&ed, 2, "  }"),
+               "pasted lines keep their own indent");
+  test_assert (ed.cursor_line == 2 && ed.cursor_col == 3 && ed.file_modified == 1
+               && ed.paste_mode == 0,
+               "the cursor ends after the text and the buffer is modified");
+  editor_handle_input (&ed, 26);
+  test_assert (buffer_num_lines (&ed.model) == 1 && line_is (&ed, 0, ""),
+               "one undo removes the whole paste");
+
+  /* Keys that would be commands are only text inside a paste. */
+  paste_keys (&ed, "a\x11" "b\x13" "c\x1b" "d\te");
+  char *got = buffer_get_line (&ed.model, 0);
+  test_assert (got && strchr (got, 'a') && strchr (got, 'e') && strchr (got, '\t')
+               && ed.meta_pending == 0 && ed.quit_armed == 0,
+               "Ctrl+Q, Ctrl+S, Esc and Tab inside a paste run no command");
+  free (got);
+  editor_handle_input (&ed, 26);
+
+  /* A paste while a prompt is open goes into the prompt. */
+  buffer_insert_line (&ed.model, 1, "find me here");
+  editor_handle_input (&ed, 31);                /* Ctrl+/ */
+  paste_keys (&ed, "me\rignored second line");
+  test_assert (ed.search_mode == 1 && strcmp (ed.search_buffer, "me") == 0
+               && buffer_num_lines (&ed.model) == 2,
+               "a paste into the search prompt adds its first line there");
+  editor_handle_input (&ed, '\n');
+  test_assert (ed.cursor_line == 1 && ed.cursor_col == 5,
+               "and the search then finds it");
+  editor_handle_input (&ed, 27);
+
+  /* A stray end marker, or a paste that never ends, does no harm. */
+  editor_handle_input (&ed, LED_KEY_PASTE_END);
+  editor_handle_input (&ed, 'k');
+  test_assert (ed.paste_mode == 0 && line_is (&ed, 1, "find kme here"),
+               "a stray end marker is ignored");
+  editor_handle_input (&ed, LED_KEY_PASTE_BEGIN);
+  editor_handle_input (&ed, 'z');
+  test_assert (line_is (&ed, 1, "find kme here") && ed.paste_mode == 1,
+               "an unfinished paste inserts nothing yet");
+  controller_attach (&ed);
+  token (T_CANCEL, 0);
+  controller_attach (NULL);
+  test_assert (ed.paste_mode == 0, "and can be cancelled");
+  editor_cleanup (&ed);
+  frontend_use (before);
 }

@@ -126,6 +126,7 @@ set_default_config (EditorConfig *config)
   // Display
   config->display.show_line_numbers = 0;
   config->display.line_numbers_configured = 0;
+  config->display.system_clipboard = 1;
   config->display.syntax_highlight = 0;
   config->display.tab_width = 8;
   config->display.spaces_for_tab = 0;
@@ -394,6 +395,8 @@ config_read_file (EditorConfig *config, const char *path)
         }
       else if (strcmp (key, "show_key_meter") == 0)
         config->statusbar.show_key_meter = atoi (value);
+      else if (strcmp (key, "system_clipboard") == 0)
+        config->display.system_clipboard = atoi (value) ? 1 : 0;
       else if (strcmp (key, "max_file_size_mb") == 0)
         {
           int v = atoi (value);
@@ -484,8 +487,10 @@ general_body (FILE *f, const EditorConfig *d)
            d->performance.memory_limit_mb, d->performance.max_line_length);
   fprintf (f, "# Auto-save\n#auto_save_timeout=%d\n#auto_save_keystrokes=%d\n\n",
            d->autosave.timeout, d->autosave.keystrokes);
-  fprintf (f, "# Search\n#search_enabled=%d\n#search_max_pattern_length=%d\n",
+  fprintf (f, "# Search\n#search_enabled=%d\n#search_max_pattern_length=%d\n\n",
            d->search.enabled, d->search.max_pattern_length);
+  fprintf (f, "# Copy and cut also go to the system clipboard (OSC 52).\n"
+           "#system_clipboard=%d\n", d->display.system_clipboard);
 }
 
 static void

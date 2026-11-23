@@ -3,6 +3,10 @@
 #include "frontend.h"
 #include <ncurses.h>
 #include <locale.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
 #include <wchar.h>
 
 /* led's key numbers are the curses ones, so keys pass straight through.
@@ -155,6 +159,12 @@ curses_start (const FrontendStyle styles[LED_Q_COUNT])
    * back instead of ESC plus the rest of the sequence. */
   define_key ("\033[27;5;47~", LED_KEY_SEARCH);
   define_key ("\033[47;5u", LED_KEY_SEARCH_ALT);
+  /* Bracketed paste: the terminal marks pasted text with these two
+   * sequences, so it can be inserted as text and not as typed keys. */
+  define_key ("\033[200~", LED_KEY_PASTE_BEGIN);
+  define_key ("\033[201~", LED_KEY_PASTE_END);
+  putp ("\033[?2004h");
+  fflush (stdout);
   started = 1;
   return 0;
 }
@@ -163,7 +173,11 @@ static void
 curses_stop (void)
 {
   if (started)
-    endwin ();
+    {
+      putp ("\033[?2004l");
+      fflush (stdout);
+      endwin ();
+    }
   started = 0;
 }
 
@@ -176,6 +190,47 @@ curses_size (int *cols, int *rows)
     *cols = w;
   if (rows)
     *rows = h;
+}
+
+/* OSC 52: "ESC ] 52 ; c ; <base64> BEL" asks the terminal to put the
+ * text on the system clipboard. It works through ssh, since it is the
+ * terminal that acts. A terminal that does not know it ignores it. */
+static void
+curses_clipboard (const char *text, int len)
+{
+  static const char b64[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  if (!started || !text || len <= 0)
+    return;
+  size_t out_len = 4 * (((size_t) len + 2) / 3);
+  char *seq = malloc (out_len + 16);
+  if (!seq)
+    return;
+  size_t n = 0;
+  memcpy (seq, "\033]52;c;", 7);
+  n = 7;
+  for (int i = 0; i < len; i += 3)
+    {
+      unsigned v = (unsigned char) text[i] << 16;
+      if (i + 1 < len)
+        v |= (unsigned char) text[i + 1] << 8;
+      if (i + 2 < len)
+        v |= (unsigned char) text[i + 2];
+      seq[n++] = b64[(v >> 18) & 63];
+      seq[n++] = b64[(v >> 12) & 63];
+      seq[n++] = (i + 1 < len) ? b64[(v >> 6) & 63] : '=';
+      seq[n++] = (i + 2 < len) ? b64[v & 63] : '=';
+    }
+  seq[n++] = '\007';
+  /* Straight to the terminal, after what curses has pending, so the
+   * sequence is not split by a screen update. */
+  refresh ();
+  fflush (stdout);
+  if (write (STDOUT_FILENO, seq, n) < 0)
+    {
+      /* nothing to do: the copy inside led has already happened */
+    }
+  free (seq);
 }
 
 static int
@@ -197,7 +252,7 @@ frontend_default (void)
 {
   static const Frontend fe = {
     curses_show, curses_hide, curses_mark,
-    curses_start, curses_stop, curses_size, curses_read_key
+    curses_start, curses_stop, curses_size, curses_read_key, curses_clipboard
   };
   return &fe;
 }

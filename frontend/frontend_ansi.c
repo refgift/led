@@ -15,6 +15,8 @@
  *             and turn sequences such as ESC [ A into LED_KEY_UP.
  *   size      ioctl (TIOCGWINSZ).
  *   stop      leave the alternate screen, restore termios.
+ *   clipboard write "ESC ] 52 ; c ; <base64 text> BEL" (see the curses
+ *             front end), and turn on bracketed paste in start.
  */
 #include "frontend.h"
 #include <stdio.h>
@@ -61,7 +63,7 @@ frontend_default (void)
 {
   static const Frontend fe = {
     ansi_cell, ansi_cell, ansi_cell,
-    ansi_start, ansi_stop, ansi_size, ansi_read_key
+    ansi_start, ansi_stop, ansi_size, ansi_read_key, NULL
   };
   return &fe;
 }

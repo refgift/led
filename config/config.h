@@ -79,6 +79,7 @@ typedef struct {
     int spaces_for_tab;   /* if true, TAB inserts spaces instead of '\t' */
     int word_wrap;        /* F3 toggle: when true, long lines wrap visually */
     int show_border;      /* F4 toggle: when false, no box() — prevents xterm copy of border */
+    int system_clipboard; /* copy and cut also go to the system clipboard (OSC 52) */
     int line_numbers_configured; /* 1 if show_line_numbers was set in the config file */
 } DisplayConfig;
 typedef struct {

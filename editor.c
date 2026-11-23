@@ -284,6 +284,10 @@ editor_init (Editor *ed, int argc, char *argv[])
   ed->replace_buffer[0] = 0;
   ed->replace_step = 0;
   ed->clipboard = NULL;
+  ed->paste_mode = 0;
+  ed->paste_buf = NULL;
+  ed->paste_len = 0;
+  ed->paste_cap = 0;
   // Initialize per-Editor undo/redo stacks (moved from globals)
   ed->undo_stack.changes = NULL;
   ed->undo_stack.count = 0;
@@ -494,5 +498,7 @@ editor_cleanup (Editor *ed)
   buffer_free (&ed->model);
   if (ed->clipboard)
     free (ed->clipboard);
+  free (ed->paste_buf);
+  ed->paste_buf = NULL;
   free_undo_stacks (&ed->undo_stack, &ed->redo_stack);
 }
