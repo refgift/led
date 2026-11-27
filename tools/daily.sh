@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="/home/lbd/Projects/led"
+REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/led-daily"
 MAIL_TO="larry@refusetoown.com"
-ENV_FILE="${HOME}/.config/led/daily.env"
-OPENCODE="/home/lbd/.local/share/mise/installs/opencode/latest/opencode"
+ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/led/daily.env"
+OPENCODE="${OPENCODE:-$HOME/.local/share/mise/installs/opencode/latest/opencode}"
 WHAT_FILE="${REPO}/.led-daily-what"
 MAX_FILES=3
 MAX_LINES=150
@@ -18,8 +18,7 @@ if ! flock -n 9; then
   exit 0
 fi
 
-export HOME="${HOME:-/home/lbd}"
-export PATH="/home/lbd/.local/bin:/home/lbd/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin"
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:${PATH:-/usr/local/bin:/usr/bin:/bin}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
@@ -83,34 +82,41 @@ log_unrecorded() {
   done < <(git log --reverse --format='%H%x1f%cs%x1f%s' "${last}..HEAD")
 }
 
-review_worktree_ids() {
-  "$GROK" worktree list --repo led --json 2>/dev/null | python3 -c '
-import json, sys
-try:
-    rows = json.load(sys.stdin)
-except Exception:
-    raise SystemExit(1)
-for row in rows:
-    ident = row.get("id") or ""
-    if ident:
-        print(ident)
-'
-}
+# Each reviewer gets a fresh snapshot, without the real index, refs, or
+# untracked files. This is checkout isolation, not an OS sandbox.
+run_review() (
+  local provider="$1" snapshot rc=0
+  snapshot="$(mktemp -d "$STATE/review.XXXXXXXX")" || return 1
+  trap 'rm -rf -- "$snapshot"' EXIT
+  git archive "$review_head" | tar -x -C "$snapshot" || return 1
+  cd "$snapshot" || return 1
+  # Scoring is the only stage that needs this credential.
+  unset TYPESAFE_API_KEY
+  case "$provider" in
+    grok)
+      timeout -k 15s 8m "$GROK" --cwd "$snapshot" --no-alt-screen \
+        --output-format plain -p "$review_prompt" </dev/null || rc=$?
+      ;;
+    opencode)
+      timeout -k 15s 12m "$OPENCODE" run --dir "$snapshot" \
+        --title "led daily review ${today}" "$review_prompt" </dev/null || rc=$?
+      ;;
+  esac
+  return "$rc"
+)
 
-drop_new_worktrees() {
-  local before="$1" id
-  [[ -n "${GROK:-}" ]] || return 0
-  while IFS= read -r id; do
-    [[ -n "$id" ]] || continue
-    if grep -qxF "$id" <<<"$before"; then
-      continue
-    fi
-    if "$GROK" worktree rm --force "$id" >/dev/null 2>&1; then
-      log "removed review worktree ${id}"
-    else
-      log "fail: remove worktree ${id}"
-    fi
-  done < <(review_worktree_ids || true)
+review_verdict() {
+  local line
+  # Ignore blank lines, but require exactly one complete verdict.
+  line="$(sed -e 's/\r$//' -e '/^[[:space:]]*$/d' "$1")" || return 1
+  if [[ "$line" == "SKIP" ]]; then
+    printf '%s\n' "$line"
+    return 0
+  fi
+  [[ "$line" == 'CHANGE: '* && "$line" != *$'\n'* && "$line" != *'|'* ]] || return 1
+  local edit="${line#CHANGE: }"
+  [[ "$edit" == *[![:space:]]* && "${#edit}" -lt 120 ]] || return 1
+  printf '%s\n' "$line"
 }
 
 record_day() {
@@ -223,7 +229,7 @@ if [[ "$mode" == "run" ]]; then
   day_claimed=1
 fi
 
-if [[ "$mode" == "run" && -f "${HOME}/.config/led/daily.pause" ]]; then
+if [[ "$mode" == "run" && -f "$XDG_CONFIG_HOME/led/daily.pause" ]]; then
   log "skip: pause file present"
   outcome="fail: paused"
   exit 0
@@ -235,35 +241,37 @@ if [[ "$(git branch --show-current)" != "master" ]]; then
   exit 0
 fi
 
-if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
-  commit_path_log "path.log: ${today}" || true
+if [[ "$mode" == "run" ]]; then
   if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
-    log "skip: tracked tree dirty"
-    outcome="fail: tracked tree dirty"
+    commit_path_log "path.log: ${today}" || true
+    if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+      log "skip: tracked tree dirty"
+      outcome="fail: tracked tree dirty"
+      exit 0
+    fi
+  fi
+
+  if [[ -f "$STATE/pending-push" ]]; then
+    want="$(cat "$STATE/pending-push")"
+    git fetch origin master || { log "fail: fetch while retrying push"; outcome="fail: fetch while retrying push"; exit 1; }
+    if [[ "$(git rev-parse HEAD)" == "$want" ]] && ! git merge-base --is-ancestor "$want" origin/master; then
+      git push origin HEAD
+      rm -f "$STATE/pending-push"
+      log "pushed pending ${want}"
+    fi
+  fi
+
+  git fetch origin master || { log "fail: fetch"; outcome="fail: fetch"; exit 1; }
+  ahead="$(git rev-list --count origin/master..HEAD)"
+  behind="$(git rev-list --count HEAD..origin/master)"
+  if [[ "$ahead" != "0" ]]; then
+    log "skip: ${ahead} unpushed commit(s) on master"
+    outcome="fail: ${ahead} unpushed commit(s) on master"
     exit 0
   fi
-fi
-
-if [[ -f "$STATE/pending-push" ]]; then
-  want="$(cat "$STATE/pending-push")"
-  git fetch origin master || { log "fail: fetch while retrying push"; outcome="fail: fetch while retrying push"; exit 1; }
-  if [[ "$(git rev-parse HEAD)" == "$want" ]] && ! git merge-base --is-ancestor "$want" origin/master; then
-    git push origin HEAD
-    rm -f "$STATE/pending-push"
-    log "pushed pending ${want}"
+  if [[ "$behind" != "0" ]]; then
+    git merge --ff-only origin/master
   fi
-fi
-
-git fetch origin master || { log "fail: fetch"; outcome="fail: fetch"; exit 1; }
-ahead="$(git rev-list --count origin/master..HEAD)"
-behind="$(git rev-list --count HEAD..origin/master)"
-if [[ "$ahead" != "0" ]]; then
-  log "skip: ${ahead} unpushed commit(s) on master"
-  outcome="fail: ${ahead} unpushed commit(s) on master"
-  exit 0
-fi
-if [[ "$behind" != "0" ]]; then
-  git merge --ff-only origin/master
 fi
 
 if [[ -z "${TYPESAFE_API_KEY:-}" ]]; then
@@ -272,6 +280,7 @@ if [[ -z "${TYPESAFE_API_KEY:-}" ]]; then
   exit 0
 fi
 
+rm -f "$STATE/baseline.json"
 if ! timeout 300 python3 tools/quality_jev.py score --save "$STATE/baseline.json" >"$STATE/score.txt"; then
   log "fail: header score"
   outcome="fail: header score"
@@ -379,39 +388,35 @@ Otherwise print exactly one line and nothing else:
 CHANGE: <the one verified edit, no pipe characters, under 120 characters>
 EOF
 )
-  set +e
-  GROK="$(command -v grok || true)"
+  GROK="${GROK:-$(command -v grok || true)}"
+  grok_rc=127
   if [[ -n "$GROK" ]]; then
-    # -p takes the prompt as its next argument. Flags before it.
-    # --worktree=led reviews a copy, so a stray edit stays off master.
-    # --no-plan: a review that waits for plan approval never returns a line.
-    worktrees_before="$(review_worktree_ids)"
-    worktree_list_rc=$?
-    timeout 8m "$GROK" --verbatim --no-alt-screen --no-plan --output-format plain \
-      --permission-mode plan --cwd "$REPO" --worktree=led -p "$review_prompt" \
-      >"$STATE/review.txt" 2>"$STATE/review.err"
-    review_rc=$?
-    if [[ "$worktree_list_rc" == 0 ]]; then
-      drop_new_worktrees "$worktrees_before"
+    grok_rc=0
+    run_review grok >"$STATE/review-grok.txt" 2>"$STATE/review-grok.err" || grok_rc=$?
+    if [[ "$grok_rc" == 0 ]]; then
+      review_line="$(review_verdict "$STATE/review-grok.txt")" || grok_rc=65
     fi
-  else
-    review_rc=127
   fi
-  set -e
-  if [[ "$review_rc" != 0 || ! -s "$STATE/review.txt" ]]; then
-    grok_err="$(head -n 1 "$STATE/review.err" 2>/dev/null | tr -d '\r' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
-    log "grok review failed (${review_rc})${grok_err:+: ${grok_err}}; opencode review"
-    timeout 12m "$OPENCODE" run --dir "$REPO" --auto --title "led daily review ${today}" \
-      "$review_prompt Print the line only. Write nothing in the repo." \
-      >"$STATE/review.txt" 2>"$STATE/review.err" || true
+  if [[ "$grok_rc" != 0 ]]; then
+    log "grok review unavailable or invalid (exit ${grok_rc}); trying opencode"
+    if ! run_review opencode >"$STATE/review.txt" 2>"$STATE/review.err" ||
+        ! review_line="$(review_verdict "$STATE/review.txt")"; then
+      review_line=""
+    fi
   fi
-  if [[ "$(git rev-parse HEAD)" != "$review_head" || -n "$(git status --porcelain --untracked-files=no)" ]]; then
-    log "review dirtied the tree; restoring"
-    git reset --mixed "$review_head"
-    git checkout -f "$review_head" -- .
+  if [[ "$(git rev-parse HEAD)" != "$review_head" ||
+        "$(git branch --show-current)" != master ||
+        -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    log "fail: live checkout changed during review; leaving it untouched"
+    day_claimed=0
+    exit 1
   fi
-  review_line="$(grep -E '^(SKIP|CHANGE:)' "$STATE/review.txt" | tail -1 || true)"
-  if [[ -z "$review_line" || "$review_line" == "SKIP" ]]; then
+  if [[ -z "$review_line" ]]; then
+    log "fail: no valid review verdict; see review logs"
+    outcome="fail: no valid review verdict"
+    exit 1
+  fi
+  if [[ "$review_line" == "SKIP" ]]; then
     log "skip: review declined ${target} ${concern}"
     outcome="fail: review declined ${target} ${concern}"
     reject_target "$target" "$concern"
@@ -454,7 +459,7 @@ EOF
 
 agent_started=1
 set +e
-timeout 25m "$OPENCODE" run --dir "$REPO" --auto --title "led daily ${today}" "$prompt" >"$STATE/agent.log" 2>&1
+timeout -k 15s 25m env -u TYPESAFE_API_KEY "$OPENCODE" run --dir "$REPO" --auto --title "led daily ${today}" "$prompt" >"$STATE/agent.log" 2>&1
 agent_rc=$?
 set -e
 log "opencode exit ${agent_rc}"
@@ -470,6 +475,15 @@ fi
 restore_tools
 rm -f "$WHAT_FILE.tmp"
 
+git diff --name-only HEAD | grep -vxF '.led-daily-what' >"$STATE/agent-files" || true
+git ls-files --others --exclude-standard | LC_ALL=C sort >"$STATE/untracked.after"
+comm -13 "$STATE/untracked.before" "$STATE/untracked.after" | grep -vxF '.led-daily-what' >>"$STATE/agent-files" || true
+if [[ "$agent_rc" != 0 ]]; then
+  outcome="fail: opencode exit ${agent_rc}"
+  log "$outcome; not accepting a partial edit"
+  exit 1
+fi
+
 if [[ -f "$WHAT_FILE" ]] && grep -qx 'SKIP' "$WHAT_FILE"; then
   log "skip: agent declined ${target} ${concern}"
   outcome="fail: agent declined ${target} ${concern}"
@@ -479,9 +493,6 @@ if [[ -f "$WHAT_FILE" ]] && grep -qx 'SKIP' "$WHAT_FILE"; then
   exit 0
 fi
 
-git diff --name-only HEAD | grep -vxF '.led-daily-what' >"$STATE/agent-files" || true
-git ls-files --others --exclude-standard | LC_ALL=C sort >"$STATE/untracked.after"
-comm -13 "$STATE/untracked.before" "$STATE/untracked.after" | grep -vxF '.led-daily-what' >>"$STATE/agent-files" || true
 if [[ ! -s "$STATE/agent-files" ]]; then
   log "skip: agent made no change"
   outcome="fail: agent made no change"
@@ -594,7 +605,8 @@ if [[ -n "$extra" ]]; then
   exit 1
 fi
 
-timeout 180 python3 tools/quality_jev.py score "$target" --save "$STATE/after.json" >"$STATE/score-after.txt" || true
+rm -f "$STATE/after.json"
+timeout 180 python3 tools/quality_jev.py score "$target" --save "$STATE/after.json" >"$STATE/score-after.txt" || rm -f "$STATE/after.json"
 {
   read -r qual_after
   read -r health_after
@@ -620,8 +632,8 @@ def num(text):
         return None
 
 if not hit:
-    print(qb)
-    print(hb)
+    print("n/a")
+    print("n/a")
     print(qj.verse_move(vb, "", num(qb), None).replace("\n", " "))
     raise SystemExit
 q = hit.get("quality_F")

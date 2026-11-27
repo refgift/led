@@ -109,9 +109,9 @@ The temperature goal is steady, measurable improvement, with special attention p
 `tools/daily.sh` is the automated loop. The operating system decides when it starts, and how many timers there are. Each start is one run. The same date may hold more than one `path.log` line. It scores tracked headers, picks the lowest-health `needs_work`, `poor`, or `review`, and branches on `action`:
 
 - `needs_work` or `poor`, high confidence: one edit, checked against the implementation. 
-- `review`: `grok -p --worktree=led` reads the header and the implementation in that worktree. 
--  The worktree is removed when the review returns. Opencode reads the main checkout if Grok fails. 
--  The review must name one verified change, major or minor, or decline. Only a named change is worked.
+- `review`: Grok reads a temporary snapshot of tracked files. If Grok is missing, times out, or does not return one valid verdict, OpenCode gets a fresh snapshot. Neither reviewer uses the live checkout.
+- A review must return a single `CHANGE: ...` line (under 120 characters for the proposed edit, with no pipes) or `SKIP`. A valid `SKIP` is final. If neither reviewer returns a valid verdict, the run stops without an edit.
+- If the editing agent exits unsuccessfully, the script discards its partial edits rather than testing or committing them.
 - `excellent`: leave it.
 
 A matching `.c` and a focused test may accompany a major change. A minor day is a verified behavior change in the `.c` with the header left as it is. The loop marks the `path.log` line `major` when the header is in the diff, and `minor` when it is not.
@@ -122,7 +122,7 @@ Commits that landed after the last `path.log` commit, and do not themselves only
 
 `quality` rates any text. The verse is kept for `*.h` only. `quality_jev.py` pairs that verse with the header-contract battery, and rates other text on purpose, claims, terms, and bulk without a verse. No-args `score` still ranks tracked headers, which is what the daily pick uses. `--compare`, the daily run log, and the `path.log` verse field say whether a header's verse held, warmed, or cooled.
 
-Hold the loop with `~/.config/led/daily.pause`. `TYPESAFE_API_KEY` lives in `~/.config/led/daily.env`, not in the repo.
+Hold the loop with `~/.config/led/daily.pause`. `TYPESAFE_API_KEY` lives in `~/.config/led/daily.env`, not in the repo (both paths honor `XDG_CONFIG_HOME`). Run `tools/daily.sh dry` to score and display the candidate from the current checkout without fetching, editing, or pushing. It still uses the scoring service. Run the offline workflow checks with `python3 test/test_daily.py`.
 
 ## Documentation and Release
 - Update README.md (What Works / What Fails) for overviews and known issues.
